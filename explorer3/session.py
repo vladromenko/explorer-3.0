@@ -87,6 +87,7 @@ class Session:
                     catalog.event('error','; '.join(errors))
                     self.outcome='aborted'
             if writer:
+                self.phase='saving'
                 try:
                     writer.finish(self.outcome,provenance)
                 except Exception as exc:

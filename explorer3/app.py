@@ -9,6 +9,7 @@ from .jobs import Jobs
 from .session import Session
 from . import handoff
 from .network import LocalNetworkOnly
+from . import viewer
 from .paths import DATA, ROOT, prepare
 from .profiles import PROFILES
 from .resources import owners
@@ -168,7 +169,12 @@ def index():
                         catalog.exclude(row['id'],not bool(row['excluded']))
                     refresh()
                 ui.button('Исключить / вернуть в обучение',on_click=exclusion)
-                ui.button('Посмотреть',on_click=lambda:ui.notify('Выберите записанный эпизод после этапа B')).disable()
+                def view_selected():
+                    if episode_table.selected:
+                        ui.navigate.to('/episodes/'+episode_table.selected[0]['id'])
+                    else:
+                        ui.notify('Выберите эпизод в таблице')
+                ui.button('Посмотреть',on_click=view_selected)
             with ui.tab_panel(training):
                 ui.label('Один trainer · отдельная политика для каждой задачи').style('font-size:19px')
                 ui.label('ACT: upstream LeRobot 0.6.1. Smoke: 50 шагов; это проверка тракта, не навык.').classes('muted')
@@ -219,14 +225,21 @@ def index():
         ready.set_text('Программный smoke: ACT '+('PASS' if act_pass else 'не проверен')+' · SmolVLA '+('PASS' if smol_pass else 'не проверен')+' · физические навыки не проверены')
         if authorized:
             stage_label.set_text('Этап B · разрешённый физический блок. Движение начинается только кнопкой записи.')
-        phases={'idle':'Остановлено','preparing':'Подготовка — пока не двигайте Leader','aligning':'Плавное совмещение — держите Leader неподвижно','following':'Следование — можно двигать Leader','error':'Ошибка'}
+        phases={'idle':'Остановлено','preparing':'Подготовка — пока не двигайте Leader','aligning':'Плавное совмещение — держите Leader неподвижно','following':'Следование — можно двигать Leader','error':'Ошибка','saving':'Сохранение эпизода — дождитесь завершения'}
         phase_text=phases.get(session.phase,session.phase)
         recording_status.set_text(session.error or (phase_text+' · кадров: '+str(session.frame_count)))
+        device_table.rows=[{'name':k,'state':('занято' if v['owners'] else 'USB обнаружено, не открыто') if v['present'] else 'отсутствует'} for k,v in inventory().items()]
+        device_table.update()
+        episode_table.rows=catalog.rows('episodes');episode_table.update()
+        job_table.rows=catalog.rows('jobs');job_table.update()
+        event_table.rows=catalog.rows('events')[:20];event_table.update()
+        mode_label.set_text(control.mode+' · '+phase_text)
+    def refresh_preview():
         with session.lock:
             sample=session.latest
         if sample and sample['frame_id']!=last_frame[0]:
             import cv2,base64
-            ok,jpeg=cv2.imencode('.jpg',cv2.cvtColor(sample['images']['wrist']['image'],cv2.COLOR_RGB2BGR))
+            ok,jpeg=cv2.imencode('.jpg',cv2.cvtColor(sample['images']['wrist']['image'],cv2.COLOR_RGB2BGR),[cv2.IMWRITE_JPEG_QUALITY,80])
             if ok:
                 preview.set_source('data:image/jpeg;base64,'+base64.b64encode(jpeg).decode())
             for series,key in zip(chart.options['series'],('action','observation.state')):
@@ -234,14 +247,9 @@ def index():
                 series['data']=series['data'][-300:]
             chart.update()
             last_frame[0]=sample['frame_id']
-        device_table.rows=[{'name':k,'state':('занято' if v['owners'] else 'USB обнаружено, не открыто') if v['present'] else 'отсутствует'} for k,v in inventory().items()]
-        device_table.update()
-        episode_table.rows=catalog.rows('episodes');episode_table.update()
-        job_table.rows=catalog.rows('jobs');job_table.update()
-        event_table.rows=catalog.rows('events')[:20];event_table.update()
-        mode_label.set_text(control.mode+' · '+phase_text)
     refresh()
     ui.timer(2,refresh)
+    ui.timer(1/15,refresh_preview)
 
 app.on_startup(lambda:catalog.event('info','Explorer 3.0 запущен без открытия аппаратуры'))
 app.on_shutdown(lambda:control.stop('Служба останавливается'))
