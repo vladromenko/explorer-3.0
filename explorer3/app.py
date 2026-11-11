@@ -300,13 +300,17 @@ def index():
         smol_button.set_enabled(smol_pass and task.value=='so101_pick_place')
         act_pass=(DATA/'validation/act-pass.json').exists()
         ready.set_text('Программный smoke: ACT '+('PASS' if act_pass else 'не проверен')+' · SmolVLA '+('PASS' if smol_pass else 'не проверен')+' · физические навыки не проверены')
-        if current_stage()=='C':
+        if control.robot=='tank' and (DATA/'validation/tank-motion-incident.json').exists():
+            stage_label.set_text('Tank: движение заблокировано после отказа STOP. Диагностика; физическая приёмка не пройдена.')
+        elif current_stage()=='C':
             stage_label.set_text('Этап C · подключение Tank. Приёмка SO-101 завершена; физический навык не проверен.')
         elif authorized:
             stage_label.set_text('Этап B · разрешённый физический блок. Движение начинается только явной кнопкой.')
         phases={'idle':'Остановлено','preparing':'Подготовка — пока не двигайте Leader','aligning':'Плавное совмещение — держите Leader неподвижно','following':'Следование — можно двигать Leader','error':'Ошибка','saving':'Сохранение эпизода — дождитесь завершения'}
         if control.robot=='tank':
             phases.update(preparing='Подготовка камеры и питания — пока не нажимайте стрелки',aligning='Подготовка',following='Управление готово — можно удерживать стрелки')
+        if control.robot=='tank' and session.phase=='idle':
+            phases['idle']='Командная сессия закрыта; физическая остановка не измеряется'
         phase_text='Передача управления — дождитесь завершения' if control.maintenance else phases.get(session.phase,session.phase)
         recording_status.set_text(session.error or (phase_text+' · кадров: '+str(session.frame_count)+((' · '+control.last_stop_reason) if control.last_stop_reason else '')))
         device_table.rows=[{'name':k,'state':('занято' if v['owners'] else 'USB обнаружено, не открыто') if v['present'] else 'отсутствует'} for k,v in inventory().items()]
@@ -337,7 +341,7 @@ def index():
                 voltage=observed['battery_voltage']
                 fresh=observed['battery_received_ns'] is not None and observed['monotonic_ns']-observed['battery_received_ns']<2_000_000_000
                 battery=f'{voltage:.2f} В' if fresh else 'неизвестно (нет свежего измерения)'
-                tank_status.set_text('Tank по Wi-Fi · '+('приводы открыты' if observed['hardware_open'] else 'приводы закрыты')+' · питание: '+battery)
+                tank_status.set_text('Tank по Wi-Fi · '+('порт управления открыт' if observed['hardware_open'] else 'порт управления закрыт; остановка моторов не измеряется')+' · питание: '+battery)
             except Exception as exc:tank_status.set_text('Tank недоступен: '+str(exc))
     refresh()
     ui.timer(2,refresh_tank)

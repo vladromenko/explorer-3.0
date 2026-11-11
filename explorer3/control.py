@@ -22,6 +22,8 @@ class Control:
         self.maintenance=False
 
     def authorized(self):
+        if self.robot=='tank' and (DATA/'validation/tank-motion-incident.json').exists():
+            return False
         # Installed only after the operator authorizes the concrete physical block.
         stage='b' if self.robot=='so101' else 'c' if self.robot=='tank' else 'd'
         return (DATA/f'stage-{stage}-authorized.json').is_file()

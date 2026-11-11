@@ -1,0 +1,229 @@
+"""Run the copied factory controller + board node; only project lifecycle/STOP wraps them.
+
+--verify-no-hardware substitutes only serial I/O and is never a physical acceptance result.
+"""
+import argparse
+import fcntl
+import json
+import math
+import os
+from pathlib import Path
+import signal
+import sys
+import threading
+import time
+
+ROOT=Path(__file__).resolve().parent
+sys.path.insert(0,str(ROOT/'native'))
+from serial_guard import CheckedSerial,WriteJournal
+
+
+class CaptureSerial:
+    """In-memory transport for the complete factory constructors and ROS command path."""
+    packets=[]
+    out_waiting=0
+    is_open=False
+    def __init__(self,*args,**kwargs):pass
+    def setPort(self,device):self.device=device
+    def open(self):self.is_open=True
+    def close(self):self.is_open=False
+    def read(self,size=1):time.sleep(.01);return b''
+    def write(self,packet):self.packets.append(bytes(packet));return len(packet)
+
+
+def build(verification=False):
+    import rclpy
+    from rclpy.executors import MultiThreadedExecutor
+    from geometry_msgs.msg import Twist
+    from controller.odom_publisher_node import Controller
+    import ros_robot_controller.ros_robot_controller_node as native_board
+    import ros_robot_controller.ros_robot_controller_sdk as sdk
+
+    if verification:sdk.serial.Serial=CaptureSerial
+    journal=WriteJournal(ROOT/('native-verification-writes.jsonl' if verification else 'native-serial-writes.jsonl'))
+    class Board(sdk.Board):
+        battery=None
+        battery_time=None
+        imu=None
+        imu_time=None
+        def __init__(self):
+            self.closing=False;self.receive_error=None
+            super().__init__()  # Actual factory serial configuration and receiver.
+            if not verification:fcntl.ioctl(self.port.fileno(),0x540C)
+            self.port=CheckedSerial(self.port,journal)
+        def recv_task(self):
+            try:super().recv_task()
+            except Exception as exc:
+                if not self.closing:self.receive_error=str(exc)
+        def get_battery(self):
+            value=super().get_battery()
+            if value is not None:self.battery=value/1000.;self.battery_time=time.monotonic_ns()
+            return value
+        def get_imu(self):
+            value=super().get_imu()
+            if value is not None:self.imu=list(value);self.imu_time=time.monotonic_ns()
+            return value
+    native_board.Board=Board
+
+    class BoardNode(native_board.RosRobotController):
+        def __init__(self):
+            self.command_lock=threading.RLock()
+            self.condition=threading.Condition(self.command_lock)
+            self.last_write=None
+            self.expected=None
+            self.sequence=0
+            self.expires=None
+            self.latched=False
+            self.reason=None
+            self.done=threading.Event()
+            super().__init__('ros_robot_controller')  # Includes native motor type, voltage and servo offsets.
+            self.guard=threading.Thread(target=self.watch,daemon=True);self.guard.start()
+        def neutral(self,reason):
+            with self.command_lock:
+                self.latched=True;self.reason=reason
+                self.board.set_motor_speed([[1,0.],[2,0.],[3,0.],[4,0.]])
+                journal.emit({'event':'neutral_written','reason':reason,'physical_stop_confirmed':False})
+                self.condition.notify_all()
+        def set_motor_state(self,msg):
+            with self.command_lock:
+                values=[[int(item.id),float(item.rps)] for item in msg.data]
+                if self.latched and any(v[1] for v in values):return
+                matches=self.expected is not None and len(values)==len(self.expected) and all(a[0]==b[0] and math.isclose(a[1],b[1],rel_tol=1e-6,abs_tol=1e-7) for a,b in zip(values,self.expected))
+                if not matches:
+                    self.neutral('Unexpected motor publisher or command');return
+                if not all(math.isfinite(v[1]) and abs(v[1])<=1.2 for v in values):
+                    self.neutral('Invalid native motor command');return
+                started=time.monotonic_ns()
+                try:super().set_motor_state(msg)  # Unmodified factory callback -> unchanged SDK.
+                except Exception as exc:
+                    try:self.neutral('Serial command failed: '+str(exc))
+                    finally:self.condition.notify_all()
+                    raise
+                self.sequence+=1
+                self.last_write={'sequence':self.sequence,'motor_targets_rps':values,'send_start_ns':started,'send_end_ns':time.monotonic_ns(),'motor_acknowledged':False}
+                self.expires=time.monotonic()+.35
+                self.expected=None
+                self.condition.notify_all()
+        def watch(self):
+            while not self.done.wait(.02):
+                with self.command_lock:
+                    reason=None
+                    if not self.latched and self.expires is not None:
+                        if journal.error:reason='Serial journal failed: '+journal.error
+                        elif self.board.receive_error:reason='Serial receiver failed: '+self.board.receive_error
+                        elif time.monotonic()>self.expires:reason='Native motor command timeout'
+                        elif not verification:
+                            if self.board.battery_time is None or time.monotonic_ns()-self.board.battery_time>2_000_000_000:reason='Battery stale'
+                            elif self.board.battery<6.9:reason='Low battery'
+                    if reason:
+                        try:self.neutral(reason)
+                        except Exception as exc:self.reason='Neutral write failed: '+str(exc)
+
+    board=BoardNode()
+    # Both original constructors initialize ROS. Reuse this process's existing context
+    # for the second node; no drivetrain code or source module is rewritten.
+    original_init=rclpy.init
+    rclpy.init=lambda *args,**kwargs:None
+    try:chassis=Controller('odom_publisher')
+    finally:rclpy.init=original_init
+    publisher=chassis.motor_pub
+    class Forward:
+        def publish(self,msg):
+            with board.command_lock:
+                board.expected=[[int(item.id),float(item.rps)] for item in msg.data]
+            publisher.publish(msg)
+    chassis.motor_pub=Forward()
+    executor=MultiThreadedExecutor(num_threads=2)
+    executor.add_node(board);executor.add_node(chassis)
+    thread=threading.Thread(target=executor.spin,daemon=True);thread.start()
+    dispatch=threading.Lock()
+
+    class Driver:
+        def status(self):
+            return {'battery_voltage':board.board.battery,'battery_received_ns':board.board.battery_time,
+                    'imu':board.board.imu,'imu_received_ns':board.board.imu_time,'latched':board.latched,
+                    'reason':board.reason,'last_write':board.last_write,'motor_acknowledged':False,
+                    'native_driver':True,'verification_no_hardware':verification}
+        def command(self,v,w):
+            with dispatch:
+                if not all(math.isfinite(x) for x in (v,w)):raise ValueError('Nonfinite command')
+                with board.condition:
+                    if board.latched:raise PermissionError('Driver latched: '+str(board.reason))
+                    if not verification and (board.board.battery_time is None or time.monotonic_ns()-board.board.battery_time>2_000_000_000 or board.board.battery<6.9):
+                        raise PermissionError('Fresh battery above existing threshold required')
+                    previous=board.sequence
+                    msg=Twist();msg.linear.x=float(v);msg.angular.z=float(w)
+                    chassis.app_cmd_vel_callback(msg)  # Actual native clamp, corrections and kinematics.
+                    action=[chassis.linear_x,chassis.angular_z]
+                    deadline=time.monotonic()+.2
+                    while board.sequence==previous and not board.latched and time.monotonic()<deadline:
+                        board.condition.wait(timeout=max(0,deadline-time.monotonic()))
+                    if board.sequence==previous or board.latched:
+                        board.neutral('No native serial completion');raise RuntimeError('Native command not completed')
+                    return {'action':action,**board.last_write,'accepted_by_agent':True}
+        def stop(self):
+            board.neutral('Explicit STOP')
+            return self.status()
+        def close(self):
+            try:board.neutral('Native driver closing')
+            finally:
+                board.done.set();board.running=False
+                executor.shutdown(timeout_sec=1)
+                board.board.closing=True
+                board.board.port.close()
+                journal.close()
+    return Driver()
+
+
+def make_app(driver):
+    from fastapi import FastAPI,HTTPException
+    from pydantic import BaseModel
+    app=FastAPI()
+    class Command(BaseModel):v:float;w:float
+    @app.get('/health')
+    def health():return driver.status()
+    @app.post('/command')
+    def command(value:Command):
+        try:return driver.command(value.v,value.w)
+        except (ValueError,PermissionError,RuntimeError) as exc:raise HTTPException(409,str(exc)) from exc
+    @app.post('/stop')
+    def stop():return driver.stop()
+    return app
+
+
+def main():
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--verify-no-hardware',action='store_true')
+    parser.add_argument('--verification-case',choices=('timeout','stop'),default='timeout')
+    args,ros_args=parser.parse_known_args()
+    sys.argv=[sys.argv[0],*ros_args]
+    os.environ['MACHINE_TYPE']='MentorPi_Tank'
+    if not args.verify_no_hardware:
+        if (ROOT/'incident-block.json').exists():raise PermissionError('Physical motion blocked after incident')
+        marker=json.loads((ROOT/'handoff-active.json').read_text())
+        if marker['boot_id']!=Path('/proc/sys/kernel/random/boot_id').read_text().strip():raise PermissionError('Current-boot handoff required')
+        if not (ROOT/'physical-block-authorized.json').exists():raise PermissionError('Explicit physical authorization required')
+    driver=build(args.verify_no_hardware)
+    if args.verify_no_hardware:
+        from fastapi.testclient import TestClient
+        try:
+            results=[]
+            with TestClient(make_app(driver)) as api:
+                for v,w in ((.1,0.),(0.,.3),(.1,0.)):
+                    response=api.post('/command',json={'v':v,'w':w});response.raise_for_status();results.append(response.json())
+                if args.verification_case=='stop':api.post('/stop').raise_for_status()
+                else:time.sleep(.5)
+                assert driver.status()['latched']
+                assert api.post('/command',json={'v':.1,'w':0.}).status_code==409
+            result={'verification_no_hardware':True,'physical_acceptance':False,'case':args.verification_case,
+                    'commands':results,'latched':True,'reason':driver.status()['reason'],
+                    'packets':[p.hex() for p in CaptureSerial.packets]}
+            (ROOT/('native-verification-'+args.verification_case+'.json')).write_text(json.dumps(result,indent=2))
+            print(json.dumps(result))
+        finally:driver.close()
+    else:
+        import uvicorn
+        try:uvicorn.run(make_app(driver),uds=str(ROOT/'native.sock'),access_log=False,timeout_graceful_shutdown=1)
+        finally:driver.close()
+
+if __name__=='__main__':main()

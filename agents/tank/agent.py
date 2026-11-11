@@ -1,8 +1,6 @@
 """Tank-local safety gate. Fresh process is inert; copied vendor SDK opens only on explicit start."""
 import asyncio
-import fcntl
 import hmac
-import importlib.util
 import json
 import math
 import os
@@ -18,25 +16,14 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+if __package__:
+    from .native_client import NativeDriver
+else:
+    from native_client import NativeDriver
+
 ROOT=Path(__file__).resolve().parent
 CONFIG=json.loads((ROOT/'config.json').read_text()) if (ROOT/'config.json').exists() else {}
 
-
-def targets(v: float,w: float,left=1.,right=1.):
-    """Preserve MentorPi_Tank app limits, straight correction and MecanumChassis motor signs.
-
-    Source: controller/odom_publisher_node.py and mecanum.py; copies and hashes outside Git.
-    No measured wheel feedback is implied by these commanded rotations/second.
-    """
-    if not all(math.isfinite(x) for x in (v,w,left,right)):
-        raise ValueError('Nonfinite command')
-    v=max(-.2,min(.2,v));w=max(-.5,min(.5,w))
-    if v>=0. and w==0.:
-        w=v*(right-left)*5.5 if right!=1. or left!=1. else 0.
-    turn=w*(.1368+.1446)/2
-    circumference=math.pi*.075
-    return [v,w],[[1,(-v+turn)/circumference],[2,(-v+turn)/circumference],
-                  [3,(v+turn)/circumference],[4,(v+turn)/circumference]]
 
 
 class Hardware:
@@ -70,7 +57,7 @@ class Hardware:
         with self.lock:
             return {'robot':'tank','armed':self.armed,'hardware_open':self.board is not None,
                     'reason':self.reason,'action':self.last_action,'motor_acknowledged':False,
-                    'wheel_feedback':'unavailable','odometry':'not_used_command_integral_is_not_measurement',
+                    'physical_stop_confirmed':False,'wheel_feedback':'unavailable','odometry':'not_used_command_integral_is_not_measurement',
                     'monotonic_ns':time.monotonic_ns(),'camera':self.image_info,
                     'battery_voltage':self.battery,'battery_received_ns':self.battery_time,
                     'imu':self.imu,'imu_received_ns':self.imu_time}
@@ -82,7 +69,7 @@ class Hardware:
             self.lease=None
             self.reason=reason
             if self.board is not None:
-                self.board.set_motor_speed([[1,0.],[2,0.],[3,0.],[4,0.]])
+                self.board.stop()
             self.last_action=[0.,0.]
 
     def watch(self):
@@ -90,17 +77,16 @@ class Hardware:
             with self.lock:
                 if self.board is not None:
                     try:
-                        battery=self.board.get_battery()
-                        imu=self.board.get_imu()
-                        if battery is not None:
-                            self.battery=battery/1000.
-                            self.battery_time=time.monotonic_ns()
-                        if imu is not None:
-                            self.imu=list(imu)
-                            self.imu_time=time.monotonic_ns()
+                        native=self.board.status()
+                        self.battery=native['battery_voltage']
+                        self.battery_time=native['battery_received_ns']
+                        self.imu=native['imu']
+                        self.imu_time=native['imu_received_ns']
                         if self.armed:
                             now=time.monotonic_ns()
-                            if time.monotonic()>self.expires:
+                            if native['latched']:
+                                self.stop('Native driver: '+str(native['reason']))
+                            elif time.monotonic()>self.expires:
                                 self.stop('Command lease expired; explicit new start required')
                             elif self.battery_time is None or now-self.battery_time>2_000_000_000:
                                 self.stop('Battery telemetry stale')
@@ -113,7 +99,7 @@ class Hardware:
                         self.lease=None
                         self.reason='Hardware error: '+str(exc)
                         try:
-                            self.board.set_motor_speed([[1,0.],[2,0.],[3,0.],[4,0.]])
+                            self.board.stop()
                         except Exception as stop_error:
                             self.reason+='; STOP failed: '+str(stop_error)
 
@@ -168,6 +154,8 @@ class Hardware:
             self.lifecycle.release()
 
     def _start(self):
+        if (ROOT/'incident-block.json').exists():
+            raise PermissionError('Motion blocked after physical STOP failure; engineering investigation required')
         if not (ROOT/'physical-block-authorized.json').exists():
             raise PermissionError('Tank physical block has not been authorized')
         marker=ROOT/'handoff-active.json'
@@ -177,26 +165,14 @@ class Hardware:
             raise RuntimeError('Hardware session already open; close it first')
         if (ROOT/'hardware-active.json').exists():
             raise RuntimeError('Unfinished hardware cleanup; restart the Explorer agent before retrying')
-        spec=importlib.util.spec_from_file_location('explorer3_vendor_board',ROOT/'vendor/board_sdk.py')
-        sdk=importlib.util.module_from_spec(spec);spec.loader.exec_module(sdk)
-        class Board(sdk.Board):
-            closing=False
-            receive_error=None
-            receiver=None
-            def recv_task(board):
-                board.receiver=threading.current_thread()
-                try:
-                    super(Board,board).recv_task()
-                except Exception as exc:
-                    if not board.closing:
-                        board.receive_error=str(exc)
         try:
-            # The handoff helper checks host/container owners before authorizing this path.
-            self.board=Board(device='/dev/rrc',timeout=.1)
-            fcntl.ioctl(self.board.port.fileno(),0x540C)  # TIOCEXCL, reject another opener.
+            driver=NativeDriver()
+            try:driver.start()
+            except Exception:
+                driver.close();raise
+            with self.lock:self.board=driver
+            if self.cancel_start.is_set():raise RuntimeError('STOP during native startup')
             (ROOT/'hardware-active.json').write_text(json.dumps({'boot_id':Path('/proc/sys/kernel/random/boot_id').read_text().strip()}))
-            self.board.enable_reception()
-            self.board.set_motor_speed([[1,0.],[2,0.],[3,0.],[4,0.]])
             self.start_camera()
             deadline=time.monotonic()+10
             ready=False
@@ -206,7 +182,7 @@ class Hardware:
                 if not ready:
                     time.sleep(.05)
             with self.lock:
-                if (not ready or self.cancel_start.is_set() or self.battery<6.9 or self.board.receive_error
+                if (not ready or self.cancel_start.is_set() or self.battery<6.9
                     or time.monotonic_ns()-self.image_info['received_ns']>500_000_000
                     or time.monotonic_ns()-self.battery_time>2_000_000_000):
                     raise RuntimeError('Fresh camera/battery/serial telemetry required')
@@ -227,13 +203,11 @@ class Hardware:
                 raise PermissionError('Inactive or expired lease; no automatic rearm')
             if sequence<=self.last_sequence:
                 raise ValueError('Stale command sequence')
-            action,motors=targets(v,w,CONFIG['left_correction'],CONFIG['right_correction'])
-            start=time.monotonic_ns()
-            self.board.set_motor_speed(motors)
-            end=time.monotonic_ns()
-            self.last_action=action;self.last_sequence=sequence;self.expires=now+.35
-            return {'action':action,'motor_targets_rps':motors,'send_start_ns':start,'send_end_ns':end,
-                    'accepted_by_agent':True,'motor_acknowledged':False,'sequence':sequence}
+            if not all(math.isfinite(value) for value in (v,w)):
+                raise ValueError('Nonfinite command')
+            sent=self.board.command(v,w)
+            self.last_action=sent['action'];self.last_sequence=sequence;self.expires=now+.35
+            return {**sent,'sequence':sequence,'accepted_by_agent':True,'motor_acknowledged':False}
 
     def close(self):
         self.cancel_start.set()
@@ -266,13 +240,8 @@ class Hardware:
             except Exception as exc:errors.append('ROS close: '+str(exc))
         with self.lock:
             if self.board is not None:
-                board=self.board
-                board.closing=True
-                try:
-                    board.port.close()
-                    if board.receiver is not None:board.receiver.join(timeout=1)
-                    self.board=None
-                except Exception as exc:errors.append('Serial close: '+str(exc))
+                try:self.board.close();self.board=None
+                except Exception as exc:errors.append('Native driver close: '+str(exc))
             if not errors:(ROOT/'hardware-active.json').unlink(missing_ok=True)
             self.image=None;self.image_info=None;self.battery=None;self.battery_time=None
             self.imu=None;self.imu_time=None

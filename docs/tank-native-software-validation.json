@@ -1,0 +1,314 @@
+{
+  "physical_acceptance": "FAIL_PENDING_BENCH_RETEST",
+  "motion_blocked": true,
+  "root_cause_fully_proven": false,
+  "confirmed_integration_defect": "native board initialization omitted in previous direct SDK adapter",
+  "replacement": "copied full native controller and board node constructors / callbacks / SDK",
+  "original_algorithms_modified": false,
+  "copied_configuration_paths_changed": true,
+  "local_tests_passed": 15,
+  "hardware_port_opened_during_new_tests": false,
+  "fixtures": {
+    "stop": {
+      "verification_no_hardware": true,
+      "physical_acceptance": false,
+      "case": "stop",
+      "commands": [
+        {
+          "action": [
+            0.1,
+            0.0
+          ],
+          "sequence": 1,
+          "motor_targets_rps": [
+            [
+              1,
+              -0.4244131815783876
+            ],
+            [
+              2,
+              -0.4244131815783876
+            ],
+            [
+              3,
+              0.4244131815783876
+            ],
+            [
+              4,
+              0.4244131815783876
+            ]
+          ],
+          "send_start_ns": 345615568048,
+          "send_end_ns": 345615704274,
+          "motor_acknowledged": false,
+          "accepted_by_agent": true
+        },
+        {
+          "action": [
+            0.0,
+            0.3
+          ],
+          "sequence": 2,
+          "motor_targets_rps": [
+            [
+              1,
+              0.17914480394423737
+            ],
+            [
+              2,
+              0.17914480394423737
+            ],
+            [
+              3,
+              0.17914480394423737
+            ],
+            [
+              4,
+              0.17914480394423737
+            ]
+          ],
+          "send_start_ns": 345626115158,
+          "send_end_ns": 345626215938,
+          "motor_acknowledged": false,
+          "accepted_by_agent": true
+        },
+        {
+          "action": [
+            0.1,
+            0.0
+          ],
+          "sequence": 3,
+          "motor_targets_rps": [
+            [
+              1,
+              -0.4244131815783876
+            ],
+            [
+              2,
+              -0.4244131815783876
+            ],
+            [
+              3,
+              0.4244131815783876
+            ],
+            [
+              4,
+              0.4244131815783876
+            ]
+          ],
+          "send_start_ns": 345631018704,
+          "send_end_ns": 345631109651,
+          "motor_acknowledged": false,
+          "accepted_by_agent": true
+        }
+      ],
+      "latched": true,
+      "reason": "Explicit STOP",
+      "packets": [
+        "aa550302050166",
+        "aa55000301f41a62",
+        "aa550302050166",
+        "aa55000301f41a62",
+        "aa55040307010029",
+        "aa5504030702007c",
+        "aa550403070300b8",
+        "aa550403070400d6",
+        "aa5503160104000000000001000000000200000000030000000007",
+        "aa550316010400af4cd9be01af4cd9be02af4cd93e03af4cd93e98",
+        "aa550316010400bc71373e01bc71373e02bc71373e03bc71373e76",
+        "aa550316010400af4cd9be01af4cd9be02af4cd93e03af4cd93e98",
+        "aa5503160104000000000001000000000200000000030000000007"
+      ]
+    },
+    "timeout": {
+      "verification_no_hardware": true,
+      "physical_acceptance": false,
+      "case": "timeout",
+      "commands": [
+        {
+          "action": [
+            0.1,
+            0.0
+          ],
+          "sequence": 1,
+          "motor_targets_rps": [
+            [
+              1,
+              -0.4244131815783876
+            ],
+            [
+              2,
+              -0.4244131815783876
+            ],
+            [
+              3,
+              0.4244131815783876
+            ],
+            [
+              4,
+              0.4244131815783876
+            ]
+          ],
+          "send_start_ns": 341912933247,
+          "send_end_ns": 341913019509,
+          "motor_acknowledged": false,
+          "accepted_by_agent": true
+        },
+        {
+          "action": [
+            0.0,
+            0.3
+          ],
+          "sequence": 2,
+          "motor_targets_rps": [
+            [
+              1,
+              0.17914480394423737
+            ],
+            [
+              2,
+              0.17914480394423737
+            ],
+            [
+              3,
+              0.17914480394423737
+            ],
+            [
+              4,
+              0.17914480394423737
+            ]
+          ],
+          "send_start_ns": 341917295546,
+          "send_end_ns": 341917368567,
+          "motor_acknowledged": false,
+          "accepted_by_agent": true
+        },
+        {
+          "action": [
+            0.1,
+            0.0
+          ],
+          "sequence": 3,
+          "motor_targets_rps": [
+            [
+              1,
+              -0.4244131815783876
+            ],
+            [
+              2,
+              -0.4244131815783876
+            ],
+            [
+              3,
+              0.4244131815783876
+            ],
+            [
+              4,
+              0.4244131815783876
+            ]
+          ],
+          "send_start_ns": 341921051644,
+          "send_end_ns": 341921127016,
+          "motor_acknowledged": false,
+          "accepted_by_agent": true
+        }
+      ],
+      "latched": true,
+      "reason": "Native motor command timeout",
+      "packets": [
+        "aa550302050166",
+        "aa55000301f41a62",
+        "aa550302050166",
+        "aa55000301f41a62",
+        "aa55040307010029",
+        "aa5504030702007c",
+        "aa550403070300b8",
+        "aa550403070400d6",
+        "aa5503160104000000000001000000000200000000030000000007",
+        "aa550316010400af4cd9be01af4cd9be02af4cd93e03af4cd93e98",
+        "aa550316010400bc71373e01bc71373e02bc71373e03bc71373e76",
+        "aa550316010400af4cd9be01af4cd9be02af4cd93e03af4cd93e98",
+        "aa5503160104000000000001000000000200000000030000000007"
+      ]
+    }
+  },
+  "inert_agent_and_original_services": {
+    "agent_inert": {
+      "robot": "tank",
+      "armed": false,
+      "hardware_open": false,
+      "reason": "Not started",
+      "action": [
+        0.0,
+        0.0
+      ],
+      "motor_acknowledged": false,
+      "physical_stop_confirmed": false,
+      "wheel_feedback": "unavailable",
+      "odometry": "not_used_command_integral_is_not_measurement",
+      "monotonic_ns": 407128427242,
+      "camera": null,
+      "battery_voltage": null,
+      "battery_received_ns": null,
+      "imu": null,
+      "imu_received_ns": null
+    },
+    "blocked_start_status": 409,
+    "factory_restoration": {
+      "boot_id": "f5dab838-4390-4dc9-b000-97da023bc6d6",
+      "services": {
+        "start_node.service": true,
+        "wifi.service": true
+      },
+      "restored": true,
+      "phase": "factory",
+      "created_at": 1794434756.0153325,
+      "restored_at": 1794436315.112903
+    },
+    "current_ownership": {
+      "services": {
+        "start_node.service": true,
+        "wifi.service": true
+      },
+      "agent_active": true,
+      "owners": [
+        {
+          "pid": 3286,
+          "devices": [
+            "/dev/ttyACM0"
+          ],
+          "command": "python3 /home/pi/hiwonder-toolbox/wifi.py "
+        },
+        {
+          "pid": 4116,
+          "devices": [
+            "/dev/ttyACM0"
+          ],
+          "command": "/usr/bin/python3 /home/ubuntu/ros2_ws/install/ros_robot_controller/lib/ros_robot_controller/ros_robot_controller --ros-args --params-file /tmp/launch_params_hd01_qvl "
+        },
+        {
+          "pid": 4123,
+          "devices": [
+            "/dev/bus/usb/001/003"
+          ],
+          "command": "/home/ubuntu/third_party_ros2/third_party_ws/install/deptrum-ros-driver-aurora930/lib/deptrum-ros-driver-aurora930/aurora930_node --ros-args -r __ns:=/aurora --params-file /tmp/launch_params_htvwkinh -r /aurora/depth/image_raw:=/ascamera/camera_publisher/depth0/image_raw -r /aurora/ir/camera_info:=/ascamera/camera_publisher/depth0/camera_info -r /aurora/ir/image_raw:=/ascamera/camera_publisher/ir0/image -r /aurora/points2:=/ascamera/camera_publisher/depth0/points -r /aurora/rgb/camera_info:=/ascamera/camera_publisher/rgb0/camera_info -r /aurora/rgb/image_raw:=/ascamera/camera_publisher/rgb0/image "
+        }
+      ],
+      "factory_launches": [
+        31
+      ],
+      "handoff": {
+        "boot_id": "f5dab838-4390-4dc9-b000-97da023bc6d6",
+        "services": {
+          "start_node.service": true,
+          "wifi.service": true
+        },
+        "restored": true,
+        "phase": "factory",
+        "created_at": 1794434756.0153325,
+        "restored_at": 1794436315.112903
+      }
+    },
+    "physical_stop_verified": false
+  }
+}
