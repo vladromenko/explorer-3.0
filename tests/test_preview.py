@@ -53,3 +53,17 @@ class PreviewTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(c.last_stop_reason,'Браузер: вкладка скрыта')
             c.heartbeat('browser')
             self.assertTrue(c.expired())
+
+    async def test_shutdown_closes_idle_http_stream(self):
+        stop=threading.Event()
+        session=SimpleNamespace(lock=threading.RLock(),latest=None)
+        request=SimpleNamespace(is_disconnected=lambda:asyncio.sleep(0,result=False))
+        preview=LivePreview(session,stop_requested=stop.is_set)
+        stream=preview.stream(request)
+        pending=asyncio.create_task(anext(stream))
+        await asyncio.sleep(.02)
+        self.assertEqual(preview.clients,1)
+        stop.set()
+        with self.assertRaises(StopAsyncIteration):
+            await asyncio.wait_for(pending,timeout=.3)
+        self.assertEqual(preview.clients,0)

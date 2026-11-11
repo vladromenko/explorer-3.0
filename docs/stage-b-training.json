@@ -1,0 +1,25 @@
+{
+  "profile": "so101_pick_place",
+  "synthetic": false,
+  "human_successful_episodes": 3,
+  "frames": 2636,
+  "job": "be7262c82f354190b82eead78129f6cf",
+  "trainer": "LeRobot 0.6.1 official lerobot_train",
+  "steps": 50,
+  "effective_batch": 8,
+  "seed": 1000,
+  "save": "PASS",
+  "reload_new_process": {
+    "reload": "PASS",
+    "inference": "PASS",
+    "action_shape": [
+      1,
+      6
+    ],
+    "latency_seconds": 0.41129579400876537,
+    "motor_commands_sent": false,
+    "physical_skill_verified": false
+  },
+  "physical_skill_verified": false,
+  "full_training_verified": false
+}

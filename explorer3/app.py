@@ -6,6 +6,7 @@ from fastapi import Request
 from fastapi.responses import StreamingResponse
 from pathlib import Path
 from nicegui import app,ui
+from nicegui.server import Server
 from . import catalog
 from .control import Control
 from .jobs import Jobs
@@ -24,7 +25,7 @@ catalog.initialize()
 control=Control()
 jobs=Jobs(control)
 session=Session(control)
-live_preview=LivePreview(session)
+live_preview=LivePreview(session,stop_requested=lambda:Server.instance.should_exit)
 ROBOT_NAMES={'so101':'SO-101','tank':'Tank','rosmaster':'ROSMASTER'}
 DEVICE_PATHS={'leader':'/dev/so101-leader','follower':'/dev/so101-follower',
               'wrist':'/dev/v4l/by-id/usb-HD_USB_Camera_HD_USB_Camera-video-index0'}
@@ -34,9 +35,14 @@ def inventory():
     return {k:{'present':Path(v).exists(),'owners':[o for o in held if str(Path(v).resolve()) in o['devices']]}
             for k,v in DEVICE_PATHS.items()}
 
+def current_stage():
+    if (DATA/'validation/stage-b-pass.json').exists():
+        return 'C'
+    return 'B' if control.authorized() else 'A'
+
 @app.get('/api/health')
 def health():
-    return {'product':'Explorer 3.0','stage':'A' if not control.authorized() else 'B','armed':False if control.owner is None else True,
+    return {'product':'Explorer 3.0','stage':current_stage(),'armed':False if control.owner is None else True,
             'selected_robot':control.robot,'mode':control.mode,'devices':inventory(),'data_root':str(DATA),
             'session':{'phase':session.phase,'frames':session.frame_count,'error':session.error,
                        'recording':session.record_requested,'thread_active':bool(session.thread and session.thread.is_alive()),
@@ -207,7 +213,7 @@ def index():
                             notify_error(exc)
                     smol_button=ui.button('SmolVLA · smoke',on_click=smol)
                     ui.button('Остановить trainer',on_click=jobs.cancel).props('outline')
-                job_table=ui.table(columns=[{'name':k,'label':v,'field':k} for k,v in [('id','Задание'),('profile','Задача'),('policy','Модель'),('status','Состояние'),('error','Ошибка')]],rows=[],row_key='id')
+                job_table=ui.table(columns=[{'name':k,'label':v,'field':k} for k,v in [('id','Задание'),('profile','Задача'),('policy','Модель'),('status','Состояние'),('checkpoint','Checkpoint'),('error','Ошибка')]],rows=[],row_key='id')
             with ui.tab_panel(trials):
                 ui.label('Программная готовность ≠ checkpoint ≠ физический навык').style('font-size:19px')
                 with ui.row():
@@ -215,7 +221,10 @@ def index():
                     ui.button('Повторить команды на роботе').disable()
                     ui.button('Испытать политику').disable()
                 ui.table(columns=[{'name':k,'label':v,'field':k} for k,v in [('profile','Задача'),('record','Запись'),('train','Обучение'),('skill','Физический навык')]],
-                    rows=[{'profile':k,'record':'не проверено','train':'не проверено','skill':'не проверено'} for k in PROFILES])
+                    rows=[{'profile':k,
+                           'record':'проверена' if v['recording_status']=='verified' else 'не проверено',
+                           'train':'smoke проверен · 50 шагов' if v['training_status']=='smoke_verified' else 'не проверено',
+                           'skill':'не проверено'} for k,v in PROFILES.items()])
         with ui.expansion('Журнал событий и ошибок',icon='receipt_long').style('width:100%'):
             event_table=ui.table(columns=[{'name':k,'label':v,'field':k} for k,v in [('level','Уровень'),('message','Сообщение')]],rows=[],row_key='id')
     with ui.footer():
@@ -236,8 +245,10 @@ def index():
         smol_button.set_enabled(smol_pass and task.value=='so101_pick_place')
         act_pass=(DATA/'validation/act-pass.json').exists()
         ready.set_text('Программный smoke: ACT '+('PASS' if act_pass else 'не проверен')+' · SmolVLA '+('PASS' if smol_pass else 'не проверен')+' · физические навыки не проверены')
-        if authorized:
-            stage_label.set_text('Этап B · разрешённый физический блок. Движение начинается только кнопкой записи.')
+        if current_stage()=='C':
+            stage_label.set_text('Этап C · подключение Tank. Приёмка SO-101 завершена; физический навык не проверен.')
+        elif authorized:
+            stage_label.set_text('Этап B · разрешённый физический блок. Движение начинается только явной кнопкой.')
         phases={'idle':'Остановлено','preparing':'Подготовка — пока не двигайте Leader','aligning':'Плавное совмещение — держите Leader неподвижно','following':'Следование — можно двигать Leader','error':'Ошибка','saving':'Сохранение эпизода — дождитесь завершения'}
         phase_text=phases.get(session.phase,session.phase)
         recording_status.set_text(session.error or (phase_text+' · кадров: '+str(session.frame_count)+((' · '+control.last_stop_reason) if control.last_stop_reason else '')))

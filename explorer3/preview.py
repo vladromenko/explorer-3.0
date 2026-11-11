@@ -3,8 +3,9 @@ import asyncio
 import cv2
 
 class LivePreview:
-    def __init__(self,session):
+    def __init__(self,session,stop_requested=lambda:False):
         self.session=session
+        self.stop_requested=stop_requested
         self.key=None
         self.jpeg=None
         self.lock=asyncio.Lock()
@@ -35,7 +36,7 @@ class LivePreview:
         self.clients+=1
         previous=None
         try:
-            while not await request.is_disconnected():
+            while not self.stop_requested() and not await request.is_disconnected():
                 key,jpeg=await self.latest()
                 if jpeg is not None and key!=previous:
                     yield b'--frame\r\nContent-Type: image/jpeg\r\nContent-Length: '+str(len(jpeg)).encode()+b'\r\n\r\n'+jpeg+b'\r\n'

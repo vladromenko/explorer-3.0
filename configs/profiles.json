@@ -22,9 +22,9 @@
       "degrees",
       "percent_calibrated_range"
     ],
-    "schema_status": "candidate_requires_physical_verification",
-    "recording_status": "not_verified",
-    "training_status": "not_verified",
+    "schema_status": "verified_physical_recordings",
+    "recording_status": "verified",
+    "training_status": "smoke_verified",
     "physical_skill_status": "not_verified"
   },
   "tank_dock": {

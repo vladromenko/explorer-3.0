@@ -23,26 +23,14 @@ def split_episodes(episodes: list[dict], seed=1000):
 
 
 def combine(episodes: list[dict], destination: Path, name: str):
-    import numpy as np
     from lerobot.datasets.lerobot_dataset import LeRobotDataset
-    first=LeRobotDataset('local/source',root=episodes[0]['dataset'],video_backend='pyav')
-    features={k:v for k,v in first.features.items() if k in {'observation.state','action'} or k.startswith('observation.images.')}
-    ds=LeRobotDataset.create(repo_id='local/'+name,root=destination,fps=first.fps,features=features,
-                            robot_type=first.meta.robot_type,use_videos=True,video_backend='pyav',image_writer_threads=2)
-    for episode in episodes:
-        src=LeRobotDataset('local/source',root=episode['dataset'],video_backend='pyav')
-        if src.features != first.features or src.fps != first.fps:
-            raise ValueError('Incompatible feature schema or fps')
-        for frame in src:
-            out={}
-            for key in features:
-                array=frame[key].numpy()
-                out[key]=np.transpose(array,(1,2,0)) if key.startswith('observation.images.') else array
-            out['task']=frame['task']
-            ds.add_frame(out)
-        ds.save_episode()
-    ds.finalize()
-    return ds
+    from lerobot.datasets.dataset_tools import merge_datasets
+    sources=[LeRobotDataset('local/'+episode['id'],root=episode['dataset'],video_backend='pyav')
+             for episode in episodes]
+    # Upstream aggregation preserves the recorded MP4 files without a lossy re-encode.
+    # Only the selected training sources contribute to the merged normalization statistics.
+    return merge_datasets(sources,output_repo_id='local/'+name,output_dir=destination,
+                          concatenate_videos=False,concatenate_data=False)
 
 
 def train_command(dataset: Path, output: Path, policy='act',steps=50,batch=8,seed=1000):

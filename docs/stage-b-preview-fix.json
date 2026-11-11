@@ -11,6 +11,7 @@
   "browser_visual_result": "requires_operator_check",
   "transport": "PASS",
   "regression_tests_passed": 9,
-  "physical_recheck": "pending",
-  "old_stop_cause": "ambiguous: previous UI did not distinguish blur, hidden tab, disconnect and abort button"
+  "physical_recheck": "operator_confirmed_smooth_video_and_continuous_teleoperation",
+  "old_stop_cause": "ambiguous: previous UI did not distinguish blur, hidden tab, disconnect and abort button",
+  "recording_after_fix": "pending"
 }
