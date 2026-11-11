@@ -8,11 +8,13 @@ from .control import Control
 from .jobs import Jobs
 from .session import Session
 from . import handoff
+from .network import LocalNetworkOnly
 from .paths import DATA, ROOT, prepare
 from .profiles import PROFILES
 from .resources import owners
 
 prepare()
+app.add_middleware(LocalNetworkOnly)
 catalog.initialize()
 control=Control()
 jobs=Jobs(control)
@@ -29,7 +31,9 @@ def inventory():
 @app.get('/api/health')
 def health():
     return {'product':'Explorer 3.0','stage':'A' if not control.authorized() else 'B','armed':False if control.owner is None else True,
-            'selected_robot':control.robot,'mode':control.mode,'devices':inventory(),'data_root':str(DATA)}
+            'selected_robot':control.robot,'mode':control.mode,'devices':inventory(),'data_root':str(DATA),
+            'session':{'phase':session.phase,'frames':session.frame_count,'error':session.error,
+                       'recording':session.record_requested,'thread_active':bool(session.thread and session.thread.is_alive())}}
 
 @app.get('/api/status')
 def status():
@@ -123,8 +127,14 @@ def index():
                         except Exception as exc:
                             notify_error(exc)
                     take_button=ui.button('Explorer 3.0',on_click=take_control)
+                    def teleop_check():
+                        try:
+                            session.start(owner,'so101_pick_place','teleop-check',record=False)
+                        except Exception as exc:
+                            notify_error(exc)
+                    teleop_button=ui.button('Проверить телеперацию',on_click=teleop_check)
                     old_button=ui.button('Прежнее управление',on_click=old_control)
-                ui.label('Переключение и возврат требуют проверки B. Старые службы сейчас не изменены.').classes('muted')
+                ui.label('Проверка телеперации не записывает показ. После проверки нажмите STOP.').classes('muted')
                 device_table=ui.table(columns=[{'name':'name','label':'Устройство','field':'name'}, {'name':'state','label':'Фактическое состояние','field':'state'}],
                     rows=[],row_key='name')
                 ui.label('SO-101 управляется Leader. Tank и ROSMASTER подключаются по очереди.').classes('muted')
@@ -201,6 +211,7 @@ def index():
         authorized=control.authorized()
         start_button.set_enabled(authorized and control.robot=='so101' and not (session.thread and session.thread.is_alive()))
         take_button.set_enabled(authorized and control.robot=='so101')
+        teleop_button.set_enabled(authorized and control.robot=='so101' and not (session.thread and session.thread.is_alive()))
         old_button.set_enabled(authorized)
         smol_pass=(DATA/'validation/smolvla-pass.json').exists()
         smol_button.set_enabled(smol_pass and task.value=='so101_pick_place')
@@ -208,7 +219,9 @@ def index():
         ready.set_text('Программный smoke: ACT '+('PASS' if act_pass else 'не проверен')+' · SmolVLA '+('PASS' if smol_pass else 'не проверен')+' · физические навыки не проверены')
         if authorized:
             stage_label.set_text('Этап B · разрешённый физический блок. Движение начинается только кнопкой записи.')
-        recording_status.set_text(session.error or ('Кадров: '+str(session.frame_count)))
+        phases={'idle':'Остановлено','preparing':'Подготовка — пока не двигайте Leader','aligning':'Плавное совмещение — держите Leader неподвижно','following':'Следование — можно двигать Leader','error':'Ошибка'}
+        phase_text=phases.get(session.phase,session.phase)
+        recording_status.set_text(session.error or (phase_text+' · кадров: '+str(session.frame_count)))
         with session.lock:
             sample=session.latest
         if sample and sample['frame_id']!=last_frame[0]:
@@ -226,7 +239,7 @@ def index():
         episode_table.rows=catalog.rows('episodes');episode_table.update()
         job_table.rows=catalog.rows('jobs');job_table.update()
         event_table.rows=catalog.rows('events')[:20];event_table.update()
-        mode_label.set_text(control.mode+' · '+('приводы не включены' if control.owner is None else 'ручная сессия'))
+        mode_label.set_text(control.mode+' · '+phase_text)
     refresh()
     ui.timer(2,refresh)
 
@@ -235,5 +248,5 @@ app.on_shutdown(lambda:control.stop('Служба останавливается
 app.on_shutdown(jobs.cancel)
 app.timer(.1,control.watchdog)
 app.timer(2,jobs.tick)
-ui.run(host='127.0.0.1',port=int(os.environ.get('EXPLORER3_PORT','8030')),title='Explorer 3.0',
+ui.run(host=os.environ.get('EXPLORER3_HOST','127.0.0.1'),port=int(os.environ.get('EXPLORER3_PORT','8030')),title='Explorer 3.0',
        reload=False,show=False,tailwind=False,language='ru',favicon='🧭')

@@ -13,6 +13,7 @@ Environment=OPENBLAS_NUM_THREADS=1
 Environment=HF_HOME=/home/jetsonnx/.local/share/explorer3/cache/huggingface
 Environment=TORCH_HOME=/home/jetsonnx/.local/share/explorer3/cache/torch
 Environment=PYTHONUNBUFFERED=1
+Environment=EXPLORER3_HOST=0.0.0.0
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=30

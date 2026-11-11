@@ -15,6 +15,11 @@ def systemctl(*args,check=True):
 def enter(control,paths):
     if not control.authorized() or control.owner is not None:
         raise PermissionError('Требуется разрешённый физический блок и STOP')
+    saved=DATA/'handoff.json'
+    if saved.exists() and not json.loads(saved.read_text())['restored']:
+        if owners(paths):
+            raise RuntimeError('Ресурсы заняты после предыдущей передачи управления')
+        return
     active=systemctl('is-active',SERVICE,check=False).returncode==0
     (DATA/'handoff.json').write_text(json.dumps({'service':SERVICE,'was_active':active,'restored':False}))
     if active:
