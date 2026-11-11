@@ -1,0 +1,46 @@
+{
+  "stage": "C",
+  "physical_acceptance": "pending",
+  "software_tests_passed": 13,
+  "wifi_without_ethernet": "verified",
+  "read_only_factory_rgb_shape": [
+    400,
+    640,
+    3
+  ],
+  "copied_agent_camera": "not_yet_tested",
+  "agent_restart_inert": "PASS",
+  "unauthorized_session_http": 409,
+  "ui_http": 200,
+  "browser_visual_check": "unavailable",
+  "tank_movement_commands_sent": false,
+  "old_so101_hash_matches": 23,
+  "old_so101_baseline_differences": [
+    "/home/jetsonnx/Projects/so101_ai_learning/src/so101_lab/recording.py"
+  ],
+  "old_sources_edited_by_this_work": false,
+  "battery_sources": {
+    "model": "MentorPi_Tank / MentorPi T1",
+    "nominal_voltage": 7.4,
+    "capacity_mAh": 2200,
+    "manufacturer_recharge_below_V": 6.4,
+    "existing_controller_threshold_V": 6.9,
+    "explorer_stop_below_V": 6.9,
+    "observed_voltage": 7.2,
+    "checked_at": 1794434431.5178528,
+    "source_urls": [
+      "https://www.hiwonder.com/products/mentorpi-t1",
+      "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/1.getting_ready.html"
+    ],
+    "battery_label_physically_read": false,
+    "motor_commands_sent": false
+  },
+  "remaining": [
+    "physical_handoff",
+    "camera_and_power_from_own_agent",
+    "teleop_STOP_link_loss",
+    "three_demonstrations",
+    "ACT_smoke_reload",
+    "factory_phone_restoration"
+  ]
+}
