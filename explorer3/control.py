@@ -18,25 +18,33 @@ class Control:
         self.last_stop_reason=None
         self.last_heartbeat=None
         self.heartbeat_count=0
+        self.base_keys=set()
+        self.maintenance=False
 
     def authorized(self):
         # Installed only after the operator authorizes the concrete physical block.
-        return (DATA/'stage-b-authorized.json').is_file()
+        stage='b' if self.robot=='so101' else 'c' if self.robot=='tank' else 'd'
+        return (DATA/f'stage-{stage}-authorized.json').is_file()
 
     def select(self, robot: str):
         if robot not in {'so101','tank','rosmaster'}:
             raise ValueError('Unknown robot')
+        if self.maintenance:
+            raise RuntimeError('Дождитесь передачи управления')
         self.stop('Смена робота: удержанные команды отменены')
         self.robot=robot
 
     def acquire(self, owner: str):
         with self.lock:
+            if self.maintenance:
+                raise RuntimeError('Идёт передача управления')
             if not self.authorized():
-                raise PermissionError('Этап A: движение запрещено; требуется физическая приёмка B')
+                raise PermissionError('Для выбранного робота ещё не разрешён физический блок')
             if self.owner is not None:
                 raise RuntimeError('Ручное управление уже занято')
-            if self.robot != 'so101':
+            if self.robot not in {'so101','tank'}:
                 raise RuntimeError('Драйвер этого робота ещё не проверен')
+            self.base_keys.clear()
             self.last_stop_reason=None
             self.last_heartbeat=time.monotonic()
             self.heartbeat_count=0
@@ -61,6 +69,7 @@ class Control:
         with self.lock:
             if self.owner is not None or self.last_stop_reason is None:
                 self.last_stop_reason=reason
+            self.base_keys.clear()
             self.stop_event.set()
             self.owner=None
             self.expires=0
@@ -70,3 +79,18 @@ class Control:
     def watchdog(self):
         if self.owner is not None and self.expired():
             self.stop('Lease истёк: связь с оператором потеряна')
+
+    def base_key(self,owner,key,pressed):
+        with self.lock:
+            if key not in {'up','down','left','right'}:
+                raise ValueError('Unknown driving key')
+            if self.robot=='tank' and self.owner==owner and not self.expired():
+                if pressed:self.base_keys.add(key)
+                else:self.base_keys.discard(key)
+
+    def base_action(self):
+        with self.lock:
+            if self.robot!='tank' or self.expired():return [0.,0.]
+            # Begin at the existing controller's lower joystick speed; hard bounds stay on Tank.
+            return [.1*(int('up' in self.base_keys)-int('down' in self.base_keys)),
+                    .3*(int('left' in self.base_keys)-int('right' in self.base_keys))]

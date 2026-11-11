@@ -19,9 +19,10 @@ def episode_files(ident: str):
 @app.get('/api/episodes/{ident}/video')
 def episode_video(ident: str):
     _,root=episode_files(ident)
-    videos=sorted((root/'videos/observation.images.wrist').rglob('*.mp4'))
+    cfg=json.loads((root/'provenance.json').read_text())['profile']
+    videos=sorted((root/('videos/observation.images.'+cfg['camera'])).rglob('*.mp4'))
     if len(videos)!=1:
-        raise HTTPException(409,'Expected one finalized wrist video file')
+        raise HTTPException(409,'Expected one finalized camera video file')
     return FileResponse(videos[0],media_type='video/mp4')
 
 @ui.page('/episodes/{ident}')
@@ -37,10 +38,11 @@ def episode_page(ident: str):
     ui.label('Только просмотр. Команды на робота не передаются.')
     video=ui.video(f'/api/episodes/{ident}/video').style('width:100%;max-width:800px')
     channel=ui.select({i:n for i,n in enumerate(profile['channels'])},value=0,label='Канал').style('min-width:260px')
+    state_label='Измеренное положение' if profile['robot']=='so101' else 'Предыдущая команда (оценка)'
     plot=ui.echart({'backgroundColor':'transparent','tooltip':{'trigger':'axis'},
-        'legend':{'data':['Отправленная команда','Измеренное положение'],'textStyle':{'color':'#b8c6d6'}},
+        'legend':{'data':['Отправленная команда',state_label],'textStyle':{'color':'#b8c6d6'}},
         'xAxis':{'type':'value','name':'Видео, с'},'yAxis':{'type':'value'},
-        'series':[{'name':label,'type':'line','showSymbol':False,'data':[]} for label in ('Отправленная команда','Измеренное положение')]}).style('width:100%;height:320px')
+        'series':[{'name':label,'type':'line','showSymbol':False,'data':[]} for label in ('Отправленная команда',state_label)]}).style('width:100%;height:320px')
     clock=ui.label('0.0 с')
     def draw():
         index=channel.value

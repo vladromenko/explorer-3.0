@@ -18,6 +18,7 @@ def validate(episode_id: str):
     provenance=json.loads((root/'provenance.json').read_text())
     if provenance.get('synthetic') is not False:
         raise ValueError('Not a real physical recording')
+    cfg=provenance['profile']
     records=[json.loads(line) for line in (root/'research.jsonl').read_text().splitlines()]
     ds=LeRobotDataset('local/physical_readback',root=root,video_backend='pyav')
     if len(ds)!=len(records) or len(ds)!=entry['frames'] or not records:
@@ -31,6 +32,11 @@ def validate(episode_id: str):
             raise ValueError('Noncausal command/observation')
         if row['camera']['timestamp_ns']>obs:
             raise ValueError('Future camera data')
+        if cfg['robot']=='tank':
+            if row['measured_response_kind']!='previous_command_estimate_no_wheel_feedback':
+                raise ValueError('Tank command estimate mislabeled as measurement')
+            if row['agent_accepted_command'] is not True or row['battery_voltage']<6.9:
+                raise ValueError('Unaccepted command or low battery')
         previous=obs
         if row['action_acknowledged'] is not False:
             raise ValueError('Unexpected claimed acknowledgement')
@@ -38,7 +44,8 @@ def validate(episode_id: str):
             raise ValueError('Nonfinite action/state')
     for index in sorted({0,len(ds)//2,len(ds)-1}):
         frame=ds[index]
-        assert tuple(frame['observation.images.wrist'].shape)==(3,480,640)
+        shape=cfg.get('image_shape',[480,640,3])
+        assert tuple(frame['observation.images.'+cfg['camera']].shape)==(shape[2],shape[0],shape[1])
         assert np.allclose(frame['action'].numpy(),records[index]['action'],atol=1e-5)
         assert np.allclose(frame['observation.state'].numpy(),records[index]['observation.state'],atol=1e-5)
     times=np.array([r['observation_timestamp_ns'] for r in records],dtype=np.int64)

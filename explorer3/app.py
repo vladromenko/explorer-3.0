@@ -1,4 +1,5 @@
 """Explorer 3.0 — one NiceGUI/FastAPI server, local assets, inert startup."""
+import asyncio
 import json
 import os
 import time
@@ -12,7 +13,7 @@ from .control import Control
 from .jobs import Jobs
 from .session import Session
 from .preview import LivePreview
-from . import handoff
+from . import handoff, tank_handoff, tank
 from .network import LocalNetworkOnly
 from . import viewer
 from .paths import DATA, ROOT, prepare
@@ -50,6 +51,7 @@ def health():
                        'heartbeat_age_s':time.monotonic()-control.last_heartbeat if control.last_heartbeat else None},
             'preview':{'transport':'mjpeg_http','clients':live_preview.clients,'encoded_frames':live_preview.encoded}}
 
+@app.get('/api/live/camera.mjpg')
 @app.get('/api/live/wrist.mjpg')
 async def wrist_preview(request: Request):
     return StreamingResponse(live_preview.stream(request),media_type='multipart/x-mixed-replace; boundary=frame',
@@ -95,8 +97,30 @@ def index():
         if control.owner==owner:
             session.finish('aborted',reason='Браузер: '+str(reason))
     ui.on('operator_lost',lambda event:lost(event.args))
+    ui.on('operator_blur',lambda:lost('окно потеряло фокус') if control.robot=='tank' else None)
+    def drive_key(event):
+        value=event.args
+        if session.phase=='following' and control.robot=='tank':
+            control.base_key(owner,value['key'],bool(value['pressed']))
+    ui.on('tank_key',drive_key)
+    ui.on('operator_stop',lambda:lost('клавиша STOP'))
     client.on_disconnect(lambda:lost('соединение закрыто'))
     ui.add_body_html("<script>setInterval(()=>{if(!document.hidden) emitEvent('operator_heartbeat')},250);document.addEventListener('visibilitychange',()=>{if(document.hidden) emitEvent('operator_lost','вкладка скрыта')});window.addEventListener('pagehide',()=>emitEvent('operator_lost','страница закрыта'));</script>")
+    ui.add_body_html('''<script>
+    window.addEventListener('blur',()=>emitEvent('operator_blur'));
+    const tankKeys={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right',KeyW:'up',KeyS:'down',KeyA:'left',KeyD:'right'};
+    function tankKey(event,pressed){
+      const pad=document.getElementById('tank-drive-pad');
+      if(!pad || !pad.offsetParent) return;
+      if(event.code==='Space'){event.preventDefault();emitEvent('operator_stop');return}
+      if(!pressed || !['INPUT','TEXTAREA'].includes(event.target.tagName)){
+        const key=tankKeys[event.code];
+        if(key){event.preventDefault();if(!event.repeat)emitEvent('tank_key',{key,pressed})}
+      }
+    }
+    window.addEventListener('keydown',e=>tankKey(e,true));
+    window.addEventListener('keyup',e=>tankKey(e,false));
+    </script>''')
     ui.add_css(CSS)
     ui.colors(primary='#2b9c8f',secondary='#748aa4',negative='#d45050')
     ui.dark_mode().enable()
@@ -120,7 +144,17 @@ def index():
     with ui.element('div').classes('workspace'):
         selected=ui.label('Выбран: '+ROBOT_NAMES[control.robot]).classes('selected')
         mode_label=ui.label('Наблюдение · приводы не включены').classes('muted')
-        task=ui.select({k:k for k,v in PROFILES.items() if v['robot']==control.robot},value='so101_pick_place',label='Задача').style('min-width:320px')
+        task=ui.select({k:k for k,v in PROFILES.items() if v['robot']==control.robot},value=next(k for k,v in PROFILES.items() if v['robot']==control.robot),label='Задача').style('min-width:320px')
+        with ui.column().style('width:100%') as tank_controls:
+            tank_status=ui.label('Tank: связь проверяется, приводы закрыты').classes('muted')
+            ui.label('Удерживайте стрелку или W/A/S/D. Отпускание — остановка; пробел — STOP.')
+            ui.html('''<div id="tank-drive-pad" style="display:flex;gap:12px;touch-action:none;user-select:none">'''+''.join(
+                f'''<button class="q-btn bg-primary text-white" style="min-width:64px;min-height:48px;touch-action:none"
+                onpointerdown="this.setPointerCapture(event.pointerId);emitEvent('tank_key',{{key:'{key}',pressed:true}})"
+                onpointerup="emitEvent('tank_key',{{key:'{key}',pressed:false}})"
+                onpointercancel="emitEvent('tank_key',{{key:'{key}',pressed:false}})"
+                onlostpointercapture="emitEvent('tank_key',{{key:'{key}',pressed:false}})">{label}</button>'''
+                for key,label in [('left','←'),('up','↑'),('down','↓'),('right','→')])+'</div>')
         with ui.tabs() as tabs:
             management=ui.tab('Управление',icon='tune')
             record=ui.tab('Запись',icon='fiber_manual_record')
@@ -132,26 +166,29 @@ def index():
                 ui.label('Режим владения устройством').style('font-size:19px')
                 with ui.row():
                     ui.button('Наблюдение',on_click=lambda:control.stop('Наблюдение'))
-                    def take_control():
+                    async def transfer(restore=False):
                         try:
-                            handoff.enter(control,list(DEVICE_PATHS.values()))
-                            ui.notify('Ресурсы освобождены; движение не началось')
-                        except Exception as exc:
-                            notify_error(exc)
-                    def old_control():
-                        try:
-                            if session.thread and session.thread.is_alive():
-                                raise RuntimeError('Дождитесь закрытия аппаратной сессии после STOP')
-                            handoff.restore(control)
-                            ui.notify('Прежние службы восстановлены без команды движения')
-                        except Exception as exc:
-                            notify_error(exc)
+                            with control.lock:
+                                if control.maintenance or (session.thread and session.thread.is_alive()):
+                                    raise RuntimeError('Сначала STOP и дождитесь закрытия сессии')
+                                control.maintenance=True
+                            try:
+                                if control.robot=='tank':
+                                    operation=tank_handoff.restore if restore else tank_handoff.enter
+                                    await asyncio.to_thread(operation,control)
+                                elif control.robot=='so101':
+                                    if restore:await asyncio.to_thread(handoff.restore,control)
+                                    else:await asyncio.to_thread(handoff.enter,control,list(DEVICE_PATHS.values()))
+                                else:raise RuntimeError('Драйвер ещё не подключён')
+                            finally:control.maintenance=False
+                            ui.notify('Прежние службы восстановлены' if restore else 'Ресурсы освобождены; движение не началось')
+                        except Exception as exc:notify_error(exc)
+                    async def take_control():await transfer()
+                    async def old_control():await transfer(restore=True)
                     take_button=ui.button('Explorer 3.0',on_click=take_control)
                     def teleop_check():
-                        try:
-                            session.start(owner,'so101_pick_place','teleop-check',record=False)
-                        except Exception as exc:
-                            notify_error(exc)
+                        try:session.start(owner,task.value,'teleop-check',record=False)
+                        except Exception as exc:notify_error(exc)
                     teleop_button=ui.button('Проверить телеперацию',on_click=teleop_check)
                     old_button=ui.button('Прежнее управление',on_click=old_control)
                 ui.label('Проверка телеперации не записывает показ. После проверки нажмите STOP.').classes('muted')
@@ -159,8 +196,8 @@ def index():
                     rows=[],row_key='name')
                 ui.label('SO-101 управляется Leader. Tank и ROSMASTER подключаются по очереди.').classes('muted')
             with ui.tab_panel(record):
-                ui.label('Кубик → коробка → отвести руку').style('font-size:20px')
-                ui.label('Только wrist RGB и измеренные суставы; цель — отправленная команда Follower после ограничений.').classes('muted')
+                task_title=ui.label('Кубик → коробка → отвести руку').style('font-size:20px')
+                task_description=ui.label('').classes('muted')
                 scene=ui.input('Расстановка',value='scene-01')
                 def begin():
                     try:
@@ -174,8 +211,8 @@ def index():
                     ui.button('Закончить · неуспех',on_click=lambda:session.finish('failure'))
                     ui.button('Прервать',on_click=lambda:session.finish('aborted'))
                 recording_status=ui.label('Нет активной записи')
-                ui.html('<img src="/api/live/wrist.mjpg" alt="Wrist-камера: поток появится при запуске" style="width:100%;max-width:640px;aspect-ratio:4/3;object-fit:contain;background:#10161f">')
-                ui.label('Для активации необходимы разрешение на физический блок B и проверка телеперации.').classes('notice')
+                camera_view=ui.html('<img src="/api/live/camera.mjpg" alt="Камера выбранного робота: поток появится при запуске" style="width:100%;max-width:640px;aspect-ratio:4/3;object-fit:contain;background:#10161f">')
+                ui.label('Перед первым показом: передача управления и короткая проверка телеперации.').classes('notice')
                 chart=ui.echart({'backgroundColor':'transparent','textStyle':{'color':'#9aacbf'},'tooltip':{'trigger':'axis'},
                     'legend':{'data':['Команда','Измерение'],'textStyle':{'color':'#9aacbf'}},
                     'xAxis':{'type':'value','name':'секунды'},'yAxis':{'type':'value'},
@@ -230,17 +267,35 @@ def index():
     with ui.footer():
         ui.label('Homebrain · автономное локальное приложение · питание роботов: состояние неизвестно')
     def select(robot):
-        control.select(robot)
+        if session.thread and session.thread.is_alive():
+            control.stop('Смена робота: сначала закрытие текущей сессии')
+            ui.notify('STOP выполняется. Выберите робота после остановки.');return
+        try:control.select(robot)
+        except Exception as exc:
+            notify_error(exc);return
         selected.set_text('Выбран: '+ROBOT_NAMES[robot])
+        with session.lock:session.latest=None
+        camera_view.set_content(f'<img src="/api/live/camera.mjpg?robot={robot}" alt="Камера выбранного робота появится при запуске" style="width:100%;max-width:640px;object-fit:contain;background:#10161f">')
+        for series in chart.options['series']:series['data']=[]
+        chart.update();last_frame[0]=None
         options={k:k for k,v in PROFILES.items() if v['robot']==robot}
         task.set_options(options,value=next(iter(options)))
     last_frame=[None]
     def refresh():
+        if PROFILES[task.value]['robot']!=control.robot:
+            options={k:k for k,v in PROFILES.items() if v['robot']==control.robot}
+            task.set_options(options,value=next(iter(options)))
         authorized=control.authorized()
-        start_button.set_enabled(authorized and control.robot=='so101' and not (session.thread and session.thread.is_alive()))
-        take_button.set_enabled(authorized and control.robot=='so101')
-        teleop_button.set_enabled(authorized and control.robot=='so101' and not (session.thread and session.thread.is_alive()))
-        old_button.set_enabled(authorized)
+        supported=control.robot in {'so101','tank'}
+        idle=not control.maintenance and not (session.thread and session.thread.is_alive())
+        start_button.set_enabled(authorized and supported and idle)
+        take_button.set_enabled(authorized and supported and idle)
+        teleop_button.set_enabled(authorized and supported and idle)
+        old_button.set_enabled(authorized and supported and idle)
+        tank_controls.set_visibility(control.robot=='tank')
+        task_title.set_text('Подъехать к видимой цели → остановиться в зоне' if control.robot=='tank' else 'Кубик → коробка → отвести руку')
+        task_description.set_text('Передняя RGB; состояние — предыдущая команда, измеренной скорости колёс нет.' if control.robot=='tank' else 'Wrist RGB и измеренные суставы; цель — отправленная команда Follower.')
+        selected.set_text('Выбран: '+ROBOT_NAMES[control.robot])
         smol_pass=(DATA/'validation/smolvla-pass.json').exists()
         smol_button.set_enabled(smol_pass and task.value=='so101_pick_place')
         act_pass=(DATA/'validation/act-pass.json').exists()
@@ -250,7 +305,9 @@ def index():
         elif authorized:
             stage_label.set_text('Этап B · разрешённый физический блок. Движение начинается только явной кнопкой.')
         phases={'idle':'Остановлено','preparing':'Подготовка — пока не двигайте Leader','aligning':'Плавное совмещение — держите Leader неподвижно','following':'Следование — можно двигать Leader','error':'Ошибка','saving':'Сохранение эпизода — дождитесь завершения'}
-        phase_text=phases.get(session.phase,session.phase)
+        if control.robot=='tank':
+            phases.update(preparing='Подготовка камеры и питания — пока не нажимайте стрелки',aligning='Подготовка',following='Управление готово — можно удерживать стрелки')
+        phase_text='Передача управления — дождитесь завершения' if control.maintenance else phases.get(session.phase,session.phase)
         recording_status.set_text(session.error or (phase_text+' · кадров: '+str(session.frame_count)+((' · '+control.last_stop_reason) if control.last_stop_reason else '')))
         device_table.rows=[{'name':k,'state':('занято' if v['owners'] else 'USB обнаружено, не открыто') if v['present'] else 'отсутствует'} for k,v in inventory().items()]
         device_table.update()
@@ -262,12 +319,28 @@ def index():
         with session.lock:
             sample=session.latest
         if sample and sample['frame_id']!=last_frame[0]:
+            state_label='Предыдущая команда (оценка)' if control.robot=='tank' else 'Измерение'
+            chart.options['series'][1]['name']=state_label
+            chart.options['legend']['data']=['Команда',state_label]
             for series,key in zip(chart.options['series'],('action','observation.state')):
-                series['data'].append([sample['frame_id']/30,sample[key][0]])
+                series['data'].append([sample['frame_id']/PROFILES[task.value]['fps'],sample[key][0]])
                 series['data']=series['data'][-300:]
             chart.update()
             last_frame[0]=sample['frame_id']
+    async def refresh_tank():
+        if control.robot=='tank':
+            def probe():
+                with tank.client() as http:
+                    response=http.get('/health');response.raise_for_status();return response.json()
+            try:
+                observed=await asyncio.to_thread(probe)
+                voltage=observed['battery_voltage']
+                fresh=observed['battery_received_ns'] is not None and observed['monotonic_ns']-observed['battery_received_ns']<2_000_000_000
+                battery=f'{voltage:.2f} В' if fresh else 'неизвестно (нет свежего измерения)'
+                tank_status.set_text('Tank по Wi-Fi · '+('приводы открыты' if observed['hardware_open'] else 'приводы закрыты')+' · питание: '+battery)
+            except Exception as exc:tank_status.set_text('Tank недоступен: '+str(exc))
     refresh()
+    ui.timer(2,refresh_tank)
     ui.timer(2,refresh)
     ui.timer(.25,refresh_preview)
 

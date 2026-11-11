@@ -1,0 +1,14 @@
+[Unit]
+Description=Explorer 3.0 Tank agent (inert startup)
+Requires=docker.service
+After=docker.service network.target
+[Service]
+User=pi
+ExecStart=/usr/bin/docker exec -u ubuntu -w /home/ubuntu/explorer3 -e PYTHONNOUSERSITE=1 MentorPi /bin/bash /home/ubuntu/explorer3/start-agent.sh
+ExecStop=/usr/bin/docker exec -u ubuntu -e PYTHONNOUSERSITE=1 MentorPi /home/ubuntu/explorer3/.venv/bin/python /home/ubuntu/explorer3/stop_agent.py
+ExecStopPost=/usr/bin/docker exec -u ubuntu -e PYTHONNOUSERSITE=1 MentorPi /home/ubuntu/explorer3/.venv/bin/python /home/ubuntu/explorer3/emergency_stop.py
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+[Install]
+WantedBy=multi-user.target

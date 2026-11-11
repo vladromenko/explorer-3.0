@@ -24,10 +24,11 @@ class LivePreview:
             sample=self.session.latest
         if sample is None:
             return None,None
-        key=(self.session.control.session,sample['images']['wrist']['sequence'])
+        camera=next(iter(sample['images'].values()))
+        key=(self.session.control.session,camera['sequence'])
         async with self.lock:
             if key!=self.key:
-                self.jpeg=await asyncio.to_thread(self.encode,sample['images']['wrist']['image'])
+                self.jpeg=await asyncio.to_thread(self.encode,camera['image'])
                 self.key=key
                 self.encoded+=1
             return self.key,self.jpeg

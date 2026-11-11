@@ -34,12 +34,27 @@
     "task": "Approach the visible target and stop inside the marked zone.",
     "policy": "act",
     "camera": "front",
-    "channels": null,
-    "units": null,
-    "schema_status": "BLOCKED_until_driver_inspection",
+    "channels": [
+      "forward_velocity",
+      "yaw_velocity"
+    ],
+    "units": [
+      "m/s",
+      "rad/s"
+    ],
+    "schema_status": "inspected_driver_pending_physical_acceptance",
     "recording_status": "not_verified",
     "training_status": "not_verified",
-    "physical_skill_status": "not_verified"
+    "physical_skill_status": "not_verified",
+    "state_channels": [
+      "previous_forward_command",
+      "previous_yaw_command"
+    ],
+    "image_shape": [
+      400,
+      640,
+      3
+    ]
   },
   "rosmaster_dock": {
     "robot": "rosmaster",

@@ -4,6 +4,8 @@ import time
 import uuid
 from . import catalog
 from .hardware import HardwareSource
+from .tank import TankSource
+from .profiles import profile
 from .recording import EpisodeWriter
 from .resources import ResourceLease
 
@@ -21,8 +23,10 @@ class Session:
         self.record_requested=False
 
     def start(self, owner: str, name: str, scene: str, record=True):
-        if name!='so101_pick_place':
+        if name not in {'so101_pick_place','tank_dock'}:
             raise RuntimeError('Драйвер профиля ещё не принят')
+        if profile(name)['robot']!=self.control.robot:
+            raise ValueError('Профиль не соответствует выбранному роботу')
         if self.thread and self.thread.is_alive():
             raise RuntimeError('Сессия уже работает')
         if not scene.strip():
@@ -54,7 +58,7 @@ class Session:
             lease.__enter__()
             if self.record_requested:
                 writer=EpisodeWriter(name,session_id,scene)
-            source=HardwareSource()
+            source=HardwareSource() if name=='so101_pick_place' else TankSource(self.control)
             provenance=source.start(explicit_user_start=True,stop=self.control.expired)
             source.begin_episode()
             self.phase='aligning'
@@ -67,7 +71,7 @@ class Session:
                 if writer:
                     writer.add(sample)
                 self.frame_count+=1
-                deadline+=1/30
+                deadline+=1/profile(name)['fps']
                 self.control.stop_event.wait(max(0,deadline-time.monotonic()))
         except InterruptedError as exc:
             if not self.control.stop_event.is_set():
