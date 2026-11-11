@@ -1,12 +1,16 @@
 """Explorer 3.0 — one NiceGUI/FastAPI server, local assets, inert startup."""
 import json
 import os
+import time
+from fastapi import Request
+from fastapi.responses import StreamingResponse
 from pathlib import Path
 from nicegui import app,ui
 from . import catalog
 from .control import Control
 from .jobs import Jobs
 from .session import Session
+from .preview import LivePreview
 from . import handoff
 from .network import LocalNetworkOnly
 from . import viewer
@@ -20,6 +24,7 @@ catalog.initialize()
 control=Control()
 jobs=Jobs(control)
 session=Session(control)
+live_preview=LivePreview(session)
 ROBOT_NAMES={'so101':'SO-101','tank':'Tank','rosmaster':'ROSMASTER'}
 DEVICE_PATHS={'leader':'/dev/so101-leader','follower':'/dev/so101-follower',
               'wrist':'/dev/v4l/by-id/usb-HD_USB_Camera_HD_USB_Camera-video-index0'}
@@ -34,7 +39,15 @@ def health():
     return {'product':'Explorer 3.0','stage':'A' if not control.authorized() else 'B','armed':False if control.owner is None else True,
             'selected_robot':control.robot,'mode':control.mode,'devices':inventory(),'data_root':str(DATA),
             'session':{'phase':session.phase,'frames':session.frame_count,'error':session.error,
-                       'recording':session.record_requested,'thread_active':bool(session.thread and session.thread.is_alive())}}
+                       'recording':session.record_requested,'thread_active':bool(session.thread and session.thread.is_alive()),
+                       'stop_reason':control.last_stop_reason,'heartbeat_count':control.heartbeat_count,
+                       'heartbeat_age_s':time.monotonic()-control.last_heartbeat if control.last_heartbeat else None},
+            'preview':{'transport':'mjpeg_http','clients':live_preview.clients,'encoded_frames':live_preview.encoded}}
+
+@app.get('/api/live/wrist.mjpg')
+async def wrist_preview(request: Request):
+    return StreamingResponse(live_preview.stream(request),media_type='multipart/x-mixed-replace; boundary=frame',
+                             headers={'Cache-Control':'no-store','X-Accel-Buffering':'no'})
 
 @app.get('/api/status')
 def status():
@@ -72,12 +85,12 @@ def index():
     owner=ui.context.client.id
     client=ui.context.client
     ui.on('operator_heartbeat',lambda:control.heartbeat(owner))
-    def lost():
+    def lost(reason):
         if control.owner==owner:
-            session.finish('aborted')
-    ui.on('operator_lost',lost)
-    client.on_disconnect(lost)
-    ui.add_body_html("<script>setInterval(()=>{if(!document.hidden) emitEvent('operator_heartbeat')},250);document.addEventListener('visibilitychange',()=>{if(document.hidden) emitEvent('operator_lost')});window.addEventListener('blur',()=>emitEvent('operator_lost'));window.addEventListener('pagehide',()=>emitEvent('operator_lost'));</script>")
+            session.finish('aborted',reason='Браузер: '+str(reason))
+    ui.on('operator_lost',lambda event:lost(event.args))
+    client.on_disconnect(lambda:lost('соединение закрыто'))
+    ui.add_body_html("<script>setInterval(()=>{if(!document.hidden) emitEvent('operator_heartbeat')},250);document.addEventListener('visibilitychange',()=>{if(document.hidden) emitEvent('operator_lost','вкладка скрыта')});window.addEventListener('pagehide',()=>emitEvent('operator_lost','страница закрыта'));</script>")
     ui.add_css(CSS)
     ui.colors(primary='#2b9c8f',secondary='#748aa4',negative='#d45050')
     ui.dark_mode().enable()
@@ -155,7 +168,7 @@ def index():
                     ui.button('Закончить · неуспех',on_click=lambda:session.finish('failure'))
                     ui.button('Прервать',on_click=lambda:session.finish('aborted'))
                 recording_status=ui.label('Нет активной записи')
-                preview=ui.image().style('max-width:640px')
+                ui.html('<img src="/api/live/wrist.mjpg" alt="Wrist-камера: поток появится при запуске" style="width:100%;max-width:640px;aspect-ratio:4/3;object-fit:contain;background:#10161f">')
                 ui.label('Для активации необходимы разрешение на физический блок B и проверка телеперации.').classes('notice')
                 chart=ui.echart({'backgroundColor':'transparent','textStyle':{'color':'#9aacbf'},'tooltip':{'trigger':'axis'},
                     'legend':{'data':['Команда','Измерение'],'textStyle':{'color':'#9aacbf'}},
@@ -227,7 +240,7 @@ def index():
             stage_label.set_text('Этап B · разрешённый физический блок. Движение начинается только кнопкой записи.')
         phases={'idle':'Остановлено','preparing':'Подготовка — пока не двигайте Leader','aligning':'Плавное совмещение — держите Leader неподвижно','following':'Следование — можно двигать Leader','error':'Ошибка','saving':'Сохранение эпизода — дождитесь завершения'}
         phase_text=phases.get(session.phase,session.phase)
-        recording_status.set_text(session.error or (phase_text+' · кадров: '+str(session.frame_count)))
+        recording_status.set_text(session.error or (phase_text+' · кадров: '+str(session.frame_count)+((' · '+control.last_stop_reason) if control.last_stop_reason else '')))
         device_table.rows=[{'name':k,'state':('занято' if v['owners'] else 'USB обнаружено, не открыто') if v['present'] else 'отсутствует'} for k,v in inventory().items()]
         device_table.update()
         episode_table.rows=catalog.rows('episodes');episode_table.update()
@@ -238,10 +251,6 @@ def index():
         with session.lock:
             sample=session.latest
         if sample and sample['frame_id']!=last_frame[0]:
-            import cv2,base64
-            ok,jpeg=cv2.imencode('.jpg',cv2.cvtColor(sample['images']['wrist']['image'],cv2.COLOR_RGB2BGR),[cv2.IMWRITE_JPEG_QUALITY,80])
-            if ok:
-                preview.set_source('data:image/jpeg;base64,'+base64.b64encode(jpeg).decode())
             for series,key in zip(chart.options['series'],('action','observation.state')):
                 series['data'].append([sample['frame_id']/30,sample[key][0]])
                 series['data']=series['data'][-300:]
@@ -249,7 +258,7 @@ def index():
             last_frame[0]=sample['frame_id']
     refresh()
     ui.timer(2,refresh)
-    ui.timer(1/15,refresh_preview)
+    ui.timer(.25,refresh_preview)
 
 app.on_startup(lambda:catalog.event('info','Explorer 3.0 запущен без открытия аппаратуры'))
 app.on_shutdown(lambda:control.stop('Служба останавливается'))

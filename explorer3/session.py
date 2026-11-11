@@ -38,11 +38,11 @@ class Session:
         self.thread=threading.Thread(target=self._run,args=(name,session_id,scene),daemon=True)
         self.thread.start()
 
-    def finish(self, outcome: str):
+    def finish(self, outcome: str, reason: str | None = None):
         if outcome not in {'success','failure','aborted'}:
             raise ValueError('Invalid outcome')
         self.outcome=outcome
-        self.control.stop('Эпизод закончен: '+outcome)
+        self.control.stop(reason or ('Эпизод закончен: '+outcome))
 
     def _run(self,name,session_id,scene):
         source=None
@@ -80,6 +80,8 @@ class Session:
             self.outcome='aborted'
             catalog.event('error',self.error)
         finally:
+            if self.control.last_stop_reason is None and self.control.expired():
+                self.control.stop('Lease истёк: heartbeat отсутствовал более 1 секунды')
             self.control.stop('Физическая сессия закрывается; автоматического продолжения нет')
             if source:
                 errors=source.close()
@@ -89,6 +91,8 @@ class Session:
             if writer:
                 self.phase='saving'
                 try:
+                    provenance['stop_reason']=self.control.last_stop_reason
+                    provenance['heartbeat_count']=self.control.heartbeat_count
                     writer.finish(self.outcome,provenance)
                 except Exception as exc:
                     self.error=f'Finalize: {exc}'

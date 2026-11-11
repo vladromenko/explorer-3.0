@@ -15,6 +15,9 @@ class Control:
         self.stop_event.set()
         self.lock=threading.RLock()
         self.session=None
+        self.last_stop_reason=None
+        self.last_heartbeat=None
+        self.heartbeat_count=0
 
     def authorized(self):
         # Installed only after the operator authorizes the concrete physical block.
@@ -34,6 +37,9 @@ class Control:
                 raise RuntimeError('Ручное управление уже занято')
             if self.robot != 'so101':
                 raise RuntimeError('Драйвер этого робота ещё не проверен')
+            self.last_stop_reason=None
+            self.last_heartbeat=time.monotonic()
+            self.heartbeat_count=0
             self.owner=owner
             self.session=uuid.uuid4().hex
             self.expires=time.monotonic()+1.0
@@ -44,13 +50,17 @@ class Control:
     def heartbeat(self, owner: str):
         with self.lock:
             if self.owner == owner and not self.stop_event.is_set():
-                self.expires=time.monotonic()+1.0
+                self.last_heartbeat=time.monotonic()
+                self.heartbeat_count+=1
+                self.expires=self.last_heartbeat+1.0
 
     def expired(self):
         return self.stop_event.is_set() or time.monotonic()>self.expires
 
     def stop(self, reason='STOP'):
         with self.lock:
+            if self.owner is not None or self.last_stop_reason is None:
+                self.last_stop_reason=reason
             self.stop_event.set()
             self.owner=None
             self.expires=0

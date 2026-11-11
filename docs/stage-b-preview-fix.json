@@ -1,0 +1,16 @@
+{
+  "motor_ports_opened": false,
+  "frames_decoded": 60,
+  "received_fps": 14.321514941757842,
+  "frame_gap_ms_p50_p95_max": [
+    69.82879899442196,
+    70.86141069594305,
+    72.2835469932761
+  ],
+  "event_loop_max_gap_ms": 83.07263598544523,
+  "browser_visual_result": "requires_operator_check",
+  "transport": "PASS",
+  "regression_tests_passed": 9,
+  "physical_recheck": "pending",
+  "old_stop_cause": "ambiguous: previous UI did not distinguish blur, hidden tab, disconnect and abort button"
+}
