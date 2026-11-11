@@ -1,0 +1,37 @@
+[
+  {
+    "path": "cubebot/arm_control.py",
+    "before": "be26b3ce867aaa39822ea9375fa3adde1f85b153995ae22c6a4829df1d07c24e",
+    "after": "859c5cdc33d128278236ab869da9ced87fe2ba0132e754652ab384345663a43c"
+  },
+  {
+    "path": "cubebot/arm_model.py",
+    "before": "2329f86e6d8f20115aa7809ed18a357f505e916a8b4d9ed415a35498853a1fa3",
+    "after": "e38e4b56026e9cbe955dc0963a61aa65c4a3c964f9d5c0ecb84a0b8c9c7d8e4f"
+  },
+  {
+    "path": "cubebot/config.py",
+    "before": "06d8878d734c54b88358e5adbf4847410a315402381108326d9957c19e649d3c",
+    "after": "e0d64d4fa22ce1d0a004f2de9eda0d8726d28590dd5e51e54348372f1ea89df9"
+  },
+  {
+    "path": "cubebot/mirror.py",
+    "before": "4d256506de61a3bd01c8e33291230f72cecd1623c4c8b354cc15f3821e4f3ea5",
+    "after": "2b304265f87c2bb314d7064e71ff6d052ca3da2dee75f665f92d2237fe07e28d"
+  },
+  {
+    "path": "cubebot/robot_io.py",
+    "before": "2cab8fbb2b1971102b72582e7def6a30c555080bd443bf7e22b43b6c03075522",
+    "after": "628c6526ca10c86771b29c0e1b92151d5b1d7523f0480cd781360c50f6c369d5"
+  },
+  {
+    "path": "cubebot/web/page.py",
+    "before": "22d1a83eb2e80ffd65cfb33062a90631e5e1b16e2c1fa56207d80b77f8b94ee6",
+    "after": "6b3d0968e79098af41fa513b38daa8c9b8eb617813ccda73930605b3ec36bfb7"
+  },
+  {
+    "path": "cubebot/web/server.py",
+    "before": "ac470f60c3a6ff0c02f5d6afda87ec4164730e2194c386ec5c02f0a1e070d083",
+    "after": "5cc9a221eb6b08246f05970917d046a294565ec009f3195e9e993abab34e3f1b"
+  }
+]

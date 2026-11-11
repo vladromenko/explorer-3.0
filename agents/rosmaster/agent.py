@@ -57,5 +57,6 @@ def stop():
 
 @app.get('/controls')
 def controls():
-    from manual_controls import scheme
-    return scheme()
+    return {'source': 'CubeBot Console 8090', 'prepared_only': True,
+            'arm_modes': ['cartesian', 'joint'], 'leader_mapper': 'cubebot.mirror.MirrorMapper',
+            'reason': 'Native control copied; Explorer runtime integration pending'}

@@ -1,0 +1,437 @@
+--- a/cubebot/arm_control.py
++++ b/cubebot/arm_control.py
+@@ -37,9 +37,16 @@
+         self.pitch = math.degrees(self.arm.approach_pitch_down(self.servo))
+         self.roll, self.grip = float(self.servo[4]), float(self.servo[5])
+         self.velocity[:] = 0
++        self.blocked = None
+ 
+     def step(self, dt, move, pitch_rate=0.0, roll_rate=0.0, grip_rate=0.0, slow=False):
+         """`move` = (x, y, z) deflection in -1..1. Returns the new servo command (list of 6 ints) or None if unchanged."""
++        if not math.isfinite(dt) or not 0 < dt <= .15:
++            self.velocity[:] = 0
++            self.blocked = "control timing; release and retry"
++            return None
++        if len(move) != 3 or not all(math.isfinite(v) for v in [*move, pitch_rate, roll_rate, grip_rate]):
++            raise ValueError("Finite manual input required")
+         scale = 0.35 if slow else 1.0
+         want = np.clip(np.asarray(move, float), -1, 1) * self.max_speed * scale
+         delta = want - self.velocity
+@@ -59,26 +66,61 @@
+         moved = (np.linalg.norm(candidate - self.target) > 1e-6 or pitch != self.pitch or roll != self.roll
+                  or grip != self.grip)
+         if not moved:
++            if np.any(want):
++                self.blocked = "workspace limit; try joints mode"
++                self.velocity[:] = 0
+             return None
+-        sol, err = self.arm.ik(candidate, pitch, self.servo, stay_weight=0.0006, quick=True, roll_servo=roll)
+         self.blocked = None
+-        if sol is None:
+-            self.blocked = "unreachable"
+-            self.velocity[:] = 0
+-            return None
+-        new = np.concatenate([sol[:4], [roll, grip]])
+-        step = np.abs(new[:4] - self.servo[:4])
+-        if np.any(step > self.max_joint_deg_s * dt + 1.0):
+-            self.blocked = "joint speed"
+-            self.velocity *= 0.5
+-            return None
++        cartesian = np.linalg.norm(candidate - self.target) > 1e-6 or pitch != self.pitch
++        if cartesian:
++            sol, err = self.arm.ik(candidate, pitch, self.servo, stay_weight=0.0006,
++                                   quick=True, roll_servo=roll, max_step_deg=self.max_joint_deg_s * dt)
++            if sol is None:
++                self.blocked = "unreachable; try joints mode"
++                self.velocity[:] = 0
++                return None
++            new = np.concatenate([sol[:4], [roll, grip]])
++            actual = self.arm.tcp_position(new)
++            requested = candidate - self.target
++            if np.linalg.norm(requested) > 1e-6 and np.dot(actual - self.target, requested) <= 1e-10:
++                self.blocked = "workspace/singularity; try joints mode"
++                self.velocity[:] = 0
++                return None
++        else:
++            # Gripper and wrist roll must not invoke IK or move shoulder/elbow.
++            new = np.concatenate([self.servo[:4], [roll, grip]])
+         rounded = np.round(new)
+         if not self.arm.within_limits(rounded) or not self.arm.collision_free(rounded, self.cfg["arm"]["floor_margin_m"]):
+             self.blocked = "collision"
+             self.velocity[:] = 0
+             return None
+-        self.target, self.pitch, self.roll, self.grip = candidate, pitch, roll, grip
+-        if np.array_equal(rounded, np.round(self.servo)):
++        previous = np.round(self.servo)
++        # Keep the next Cartesian target at the solved pose; never integrate unreachable motion.
++        self.target = self.arm.tcp_position(new)
++        self.pitch = math.degrees(self.arm.approach_pitch_down(new))
++        self.roll, self.grip, self.servo = roll, grip, new
++        if np.array_equal(rounded, previous):
+             return None
+-        self.servo = new
+         return [int(v) for v in rounded]
++
++    def step_joints(self, dt, rates, slow=False):
++        """Direct joint jog uses the same limits/collision model and output transport."""
++        if not math.isfinite(dt) or not 0 < dt <= .15:
++            self.blocked = "control timing; release and retry"
++            return None
++        values = np.asarray(rates, float)
++        if values.shape != (6,) or not np.isfinite(values).all():
++            raise ValueError("Six finite joint intents required")
++        speed = np.array([30., 30., 30., 30., 40., 60.]) * (.35 if slow else 1.)
++        goal = self.servo + np.clip(values, -1., 1.) * speed * dt
++        limits = list(SERVO_LIMITS[:5]) + [(self.open_value, self.close_value)]
++        goal = np.clip(goal, [v[0] for v in limits], [v[1] for v in limits])
++        rounded = np.round(goal)
++        if not self.arm.within_limits(rounded) or not all(self.arm.collision_free(
++                self.servo + (rounded - self.servo) * t, self.cfg["arm"]["floor_margin_m"])
++                for t in (0., .25, .5, .75, 1.)):
++            self.blocked = "collision"
++            return None
++        changed = not np.array_equal(rounded, np.round(self.servo))
++        self.reset(goal)
++        return [int(v) for v in rounded] if changed else None
+--- a/cubebot/arm_model.py
++++ b/cubebot/arm_model.py
+@@ -127,7 +127,7 @@
+     def within_limits(self, servo):
+         return all(lo - 1e-6 <= v <= hi + 1e-6 for v, (lo, hi) in zip(servo, SERVO_LIMITS))
+ 
+-    def ik(self, target, pitch_down_deg, seed, pitch_weight=0.15, roll_servo=90.0, stay_weight=0.0, quick=False):
++    def ik(self, target, pitch_down_deg, seed, pitch_weight=0.15, roll_servo=90.0, stay_weight=0.0, quick=False, max_step_deg=None):
+         """Servos [s1..s6-less] placing the TCP at `target` (base frame).
+ 
+         Returns (servo[5], residual_m) or (None, residual) if nothing feasible.
+@@ -149,6 +149,11 @@
+             return np.concatenate([err, [pitch_weight * pitch_err], stay])
+ 
+         seed4 = np.asarray(seed[:4], float)
++        if max_step_deg is not None:
++            if not math.isfinite(max_step_deg) or max_step_deg <= 0:
++                raise ValueError("Positive local joint step required")
++            lo = np.maximum(lo, seed4 - max_step_deg)
++            hi = np.minimum(hi, seed4 + max_step_deg)
+         seeds = [seed4.copy()]
+         for dq2, dq3 in (() if quick else itertools.product((-30, 0, 30), (-40, 0, 40))):
+             s = seeds[0].copy()
+@@ -162,7 +167,8 @@
+         best = None
+         for s in seeds:
+             s = s.copy()
+-            s[0] = 90.0 - yaw
++            if not quick:
++                s[0] = 90.0 - yaw
+             res = least_squares(residual, np.clip(s, lo, hi), bounds=(lo, hi), xtol=1e-6, ftol=1e-6)
+             pos_err = float(np.linalg.norm(res.fun[:3]))
+             servo = np.concatenate([res.x, [roll_servo, 90.0]])
+--- a/cubebot/config.py
++++ b/cubebot/config.py
+@@ -45,6 +45,7 @@
+         "dock_stop_margin_m": 0.05,
+         "dock_slow_margin_m": 0.12,
+     },
++    "manual_base": {"max_vx": 0.30, "max_vy": 0.25, "max_wz": 0.80, "accel": 0.45, "angular_accel": 1.5},
+     "arm": {
+         "search_pose": [90, 130, 0, 25, 90, 30],
+         "near_search_pose": [90, 130, 0, 5, 90, 30],   # camera 45 deg down: sees the floor from ~0.25 m
+--- a/cubebot/mirror.py
++++ b/cubebot/mirror.py
+@@ -50,13 +50,16 @@
+             return False
+         t = self.target.copy()
+         if self.m.get("relative") and self.ref is None:
+-            self.ref = (list(deg), self.servo[:5].copy())
++            self.ref = (list(deg), self.servo[:5].copy(), grip, float(self.servo[5]))
+         for i in range(5):
+             if self.ref is not None:
+                 t[i] = self.ref[1][i] + self.m["sign"][i] * self.m["scale"][i] * (deg[i] - self.ref[0][i])
+                 continue
+             t[i] = 90.0 + self.m["sign"][i] * self.m["scale"][i] * (deg[i] - self.m["neutral"][i])
+         t[5] = self.a["gripper_open"] + (self.a["gripper_close"] - self.a["gripper_open"]) * min(max(grip, 0.0), 100.0) / 100.0
++        if self.ref is not None and self.m.get("relative_gripper", True):
++            t[5] = self.ref[3] + (grip - self.ref[2]) * (self.a["gripper_close"] - self.a["gripper_open"]) / 100.
++            t[5] = min(max(t[5], self.a["gripper_open"]), self.a["gripper_close"])
+         s = self.m["smoothing"]
+         self.target = (1 - s) * self.target + s * t
+         self.last_msg = now
+--- a/cubebot/robot_io.py
++++ b/cubebot/robot_io.py
+@@ -96,7 +96,8 @@
+         return None
+ 
+     # --- base --------------------------------------------------------------------
+-    def drive(self, vx, vy, wz, hold=0.3):
++    def drive(self, vx, vy, wz, hold=0.3, manual=False):
++        self.shaper.cfg = dict(self.cfg["base"], **self.cfg.get("manual_base", {})) if manual else self.cfg["base"]
+         self._desired = (float(vx), float(vy), float(wz))
+         self._desired_until = self.now() + hold
+ 
+--- a/cubebot/web/page.py
++++ b/cubebot/web/page.py
+@@ -31,8 +31,8 @@
+   <div class="card"><img id="video" src="/video" alt="камера"></div>
+   <div class="card" style="margin-top:12px"><h2>Управление</h2>
+    <div class="help">
+-    <p><b>Езда:</b> <kbd>W</kbd><kbd>S</kbd> вперёд/назад · <kbd>A</kbd><kbd>D</kbd> влево/вправо · <kbd>Q</kbd><kbd>E</kbd> поворот. <b>Shift</b> — медленно.</p>
+-    <p><b>Рука (кисть в координатах):</b> <kbd>I</kbd><kbd>K</kbd> вперёд/назад · <kbd>J</kbd><kbd>L</kbd> влево/вправо · <kbd>R</kbd><kbd>F</kbd> вверх/вниз · <kbd>,</kbd><kbd>.</kbd> наклон · <kbd>[</kbd><kbd>]</kbd> поворот кисти · <kbd>N</kbd>/<kbd>M</kbd> открыть/закрыть захват.</p>
++    <p><b>Езда:</b> <kbd>W</kbd><kbd>S</kbd> вперёд/назад · <kbd>A</kbd><kbd>D</kbd> влево/вправо · <kbd>Q</kbd><kbd>E</kbd> поворот. <b>Shift</b> — медленно. Максимум вперёд 0,30 м/с; вбок 0,25 м/с; поворот 0,80 рад/с.</p>
++    <div class="row"><button onclick="armMode('cartesian')">1 · Захват XYZ</button><button onclick="armMode('joint')">2 · Суставы</button><b id="armmode">Захват XYZ</b></div><p id="armhelp"></p><p><b>Рука:</b> <kbd>I</kbd><kbd>K</kbd> вперёд/назад · <kbd>J</kbd><kbd>L</kbd> влево/вправо (также стрелки) · <kbd>R</kbd><kbd>F</kbd> вверх/вниз · <kbd>,</kbd><kbd>.</kbd> наклон · <kbd>[</kbd><kbd>]</kbd> поворот кисти · <kbd>N</kbd>/<kbd>M</kbd> открыть/закрыть захват.</p>
+     <p><b>Стоп:</b> <kbd>Пробел</kbd> · отмена миссии <kbd>Esc</kbd>.</p>
+     <p><b>Джойстик:</b> левый стик — езда, LB/RB — поворот, правый стик — рука X/Y, крестовина ↑↓ — высота, ←→ — наклон, LT/RT — захват, A — поза обзора, X — переноска, Y — запуск миссии, B — стоп.</p>
+    </div>
+@@ -51,7 +51,7 @@
+   <div class="card"><h2>Рука</h2><div class="kv"><span>Углы</span><span id="arm">—</span><span>Кисть x,y,z</span><span id="tcp">—</span><span>Ограничение</span><span id="blocked">—</span></div>
+    <div class="row" style="margin-top:8px"><button onclick="act('preset','look')">Обзор</button><button onclick="act('preset','near')">Ближний</button><button onclick="act('preset','carry')">Переноска</button><button onclick="act('preset','home')">Домой</button></div></div>
+   <div class="card"><h2>Зеркало: рука SO101 → рука Rosmaster</h2>
+-   <div class="help">Запустите на Jetson 16 ГБ <b>so101_mirror_sender.py</b>, потом включите зеркало. Начинайте с малых движений.</div>
++   <div class="help">Поток Leader запускается на Homebrain. Дождитесь поступления кадров, затем включите зеркало. Текущая поза руки и захвата принимается за начало; после потери связи включите зеркало заново. Начинайте с малых движений.</div>
+    <div class="kv" style="margin-top:6px"><span>Состояние</span><span id="mir">выкл</span><span>Кадров</span><span id="mirn">0</span><span>Цель</span><span id="mirt">—</span><span>Измерено</span><span id="mirm">—</span></div>
+    <div class="row" style="margin-top:8px"><button class="go" onclick="send({action:'mirror',on:true})">Включить</button><button onclick="send({action:'mirror',on:false})">Выключить</button></div></div>
+   <div class="card"><h2>Миссия: кубик → коробка → обратно</h2>
+@@ -61,14 +61,17 @@
+   <div class="card"><h2>Журнал</h2><div id="log"></div></div>
+ </aside></main>
+ <script>
+-const $=id=>document.getElementById(id);let ws,keys={};
+-function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o));}
++const $=id=>document.getElementById(id);let ws,keys={},lockedKeys=new Set(),padBlocked=true,viewActive=true;
++function clearControls(){for(const k in keys)lockedKeys.add(k);keys={};padBlocked=true;}
++function send(o){if(o.action==='stop')clearControls();if(ws&&ws.readyState===1)ws.send(JSON.stringify(o));}
++function armMode(mode){clearControls();send({action:'arm_mode',mode});}
+ function act(a,n){send({action:a,name:n});}
+ function connect(){ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');
+  ws.onopen=()=>{$('link').textContent='связь есть';$('link').style.background='#1f3a2c'};
+- ws.onclose=()=>{$('link').textContent='нет связи';$('link').style.background='#3a1f1f';setTimeout(connect,1000)};
++ ws.onclose=()=>{clearControls();$('link').textContent='нет связи';$('link').style.background='#3a1f1f';setTimeout(connect,1000)};
+  ws.onmessage=e=>render(JSON.parse(e.data));}
+ function render(s){
++ $('armmode').textContent=s.arm_mode==='joint'?'Суставы':'Захват XYZ';$('armhelp').textContent=s.arm_mode==='joint'?'←/→ (J/L) — основание; ↑/↓ (I/K) — плечо; R/F — локоть; ,/. — кисть.':'↑/↓ (I/K) — вперёд/назад; ←/→ (J/L) — влево/вправо; R/F — вверх/вниз.';
+  $('dry').style.display=s.dry_run?'block':'none';$('mode').textContent=s.mode==='mission'?'миссия':'ручной';
+  const b=s.battery;if(b.soc!=null){$('socbar').style.width=b.soc+'%';$('socbar').style.background=b.soc<20?'var(--bad)':b.soc<40?'var(--warn)':'var(--ok)';
+   $('soc').textContent=b.soc+' % (±'+b.error_band_percent+')'+(b.charging?' · заряжается':'');$('bat').textContent='🔋 '+Math.round(b.soc)+' %  '+(b.volts?b.volts.toFixed(2)+' В':'')}
+@@ -80,24 +83,31 @@
+  $('mstate').textContent=s.mission;$('mres').textContent=s.mission_result||'—';
+  const L=$('log');const atEnd=L.scrollTop+L.clientHeight>=L.scrollHeight-8;L.textContent=s.log.join('\n');if(atEnd)L.scrollTop=L.scrollHeight;}
+ const map={w:['d',0,1],s:['d',0,-1],a:['d',1,1],d:['d',1,-1],q:['d',2,1],e:['d',2,-1],i:['a',0,1],k:['a',0,-1],j:['a',1,1],l:['a',1,-1],r:['a',2,1],f:['a',2,-1]};
+-addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;const k=e.key.toLowerCase();
+- if(k===' '){e.preventDefault();send({action:'stop'});return}if(k==='escape'){send({action:'mission_stop'});return}keys[k]=true;if(k in map||',.[]nm'.includes(k))e.preventDefault()});
+-addEventListener('keyup',e=>{delete keys[e.key.toLowerCase()]});addEventListener('blur',()=>{keys={}});
++function physical(e){const c=e.code;return {ArrowUp:'i',ArrowDown:'k',ArrowLeft:'j',ArrowRight:'l',Comma:',',Period:'.',BracketLeft:'[',BracketRight:']',ShiftLeft:'shift',ShiftRight:'shift'}[c]||(c&&c.startsWith('Key')?c.slice(3).toLowerCase():c);}
++addEventListener('keydown',e=>{const k=physical(e);
++ if(k==='Space'||k==='Escape'){e.preventDefault();send({action:'stop'});return}
++ if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.isContentEditable)return;
++ if(k==='Digit1'||k==='Digit2'){if(!e.repeat)armMode(k==='Digit1'?'cartesian':'joint');return}
++ if(!document.hidden&&viewActive&&!lockedKeys.has(k)&&ws&&ws.readyState===1)keys[k]=true;
++ if(k in map||[',','.','[',']','n','m'].includes(k))e.preventDefault();});
++addEventListener('keyup',e=>{const k=physical(e);delete keys[k];lockedKeys.delete(k)});
++addEventListener('blur',()=>send({action:'stop'}));
++document.addEventListener('visibilitychange',()=>{if(document.hidden)send({action:'stop'})});
+ function pad(){const g=(navigator.getGamepads?navigator.getGamepads():[]);for(const p of g){if(p&&p.mapping==='standard')return p}return null}
+ let prevBtn={};
+-function collect(){const d=[0,0,0],a=[0,0,0];let pitch=0,roll=0,grip=0;
++function collect(){if(document.hidden||!viewActive||!ws||ws.readyState!==1)return {drive:[0,0,0],arm:[0,0,0],pitch:0,roll:0,grip:0,slow:false};const d=[0,0,0],a=[0,0,0];let pitch=0,roll=0,grip=0;
+  for(const k in keys){const m=map[k];if(m){(m[0]==='d'?d:a)[m[1]]+=m[2]}}
+  if(keys[','])pitch-=1;if(keys['.'])pitch+=1;if(keys['['])roll-=1;if(keys[']'])roll+=1;if(keys['n'])grip-=1;if(keys['m'])grip+=1;
+- const p=pad();if(p){const z=v=>Math.abs(v)<0.12?0:v;d[0]+=-z(p.axes[1]);d[1]+=-z(p.axes[0]);if(p.buttons[4].pressed)d[2]+=1;if(p.buttons[5].pressed)d[2]-=1;
++ const p=pad();if(p&&padBlocked){if(p.axes.every(v=>Math.abs(v)<.12)&&p.buttons.every(b=>!b.pressed&&b.value<.12))padBlocked=false;}if(p&&!padBlocked){const z=v=>Math.abs(v)<0.12?0:v;d[0]+=-z(p.axes[1]);d[1]+=-z(p.axes[0]);if(p.buttons[4].pressed)d[2]+=1;if(p.buttons[5].pressed)d[2]-=1;
+   a[1]+=-z(p.axes[2]);a[0]+=-z(p.axes[3]);if(p.buttons[12].pressed)a[2]+=1;if(p.buttons[13].pressed)a[2]-=1;if(p.buttons[14].pressed)pitch-=1;if(p.buttons[15].pressed)pitch+=1;
+   grip+=(p.buttons[7].value||0)-(p.buttons[6].value||0);
+   const edge=(i,fn)=>{const on=p.buttons[i].pressed;if(on&&!prevBtn[i])fn();prevBtn[i]=on};
+-  edge(0,()=>act('preset','look'));edge(2,()=>act('preset','carry'));edge(3,()=>send({action:'mission_start'}));edge(1,()=>send({action:'stop'}))}
++  edge(0,()=>act('preset','look'));edge(2,()=>act('preset','carry'));edge(3,()=>send({action:'mission_start'}));edge(1,()=>send({action:'stop'}));if(padBlocked)return {drive:[0,0,0],arm:[0,0,0],pitch:0,roll:0,grip:0,slow:false};}
+  const c=v=>Math.max(-1,Math.min(1,v));return{drive:d.map(c),arm:a.map(c),pitch:c(pitch),roll:c(roll),grip:c(grip),free:!!($('freec')&&$('freec').checked),slow:!!(keys['shift'])||($('slowc')&&$('slowc').checked)}}
+-document.querySelectorAll('button.hold').forEach(b=>{const k=b.dataset.k,on=e=>{e.preventDefault();keys[k]=true},off=()=>{delete keys[k]};
++document.querySelectorAll('button.hold').forEach(b=>{const k=b.dataset.k,on=e=>{e.preventDefault();if(!lockedKeys.has(k))keys[k]=true},off=()=>{delete keys[k];lockedKeys.delete(k)};
+  b.addEventListener('pointerdown',on);['pointerup','pointerleave','pointercancel'].forEach(t=>b.addEventListener(t,off))});
+ const TABS={1:['tabt','/tutorial'],2:['tabe','/experiments'],3:['tabd','/exp-docs']};
+-function tab(n){document.querySelector('main').style.display=n?'none':'';const f=$('tut');f.style.display=n?'block':'none';
++function tab(n){viewActive=!n;send({action:'stop'});document.querySelector('main').style.display=n?'none':'';const f=$('tut');f.style.display=n?'block':'none';
+  if(n){const u=TABS[n][1];if(f.getAttribute('data-u')!==u){f.setAttribute('data-u',u);f.src=u}}
+  $('tabc').className=n?'':'go';for(const k in TABS)$(TABS[k][0]).className=(+k===n)?'go':'';if(n)keys={}}
+ setInterval(()=>send(collect()),33);connect();
+--- a/cubebot/web/server.py
++++ b/cubebot/web/server.py
+@@ -45,6 +45,9 @@
+         self.mirror = mirror_mod.MirrorMapper(self.arm, self.cfg["arm"], self.mirror_cfg, self.io.arm_command())
+         self.mirror_count = 0
+         self.gauge = BatteryGauge()
++        self.arm_mode = "cartesian"
++        self._arm_input_active = False
++        self._arm_tracking_blocked = False
+         self.mode = "manual"
+         self.mission_state = "idle"
+         self.mission_result = None
+@@ -52,8 +55,7 @@
+         self.input = dict(drive=[0, 0, 0], arm=[0, 0, 0], pitch=0, roll=0, grip=0, slow=False)
+         self.busy_arm = False
+         self.resume_with_cube = False
+-        self._next_arm_send = 0.0
+-        self._lock = threading.Lock()
++        self._lock = threading.RLock()
+         self._jpeg, self._jpeg_stamp = None, 0.0
+         self._running = True
+         self.exp = ExperimentManager(self)
+@@ -84,8 +86,17 @@
+             self.io.guard_off = bool(msg["free"])
+ 
+     def stop_all(self):
++        with self._lock:
++            self._stop_locked()
++
++    def _stop_locked(self):
+         self.input.update(drive=[0, 0, 0], arm=[0, 0, 0], pitch=0, roll=0, grip=0)
+         self.jog.velocity[:] = 0
++        self._arm_input_active = False
++        self._arm_tracking_blocked = False
++        if self.mode == "mirror":
++            self.mode = "manual"
++            self.mirror.rebase()
+         self.io.stop_base()
+         if self.mode == "mission":
+             self.io.request_abort("operator stop")
+@@ -97,11 +108,25 @@
+         name = msg.get("action")
+         if name == "stop":
+             self.stop_all()
++        elif name == "arm_mode" and self.mode == "manual" and not self.busy_arm:
++            mode = msg.get("mode")
++            if mode not in ("cartesian", "joint"):
++                raise ValueError("Unknown arm mode")
++            self.stop_all()
++            self.arm_mode = mode
++            self.jog.reset(self.io.measured_arm(max_age=.25) or self.io.arm_command())
++            self.log("arm mode: " + mode)
+         elif name == "preset" and self.mode == "manual" and not self.busy_arm:
+             self._run_background(self._preset, msg.get("name"))
+         elif name == "mirror" and self.mode in ("manual", "mirror"):
+             on = bool(msg.get("on"))
+             if on:
++                if self.busy_arm or self.io.measured_arm(max_age=.25) is None:
++                    self.log("mirror refused: arm busy or feedback stale")
++                    return
++                if time.monotonic() - self.mirror.last_msg > self.mirror.m["timeout_s"]:
++                    self.log("mirror refused: start the Leader stream first")
++                    return
+                 self.mirror.servo = np.array(self.io.measured_arm() or self.io.arm_command(), float)
+                 self.mirror.target = self.mirror.servo.copy()
+                 self.mirror.rebase()
+@@ -230,32 +255,72 @@
+             dt, last = now - last, now
+             try:
+                 if self.mode == "mirror":
+-                    self.io.drive(0.0, 0.0, 0.0)
+-                    cmd = self.mirror.step(dt, now)
+-                    if cmd and now >= self._next_arm_send:
+-                        self._next_arm_send = now + 0.05
+-                        self.io.move_arm(cmd, duration_ms=110, wait=False, check=False)
++                    with self._lock:
++                        if self.mode == "mirror":
++                            self._mirror_step(dt, now)
+                     continue
+                 if self.mode != "manual" or self.busy_arm:
+                     continue
+-                fresh = now - self.last_input < 0.4
+-                x = self.input
+-                if not fresh:
+-                    x = dict(drive=[0, 0, 0], arm=[0, 0, 0], pitch=0, roll=0, grip=0, slow=False)
+-                    self.jog.velocity[:] = 0
+-                speed = 0.4 if x["slow"] else 1.0
+-                b = self.cfg["base"]
+-                self.io.drive(x["drive"][0] * b["max_vx"] * speed, x["drive"][1] * b["max_vy"] * speed,
+-                              x["drive"][2] * b["max_wz"] * speed)
+-                cmd = self.jog.step(dt, x["arm"], x["pitch"], x["roll"], x["grip"], x["slow"])
+-                if cmd and now >= self._next_arm_send:
+-                    self._next_arm_send = now + 0.08
+-                    self.io.move_arm(cmd, duration_ms=self.jog.run_ms, wait=False, check=False)
++                with self._lock:
++                    if self.mode == "manual" and not self.busy_arm:
++                        self._manual_step(dt, now)
+             except MissionAbort:
+                 pass
+             except Exception as exc:
+                 self.log("control error: %r" % (exc,))
+                 self.io.stop_base()
++
++    def _mirror_step(self, dt, now):
++        measured = self.io.measured_arm(max_age=.25)
++        tracking = measured is not None and max(abs(a-b) for a,b in
++            zip(self.io.arm_command()[:5], measured[:5])) < 12.
++        if now - self.mirror.last_msg > self.mirror.m["timeout_s"] or not 0 < dt <= .15 or not tracking:
++            self.stop_all()
++            self.mirror.blocked = "stream/feedback lost; enable mirror again after recovery"
++            self.log(self.mirror.blocked)
++            return
++        self.io.drive(0., 0., 0.)
++        cmd = self.mirror.step(dt, now)
++        if cmd:
++            self.io.move_arm(cmd, duration_ms=110, wait=False, check=True)
++
++    def _manual_step(self, dt, now):
++        fresh = now - self.last_input < 0.4
++        x = self.input
++        if not fresh:
++            x = dict(drive=[0, 0, 0], arm=[0, 0, 0], pitch=0, roll=0, grip=0, slow=False)
++            self.jog.velocity[:] = 0
++        speed = 0.4 if x["slow"] else 1.0
++        b = self.cfg["manual_base"]
++        self.io.drive(x["drive"][0] * b["max_vx"] * speed, x["drive"][1] * b["max_vy"] * speed,
++                      x["drive"][2] * b["max_wz"] * speed, manual=True)
++        active = any(abs(v) > .001 for v in [*x["arm"], x["pitch"], x["roll"], x["grip"]])
++        measured = self.io.measured_arm(max_age=.25)
++        if active and not self._arm_input_active:
++            if measured is None:
++                self.jog.blocked = "no fresh arm feedback"
++            else:
++                self.io._arm_cmd = list(measured)
++                self.jog.reset(measured)
++        tracking_ok = measured is not None and max(abs(a-b) for a,b in
++            zip(self.io.arm_command()[:5], measured[:5])) < 12.
++        if not active:
++            self._arm_tracking_blocked = False
++            self.jog.velocity[:] = 0
++        if active and (not tracking_ok or not 0 < dt <= .15):
++            self._arm_tracking_blocked = True
++        if self._arm_tracking_blocked:
++            self.jog.blocked = "arm tracking error; release controls"
++            self.jog.velocity[:] = 0
++        elif active:
++            if self.arm_mode == "joint":
++                rates = [-x["arm"][1], x["arm"][0], x["arm"][2], x["pitch"], x["roll"], x["grip"]]
++                cmd = self.jog.step_joints(dt, rates, x["slow"])
++            else:
++                cmd = self.jog.step(dt, x["arm"], x["pitch"], x["roll"], x["grip"], x["slow"])
++            if cmd:
++                self.io.move_arm(cmd, duration_ms=self.jog.run_ms, wait=False, check=True)
++        self._arm_input_active = active
+ 
+     def _battery_loop(self):
+         while self._running:
+@@ -298,7 +363,7 @@
+                     mirror=dict(on=self.mode == "mirror", blocked=self.mirror.blocked, frames=self.mirror_count,
+                                 age=round(time.monotonic() - self.mirror.last_msg, 2) if self.mirror.last_msg > 0 else None,
+                                 target=[round(float(v)) for v in self.mirror.target]),
+-                    tcp=[round(float(v), 3) for v in tcp], mode=self.mode, mission=self.mission_state,
++                    tcp=[round(float(v), 3) for v in tcp], mode=self.mode, arm_mode=self.arm_mode, manual_base=self.cfg["manual_base"], mission=self.mission_state,
+                     mission_result=self.mission_result, guard=io.guard.last_block, cmd=[round(v, 3) for v in io.last_output], guard_off=io.guard_off, input=self.input, jog_blocked=self.jog.blocked,
+                     sensors=io.sensors_alive(), dry_run=self.dry_run, odom=io.odometry.stats, log=list(self.lines)[-14:],
+                     exp=self.exp.state())
+@@ -397,6 +462,7 @@
+             task.cancel()
+             console.input.update(drive=[0, 0, 0], arm=[0, 0, 0], pitch=0, roll=0, grip=0)
+             console.last_input = 0.0
++            console.stop_all()
+ 
+     @app.websocket("/mirror")
+     async def mirror_ws(socket: WebSocket):
+@@ -408,6 +474,9 @@
+                     console.mirror_count += 1
+         except (WebSocketDisconnect, RuntimeError, ValueError):
+             pass
++        finally:
++            if console.mode == "mirror":
++                console.stop_all()
+ 
+     return app
+ 

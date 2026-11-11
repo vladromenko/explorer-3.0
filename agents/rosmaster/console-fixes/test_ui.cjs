@@ -1,0 +1,23 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const source=fs.readFileSync(process.argv[2],'utf8').match(/<script>([\s\S]*)<\/script>/)[1];
+const handlers={},els={},sent=[];let pad=null;
+const document={hidden:false,getElementById:id=>els[id]??=( {style:{},checked:false}),querySelectorAll:()=>[],addEventListener:(k,f)=>handlers[k]=f};
+class WebSocket{constructor(){this.readyState=1;}send(s){sent.push(JSON.parse(s));}}
+const ctx=vm.createContext({document,WebSocket,location:{protocol:'http:',host:'robot'},navigator:{getGamepads:()=>pad?[pad]:[]},addEventListener:(k,f)=>handlers[k]=f,setInterval:()=>{},setTimeout:()=>{}});
+vm.runInContext(source,ctx);
+const run=s=>vm.runInContext(s,ctx),event=(code,key='',repeat=false)=>({code,key,repeat,target:{tagName:'BODY'},preventDefault(){}});
+handlers.keydown(event('KeyI','ш'));assert.equal(run('collect().arm[0]'),1);
+handlers.keydown(event('Space'));assert.equal(run('collect().arm[0]'),0);
+handlers.keydown(event('KeyI','ш',true));assert.equal(run('collect().arm[0]'),0);
+handlers.keyup(event('KeyI'));handlers.keydown(event('KeyI','ш'));assert.equal(run('collect().arm[0]'),1);
+handlers.blur();assert.equal(sent.at(-1).action,'stop');assert.equal(run('collect().arm[0]'),0);
+handlers.keyup(event('KeyI'));handlers.keydown(event('ArrowLeft'));assert.equal(run('collect().arm[1]'),1);
+handlers.keyup(event('ArrowLeft'));handlers.keydown(event('Digit2'));assert.equal(sent.at(-1).mode,'joint');
+pad={mapping:'standard',axes:[0,-1,0,0],buttons:Array.from({length:16},()=>({pressed:false,value:0}))};
+assert.equal(run('collect().drive[0]'),0);pad.axes[1]=0;run('collect()');pad.axes[1]=-1;assert.equal(run('collect().drive[0]'),1);
+pad.buttons[1].pressed=true;assert.equal(run('collect().drive[0]'),0);pad.buttons[1].pressed=false;assert.equal(run('collect().drive[0]'),0);
+pad.axes[1]=0;run('collect()');pad.axes[1]=-1;assert.equal(run('collect().drive[0]'),1);
+document.hidden=true;handlers.visibilitychange();assert.equal(run('collect().drive[0]'),0);
+document.hidden=false;assert.equal(run('collect().drive[0]'),0);
+run('ws.onclose()');assert.equal(run('collect().drive[0]'),0);
+console.log('PASS: physical keys, STOP held key, blur, arrows, modes, gamepad neutral/STOP/visibility/reconnect');
