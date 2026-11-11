@@ -22,6 +22,8 @@ class Control:
         self.maintenance=False
 
     def authorized(self):
+        if self.robot=='so101' and (DATA/'configs/so101-external-owner.json').exists():
+            return False
         if self.robot=='tank' and (DATA/'validation/tank-motion-incident.json').exists():
             return False
         # Installed only after the operator authorizes the concrete physical block.
