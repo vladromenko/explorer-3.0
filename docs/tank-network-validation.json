@@ -1,0 +1,15 @@
+{
+  "wifi_ssid": "Digma_049F00",
+  "wifi_ipv4": "192.168.0.136",
+  "mdns": "raspberrypi.local",
+  "ethernet_disconnected_operator_confirmed": true,
+  "ethernet_carrier": 0,
+  "ssh_over_wifi": "PASS",
+  "route_both_ways_wifi": "PASS",
+  "mac_public_key_present": true,
+  "mac_actual_login": "not_checked",
+  "vendor_code_unchanged": true,
+  "cold_boot": "not_checked",
+  "wired_recovery": "192.168.150.1",
+  "credentials_in_git": false
+}

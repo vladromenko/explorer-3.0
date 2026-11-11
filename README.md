@@ -44,3 +44,10 @@ LeRobot 0.6.1, upstream tag 7e241bd630a3719a56157a497ce5d08f244784f1. NiceGUI 3.
 6. В конце STOP → дождаться закрытия → «Прежнее управление». При пропаже видео/связи остановиться и проверить причину; повторный запуск только явной кнопкой.
 
 Текущий checkpoint — только проверка train/save/reload. Автономный перенос кубика им ещё не проверялся; кнопки физического replay/rollout пока отключены.
+
+
+## Tank: доступ по Wi-Fi
+
+Tank подключён к той же домашней Wi-Fi сети, что Homebrain и Mac. Проверен SSH после физического отключения Ethernet. На Homebrain: `ssh hiwonder-tank`. На Mac: `ssh pi@raspberrypi.local` (его ключ уже установлен; фактический вход с Mac ещё не проверен). Текущий DHCP адрес: `192.168.0.136`; имя mDNS предпочтительнее адреса. Старый alias `hiwonder-tank` на Mac пока ведёт на Ethernet.
+
+Проводной резерв: Tank `192.168.150.1`, Homebrain `192.168.150.3`, Mac `192.168.150.2`. На Homebrain: `ssh hiwonder-tank-wired`. Профиль Tank хранится в поддерживаемом [каталоге NetworkManager](https://networkmanager.dev/docs/api/latest/nm-settings-keyfile.html), который заводской Wi-Fi скрипт не очищает. Wi-Fi настроен штатным конфигурационным override, оригинальный скрипт и служба неизменны. Подготовлен возврат заводского AP `HW-9E015B81` через `/home/pi/explorer3/network/restore-factory-ap.sh`, только с подключённым Ethernet. Холодный старт с новым Wi-Fi ещё не проверен.
