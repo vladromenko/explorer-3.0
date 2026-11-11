@@ -1,0 +1,72 @@
+{
+  "motor_commands": "neutral_only",
+  "nonzero_commands": 0,
+  "physical_skill_verified": false,
+  "provenance": {
+    "robot": "tank",
+    "profile": "MentorPi_Tank",
+    "clock_mapping": {
+      "rtt_ns": 4288375,
+      "offset_ns": 259736114047197
+    },
+    "clock_mapping_kind": "midpoint_estimate_not_shared_clock",
+    "physical_skill_verified": false,
+    "state_kind": "previous_transmitted_command_estimate",
+    "wheel_feedback": "unavailable",
+    "motor_acknowledgement": false,
+    "odometry_integral_excluded": true,
+    "last_command_attempt": {
+      "sequence": 59,
+      "requested": [
+        0.0,
+        0.0
+      ],
+      "send_start_ns": 263362702876153,
+      "accepted": true
+    }
+  },
+  "samples": 60,
+  "interval_ms_p50_p95_max": [
+    50.348647,
+    61.3970905,
+    69.108954
+  ],
+  "voltage": 7.144,
+  "camera_unique": 36,
+  "after_zero_command_stream_stopped": {
+    "robot": "tank",
+    "armed": false,
+    "hardware_open": true,
+    "reason": "Command lease expired; explicit new start required",
+    "action": [
+      0.0,
+      0.0
+    ],
+    "motor_acknowledged": false,
+    "wheel_feedback": "unavailable",
+    "odometry": "not_used_command_integral_is_not_measurement",
+    "monotonic_ns": 3627361505247,
+    "camera": {
+      "sequence": 46,
+      "received_ns": 3627347374071,
+      "source_timestamp_ns": 1794434789006000000,
+      "source_clock": "tank_ros_realtime",
+      "width": 640,
+      "height": 400,
+      "encoding": "jpeg",
+      "measured": true
+    },
+    "battery_voltage": 7.144,
+    "battery_received_ns": 3626408144014,
+    "imu": [
+      -0.05859375,
+      0.0797119140625,
+      1.0457763671875,
+      2.3046875,
+      -0.40234375,
+      0.0625
+    ],
+    "imu_received_ns": 3627341928567
+  },
+  "close_errors": []
+}
