@@ -1,0 +1,16 @@
+#!/bin/bash
+set -e
+source /opt/ros/jazzy/setup.bash
+export PYTHONNOUSERSITE=1 ROS_DOMAIN_ID=61 ROS_LOCALHOST_ONLY=1
+export EXPLORER3_ROOT=/home/vlad/explorer3
+export EXPLORER_ROOT="$EXPLORER3_ROOT"
+for prefix in "$EXPLORER3_ROOT"/vendor/ros/*; do
+  export AMENT_PREFIX_PATH="$prefix:${AMENT_PREFIX_PATH:-}"
+  export LD_LIBRARY_PATH="$prefix/lib:$prefix/lib/aarch64-linux-gnu:${LD_LIBRARY_PATH:-}"
+  export PYTHONPATH="$prefix/lib/python3.12/site-packages:${PYTHONPATH:-}"
+done
+export PYTHONPATH="$EXPLORER3_ROOT/native:$EXPLORER3_ROOT/vendor/moveit_root/usr/lib/python3/dist-packages:${PYTHONPATH:-}"
+export LD_LIBRARY_PATH="$EXPLORER3_ROOT/vendor/moveit_root/usr/lib/aarch64-linux-gnu:${LD_LIBRARY_PATH:-}"
+export OMP_NUM_THREADS=2 OPENBLAS_NUM_THREADS=1
+cd "$EXPLORER3_ROOT"
+exec .venv/bin/python -m uvicorn agent:app --host 0.0.0.0 --port 8042 --timeout-graceful-shutdown 5
