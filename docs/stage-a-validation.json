@@ -1,0 +1,44 @@
+{
+  "offline-pass": {
+    "external_connect_errno": 11,
+    "lan_connect_errno": 0,
+    "ui_http": "PASS",
+    "act": "PASS",
+    "synthetic": true,
+    "hardware_opened": false,
+    "isolation": "systemd cgroup IPAddressDeny=any; allow localhost and 192.168.0.0/24"
+  },
+  "act-pass": {
+    "run": "/home/jetsonnx/.local/share/explorer3/validation/act-1794428474",
+    "synthetic": true,
+    "steps": 50,
+    "physical_skill_verified": false
+  },
+  "smolvla-pass": {
+    "run": "/home/jetsonnx/.local/share/explorer3/validation/smolvla-1794428601",
+    "synthetic": true,
+    "loss": 3.0070831775665283,
+    "forward_backward_reload": "PASS",
+    "physical_skill_verified": false,
+    "batch": 1
+  },
+  "ui-assets": {
+    "local_asset_count": 16,
+    "cdn": false,
+    "ui_http": 200,
+    "browser_rendering": "not_verified_no_browser_tool"
+  },
+  "checks": {
+    "contract_tests": 4,
+    "pip_check": "PASS",
+    "start_stop_restart": "PASS",
+    "hardware_opened": false,
+    "old_services_modified": false
+  },
+  "smolvla-trainer-pass": {
+    "path": "/home/jetsonnx/.local/share/explorer3/validation/smolvla-trainer-1794428703",
+    "synthetic": true,
+    "steps": 1,
+    "batch": 1
+  }
+}

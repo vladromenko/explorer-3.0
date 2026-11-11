@@ -1,0 +1,32 @@
+{
+  "lerobot_version": "0.6.1",
+  "act": {
+    "batch_size": 8,
+    "oom_batch_fallback": [
+      4,
+      2,
+      1
+    ],
+    "smoke_steps": 50,
+    "steps": 100000,
+    "seed": 1000,
+    "push_to_hub": false,
+    "vision_backbone": "resnet18"
+  },
+  "smolvla": {
+    "profile": "so101_pick_place",
+    "base_model": "lerobot/smolvla_base",
+    "enabled": true,
+    "status": "software_forward_backward_reload_verified_synthetic_only",
+    "batch_size": 1,
+    "push_to_hub": false
+  },
+  "concurrency": 1,
+  "split": {
+    "train": 0.8,
+    "validation": 0.1,
+    "test": 0.1,
+    "unit": "session_scene_group",
+    "statistics": "train_only"
+  }
+}

@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=71,<82"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "explorer3"
+version = "0.1.0"
+description = "Local heterogeneous robot recording and intervention research on Homebrain"
+requires-python = ">=3.12,<3.13"
+dependencies = ["nicegui==3.19.0", "lerobot[training,smolvla,feetech]==0.6.1", "scikit-learn==1.9.1"]
+
+[tool.setuptools.packages.find]
+include = ["explorer3*"]

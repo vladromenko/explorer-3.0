@@ -1,0 +1,81 @@
+"""Explicit physical session, bounded by the browser lease. No automatic reconnect."""
+import threading
+import time
+import uuid
+from . import catalog
+from .hardware import HardwareSource
+from .recording import EpisodeWriter
+from .resources import ResourceLease
+
+class Session:
+    def __init__(self, control):
+        self.control=control
+        self.thread=None
+        self.lock=threading.RLock()
+        self.outcome='aborted'
+        self.latest=None
+        self.error=None
+        self.frame_count=0
+        self.scene='initial'
+
+    def start(self, owner: str, name: str, scene: str):
+        if name!='so101_pick_place':
+            raise RuntimeError('Драйвер профиля ещё не принят')
+        if self.thread and self.thread.is_alive():
+            raise RuntimeError('Сессия уже работает')
+        if not scene.strip():
+            raise ValueError('Нужно обозначение расстановки')
+        session_id=self.control.acquire(owner)
+        self.outcome='aborted'
+        self.error=None
+        self.frame_count=0
+        self.latest=None
+        self.scene=scene
+        self.thread=threading.Thread(target=self._run,args=(name,session_id,scene),daemon=True)
+        self.thread.start()
+
+    def finish(self, outcome: str):
+        if outcome not in {'success','failure','aborted'}:
+            raise ValueError('Invalid outcome')
+        self.outcome=outcome
+        self.control.stop('Эпизод закончен: '+outcome)
+
+    def _run(self,name,session_id,scene):
+        source=None
+        writer=None
+        provenance={}
+        lease=ResourceLease('compute')
+        try:
+            # A rollout/recording and trainer cannot own compute concurrently.
+            lease.__enter__()
+            source=HardwareSource()
+            provenance=source.start(explicit_user_start=True,stop=self.control.expired)
+            writer=EpisodeWriter(name,session_id,scene)
+            source.begin_episode()
+            deadline=time.monotonic()
+            while not self.control.expired():
+                sample=source.sample(self.frame_count,stop=self.control.expired)
+                with self.lock:
+                    self.latest=sample
+                writer.add(sample)
+                self.frame_count+=1
+                deadline+=1/30
+                self.control.stop_event.wait(max(0,deadline-time.monotonic()))
+        except Exception as exc:
+            self.error=f'{type(exc).__name__}: {exc}'
+            self.outcome='aborted'
+            catalog.event('error',self.error)
+        finally:
+            self.control.stop('Физическая сессия закрывается; автоматического продолжения нет')
+            if source:
+                errors=source.close()
+                if errors:
+                    catalog.event('error','; '.join(errors))
+                    self.outcome='aborted'
+            if writer:
+                try:
+                    writer.finish(self.outcome,provenance)
+                except Exception as exc:
+                    self.error=f'Finalize: {exc}'
+                    catalog.event('error',self.error)
+            lease.__exit__(None,None,None)

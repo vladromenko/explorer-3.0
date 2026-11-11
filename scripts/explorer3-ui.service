@@ -1,0 +1,23 @@
+[Unit]
+Description=Explorer 3.0 local UI (no motion on startup)
+After=network.target
+[Service]
+WorkingDirectory=/home/jetsonnx/Projects/explorer-3.0
+ExecStart=/home/jetsonnx/Projects/explorer-3.0/.venv/bin/python -m explorer3.app
+Environment=HF_HUB_OFFLINE=1
+Environment=HF_DATASETS_OFFLINE=1
+Environment=HF_HUB_DISABLE_TELEMETRY=1
+Environment=WANDB_MODE=disabled
+Environment=OMP_NUM_THREADS=4
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=HF_HOME=/home/jetsonnx/.local/share/explorer3/cache/huggingface
+Environment=TORCH_HOME=/home/jetsonnx/.local/share/explorer3/cache/torch
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+KillMode=control-group
+NoNewPrivileges=yes
+UMask=0077
+[Install]
+WantedBy=default.target

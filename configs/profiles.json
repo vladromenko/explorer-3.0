@@ -1,0 +1,72 @@
+{
+  "so101_pick_place": {
+    "robot": "so101",
+    "fps": 30,
+    "version": 1,
+    "task": "Pick up the cube, place it in the box, and withdraw the arm.",
+    "policy": "act",
+    "camera": "wrist",
+    "channels": [
+      "shoulder_pan",
+      "shoulder_lift",
+      "elbow_flex",
+      "wrist_flex",
+      "wrist_roll",
+      "gripper"
+    ],
+    "units": [
+      "degrees",
+      "degrees",
+      "degrees",
+      "degrees",
+      "degrees",
+      "percent_calibrated_range"
+    ],
+    "schema_status": "candidate_requires_physical_verification",
+    "recording_status": "not_verified",
+    "training_status": "not_verified",
+    "physical_skill_status": "not_verified"
+  },
+  "tank_dock": {
+    "robot": "tank",
+    "fps": 20,
+    "version": 1,
+    "task": "Approach the visible target and stop inside the marked zone.",
+    "policy": "act",
+    "camera": "front",
+    "channels": null,
+    "units": null,
+    "schema_status": "BLOCKED_until_driver_inspection",
+    "recording_status": "not_verified",
+    "training_status": "not_verified",
+    "physical_skill_status": "not_verified"
+  },
+  "rosmaster_dock": {
+    "robot": "rosmaster",
+    "fps": 20,
+    "version": 1,
+    "task": "Approach the visible target and stop inside the marked zone.",
+    "policy": "act",
+    "camera": "front",
+    "channels": null,
+    "units": null,
+    "schema_status": "BLOCKED_until_driver_inspection",
+    "recording_status": "not_verified",
+    "training_status": "not_verified",
+    "physical_skill_status": "not_verified"
+  },
+  "rosmaster_pick_place": {
+    "robot": "rosmaster",
+    "fps": 20,
+    "version": 1,
+    "task": "Pick up the cube and place it in the box with the base stationary.",
+    "policy": "act",
+    "camera": "front",
+    "channels": null,
+    "units": null,
+    "schema_status": "BLOCKED_until_driver_inspection",
+    "recording_status": "not_verified",
+    "training_status": "not_verified",
+    "physical_skill_status": "not_verified"
+  }
+}
