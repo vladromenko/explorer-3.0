@@ -75,5 +75,6 @@
     "Physical trial acceptance",
     "Independent demonstration groups and full training",
     "Physical diagnostic pilot and multi-robot acceptance"
-  ]
+  ],
+  "rosmaster_runtime_blocker": "Exact serial/ROS bridge sources are not present in local workspace/runtime; must copy from robot at next allowed connection, not substitute old runtime."
 }
