@@ -35,7 +35,7 @@ class NativeIO(BaseIO):
         with self.runtime.core_lock:self.runtime.core.on_cmd_vel(*values)
     def _publish_arm(self,servo,duration_ms):
         with self.runtime.core_lock:self.runtime.core.on_arm(servo,duration_ms)
-        self.runtime.last_arm_command=list(servo)
+        self.runtime.last_arm_command=list(servo);self.runtime.last_arm_at=time.monotonic()
 
 
 class Runtime:
@@ -46,7 +46,8 @@ class Runtime:
         self.link=None;self.core=None;self.thread=None
         self.lease=None;self.sequence=-1;self.profile=None;self.preparing=False
         self.error=None;self.reason='Explicit enable required';self.logs=[]
-        self.last_arm_command=None
+        self.last_arm_command=None;self.last_arm_at=None
+        self.steps=0;self.direct=None;self.direct_source=None
         self.battery_value=None;self.battery_at=0.;self.odom=None;self.odom_at=0.
         self.scans={};self.controller_started=False
         self.session=None
@@ -126,6 +127,7 @@ class Runtime:
         try:
             while not self.done.wait(max(0,.05-(time.monotonic()-last))):
                 now=time.monotonic();dt=now-last;last=now
+                self.steps+=1
                 with self.lock:
                     if self.armed:
                         reason=None
@@ -148,7 +150,8 @@ class Runtime:
                         elif reason:self.stop(reason)
                         elif self.preparing:self.prepare_step(now,dt)
                         else:
-                            self.controls.tick(dt,now)
+                            if self.direct_source:self.direct_step(dt,now)
+                            else:self.controls.tick(dt,now)
                             if not self.controls.armed:self.stop('Native controls stopped: '+str(self.controls.stop_reason or self.controls.mirror.blocked or self.controls.jog.blocked))
                             else:
                                 parts=[]
@@ -236,7 +239,7 @@ class Runtime:
             self.error='Native transport: '+str(exc)
             with self.core_lock:self.core.disarm(self.error)
 
-    def enable(self, profile, arm_mode='cartesian', observing=False):
+    def enable(self, profile, arm_mode='cartesian', observing=False, source='human'):
         with self.lock:
             if self.armed:raise ValueError('Сначала STOP')
             if self.error:raise RuntimeError(self.error)
@@ -259,6 +262,10 @@ class Runtime:
             try:
                 self.profile=profile;self.sequence=-1;self.lease=secrets.token_urlsafe(24)
                 self.reason=None;self.preparing=profile=='prepare'
+                if source not in {'human','policy'}:raise ValueError('Unknown command source')
+                if source=='policy' and profile not in {'rosmaster_dock','rosmaster_pick_place'}:
+                    raise ValueError('Policy/replay commands need a single-task profile')
+                self.direct_source=source if source=='policy' else None;self.direct=None
                 if self.preparing:
                     self.begin_pose([90]*6,measured,time.monotonic())
                 else:
@@ -273,7 +280,7 @@ class Runtime:
                 self.stop('Enable failed')
                 raise
 
-    def command(self, lease, sequence, intent, leader=None, mirror=False):
+    def command(self, lease, sequence, intent, leader=None, mirror=False, direct=None):
         with self.lock:
             if not self.lease or not secrets.compare_digest(lease,self.lease):raise PermissionError('Сессия остановлена')
             if type(sequence) is not int:raise ValueError('Invalid command sequence')
@@ -288,6 +295,9 @@ class Runtime:
                 session['last_command']=now;session['commands']+=1
                 if any(abs(v)>1e-3 for v in [*intent.get('drive',[]),*intent.get('arm',[]),intent.get('pitch',0),intent.get('roll',0),intent.get('grip',0)]):
                     session['active_inputs']=session.get('active_inputs',0)+1
+            if direct is not None:
+                if not self.direct_source:raise PermissionError('Session is not a policy/replay session')
+                self.direct=(time.monotonic(),self.validate_direct(direct))
             if self.controls.armed:
                 # Keep operator input fresh during a preset too; it is applied only after the pose.
                 self.controls.set_input(intent if not self.preparing else {**intent,'arm':[0,0,0],'pitch':0,'roll':0,'grip':0},time.monotonic())
@@ -323,6 +333,67 @@ class Runtime:
             self.begin_pose(target,measured,time.monotonic())
             self.log('arm -> '+name)
 
+    # --- policy / replay commands -------------------------------------------------------
+    # Units are the recorded action units: base m/s, rad/s; arm native servo degrees. They pass
+    # through the same native limits as manual control: base speed caps, lidar guard and
+    # shaping; arm joint limits, path collision test, 60 deg/s and the 12 deg tracking bound.
+    DIRECT_HOLD_S=.25
+    DIRECT_ARM_DEG_S=60.
+
+    def validate_direct(self,direct):
+        if self.profile=='rosmaster_dock':
+            values=direct.get('base') if isinstance(direct,dict) else None
+            if direct.get('arm') is not None or not isinstance(values,list) or len(values)!=3:raise ValueError('Dock action is [vx,vy,wz]')
+        else:
+            values=direct.get('arm') if isinstance(direct,dict) else None
+            if direct.get('base') is not None or not isinstance(values,list) or len(values)!=6:raise ValueError('Arm action is six servo degrees')
+        values=[float(v) for v in values]
+        if not all(math.isfinite(v) for v in values):raise ValueError('Nonfinite direct action')
+        return values
+
+    def direct_step(self,dt,now):
+        if self.direct is None or now-self.direct[0]>self.DIRECT_HOLD_S:
+            self.io.drive(0.,0.,0.,manual=True)
+            return
+        values=self.direct[1];b=self.cfg['manual_base']
+        if self.profile=='rosmaster_dock':
+            clip=lambda v,m:max(-m,min(m,v))
+            self.io.drive(clip(values[0],b['max_vx']),clip(values[1],b['max_vy']),clip(values[2],b['max_wz']),manual=True)
+            return
+        self.io.drive(0.,0.,0.,manual=True)
+        measured=self.io.measured_arm()
+        if measured is None:raise RuntimeError('Policy arm command without fresh feedback')
+        current=self.io.arm_command()
+        if max(abs(a-m) for a,m in zip(current[:5],measured[:5]))>=12.:
+            raise RuntimeError('Policy arm tracking error over 12 degrees')
+        step=self.DIRECT_ARM_DEG_S*min(dt,.1)
+        target=[c+max(-step,min(step,v-c)) for c,v in zip(current,values)]
+        if max(abs(a-c) for a,c in zip(target,current))>=.5:
+            self.io.move_arm(target,duration_ms=160,wait=False,check=True)
+
+    def sample_state(self):
+        """Atomic snapshot for recording: what was measured and what was sent, with agent times."""
+        with self.lock:
+            now=time.monotonic();core=self.core
+            ns=lambda t:int(t*1e9) if t is not None else None
+            measured=core.measured_arm(self.ARM_FEEDBACK_HOLD_S)
+            odom_age=now-self.odom_at if self.odom_at else None
+            battery_age=now-self.battery_at if self.battery_at else None
+            return {'agent_monotonic_ns':time.monotonic_ns(),'control_step':self.steps,'armed':self.armed,
+                'profile':self.profile,'preparing':self.preparing,'mode':self.controls.mode,
+                'command_source':self.direct_source or 'human',
+                'operator_intent':{k:(list(v) if isinstance(v,list) else v) for k,v in self.controls.input.items()},
+                'direct_requested':self.direct[1] if self.direct else None,'direct_received_ns':ns(self.direct[0]) if self.direct else None,
+                'base_requested':list(getattr(self.io,'_desired',(0.,0.,0.))),'base_after_limits':list(self.io.last_output),
+                'base_guard':self.io.guard.last_block,'base_sent':list(core.cmd),'base_sent_ns':ns(core.cmd_time) if core.cmd_time>0 else None,
+                'arm_sent':self.last_arm_command,'arm_sent_ns':ns(self.last_arm_at),'arm_blocked':self.controls.jog.blocked,
+                'arm_measured':measured,'arm_measured_ages_s':[now-t if t is not None else None for t in core.joint_times],
+                'arm_measured_valid':list(core.joint_valid),
+                'base_measured':list(self.odom) if self.odom is not None else None,'base_measured_age_s':odom_age,
+                'battery_voltage':self.battery_value,'battery_age_s':battery_age,
+                'controller_ready':core.ready(),'arm_cancel_recoveries':(self.session or {}).get('recoveries',0),
+                'motion_commands_sent':core.motion_commands_sent,'clock_resyncs':core.clock_resyncs}
+
     def begin_pose(self,target,measured,now):
         self.pose_target=[float(v) for v in target];self.pose_cmd=[float(v) for v in measured]
         distance=max(abs(a-b) for a,b in zip(self.pose_target,self.pose_cmd))
@@ -348,7 +419,7 @@ class Runtime:
             self.pose_cmd=[c+max(-limit,min(limit,t-c)) for c,t in zip(self.pose_cmd,self.pose_target)]
         command=[float(round(v)) for v in self.pose_cmd]
         with self.core_lock:self.core.on_arm(command,self.POSE_STEP_MS)
-        self.last_arm_command=list(command)
+        self.last_arm_command=list(command);self.last_arm_at=now
 
     def stop(self,reason='Operator STOP'):
         # Cancel transport before waiting for an IK calculation holding the control lock.
@@ -376,7 +447,7 @@ class Runtime:
                         'arm_recoveries':session.get('recoveries',0),'active_inputs':session.get('active_inputs',0),'arm_command':self.last_arm_command,
                         'motion_commands_sent':self.core.motion_commands_sent if self.core else None})
                     self.log('STOP: '+reason)
-            self.preparing=False;self.lease=None
+            self.preparing=False;self.lease=None;self.direct=None;self.direct_source=None
             if self.core:
                 try:self.controls.stop_all()
                 finally:

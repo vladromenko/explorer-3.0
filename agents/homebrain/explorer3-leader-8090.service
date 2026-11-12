@@ -1,0 +1,14 @@
+[Unit]
+Description=SO-101 Leader (read-only, LeRobot) -> ROSMASTER Console 8090 mirror stream
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Projects/explorer-3.0
+Environment=PYTHONUNBUFFERED=1
+ExecStart=%h/Projects/explorer-3.0/.venv/bin/python -m explorer3.rosmaster_mirror --serve
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

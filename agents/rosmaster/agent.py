@@ -91,13 +91,27 @@ def frame():
     })
 
 
+@app.get('/sample.jpg')
+def sample():
+    """Camera frame first, then the control snapshot: the frame is never newer than the state."""
+    current=runtime
+    if observer is None:raise HTTPException(503,'Camera observer is not running')
+    if current is None:raise HTTPException(409,'Runtime not acquired')
+    try:data,camera_state=observer.jpeg()
+    except RuntimeError as exc:raise HTTPException(503,str(exc)) from exc
+    state=current.sample_state()
+    return Response(data,media_type='image/jpeg',headers={'Cache-Control':'no-store',
+        'X-Explorer-Camera':json.dumps(camera_state['camera']),'X-Explorer-Sample':json.dumps(state)})
+
+
 @app.post('/session')
 def session(value:dict=Body(default={})):
     with lock:
         if not (ROOT/'stage-d-authorized.json').is_file():
             raise HTTPException(409, 'Нужна отдельная физическая проверка ROSMASTER')
         if runtime is None:raise HTTPException(409,'Сначала передайте управление Explorer')
-        try:return runtime.enable(value.get('profile'),value.get('arm_mode','cartesian'),value.get('observing') is True)
+        try:return runtime.enable(value.get('profile'),value.get('arm_mode','cartesian'),value.get('observing') is True,
+                                  value.get('source','human'))
         except (ValueError,RuntimeError,PermissionError) as exc:raise HTTPException(409,str(exc)) from exc
 
 
@@ -127,7 +141,7 @@ def command(value:dict=Body(...)):
     current=runtime
     if current is None:raise HTTPException(409,'Runtime not acquired')
     try:return current.command(value.get('lease',''),value.get('sequence'),value.get('intent',{}),
-                                    value.get('leader'),value.get('mirror') is True)
+                                    value.get('leader'),value.get('mirror') is True,value.get('direct'))
     except (ValueError,RuntimeError,PermissionError,TypeError) as exc:
         if value.get('lease')==current.lease:current.stop('Command rejected: '+str(exc))
         raise HTTPException(409,str(exc)) from exc

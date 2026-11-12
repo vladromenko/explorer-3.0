@@ -39,13 +39,39 @@ async def stream(uri, reader, hz=30., duration=None):
     return count
 
 
+async def serve(uri, port, hz):
+    """Keep Console 8090 supplied while it runs; the Leader is open only during a connection."""
+    while True:
+        reader = None
+        try:
+            async with websockets.connect(uri, open_timeout=3, close_timeout=1, ping_interval=2, ping_timeout=2) as ws:
+                reader = LeaderReader(port)
+                print(json.dumps(reader.start()), flush=True)
+                print('Console 8090 connected; streaming Leader (mirror is enabled only in 8090)', flush=True)
+                while True:
+                    tick = time.monotonic()
+                    sample = await asyncio.to_thread(reader.sample)
+                    await asyncio.wait_for(ws.send(json.dumps(packet(sample), allow_nan=False)), timeout=.15)
+                    await asyncio.sleep(max(0., 1 / hz - (time.monotonic() - tick)))
+        except (OSError, asyncio.TimeoutError, websockets.WebSocketException, RuntimeError, ValueError, PermissionError) as exc:
+            print('Leader stream idle: ' + type(exc).__name__ + ': ' + str(exc)[:200], flush=True)
+        finally:
+            if reader is not None:
+                reader.close()
+        await asyncio.sleep(3)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--host', default='192.168.0.177')
     parser.add_argument('--port', default='/dev/so101-leader')
     parser.add_argument('--hz', type=float, default=30.)
     parser.add_argument('--seconds', type=float)
+    parser.add_argument('--serve', action='store_true', help='stay running; stream whenever Console 8090 is up')
     args = parser.parse_args()
+    if args.serve:
+        asyncio.run(serve(f'ws://{args.host}:8090/mirror', args.port, args.hz))
+        return
     reader = LeaderReader(args.port)
     try:
         print(json.dumps(reader.start()), flush=True)
