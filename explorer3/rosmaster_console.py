@@ -8,7 +8,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from starlette.websockets import WebSocketDisconnected
 from nicegui import app
-from .rosmaster_control import operator, request, connection
+from .rosmaster_control import operator, request, connection, ensure_agent
 
 
 @app.get('/rosmaster/control',response_class=HTMLResponse)
@@ -61,6 +61,7 @@ async def websocket(socket:WebSocket):
                         reason='Браузер: '+str(value.get('reason','кнопка STOP'))[:100]
                         await asyncio.to_thread(operator.stop,reason);state['notice']='Остановлено · '+reason
                     elif action=='acquire':
+                        state['notice']='Запуск агента ROSMASTER…' if await asyncio.to_thread(ensure_agent) else state['notice']
                         await asyncio.to_thread(request,'/acquire',{},45);state['notice']='Explorer получил управление. Нажмите «Включить управление»'
                     elif action=='restore':
                         await asyncio.to_thread(operator.stop,'Возврат прежнего управления')

@@ -49,6 +49,7 @@ class Runtime:
         self.last_arm_command=None
         self.battery_value=None;self.battery_at=0.;self.odom=None;self.odom_at=0.
         self.scans={};self.controller_started=False
+        self.session=None
         self.cfg=config.load()
         self.cfg['mission']['stop_file']=str(self.root/'STOP')
         self.model=ArmModel(self.cfg['arm']['tcp_offset_m'])
@@ -78,8 +79,29 @@ class Runtime:
             self.link.close();self.link=None
             raise
 
-    def voltage(self):
-        return self.battery_value if time.monotonic()-self.battery_at<2 else None
+    def voltage(self,max_age=2.):
+        return self.battery_value if time.monotonic()-self.battery_at<max_age else None
+
+    # Native firmware can freeze/omit ADC battery reports while the base streams (see
+    # CubeBot battery.py); a fresh value is required to enable, the last one is kept while armed.
+    BATTERY_HOLD_S=30.
+    LOOP_DEADLINE_S=.3
+    ARM_FEEDBACK_HOLD_S=.6
+
+    def ages(self,now=None):
+        now=time.monotonic() if now is None else now
+        core=self.core
+        return {'battery_s':round(now-self.battery_at,3) if self.battery_at else None,
+                'controller_status_s':round(now-core.last_status,3) if core and core.last_status is not None else None,
+                'joints_s':[round(now-t,3) if t is not None else None for t in core.joint_times] if core else None,
+                'joints_valid':list(core.joint_valid) if core else None,
+                'operator_left_s':round(core.operator_until-now,3) if core else None}
+
+    def record(self,event):
+        try:
+            path=self.root/'logs/control-sessions.jsonl';path.parent.mkdir(parents=True,exist_ok=True)
+            with path.open('a') as output:output.write(json.dumps(event,ensure_ascii=False,default=str)+'\n')
+        except OSError:pass
 
     def receive(self,topic,data):
         now=time.monotonic()
@@ -95,20 +117,22 @@ class Runtime:
                 now=time.monotonic();dt=now-last;last=now
                 with self.lock:
                     if self.armed:
-                        volts=self.voltage()
                         reason=None
-                        if dt>.15:reason='Control loop deadline missed'
-                        elif not self.core.ready():reason='Controller feedback lost or cancellation pending'
-                        elif volts is None:reason='Battery telemetry stale'
+                        volts=self.voltage(self.BATTERY_HOLD_S)
+                        if self.session:self.session['max_loop_dt']=max(self.session['max_loop_dt'],dt)
+                        if dt>self.LOOP_DEADLINE_S:reason=f'Control loop deadline missed ({dt:.3f} s)'
+                        elif not self.core.ready():reason='Controller feedback lost or cancellation pending: '+self.controller_detail(now)
+                        elif volts is None:reason=f'Battery telemetry stale (>{self.BATTERY_HOLD_S:.0f} s)'
                         elif volts<self.cfg['mission']['min_battery_v']:reason='Low battery'
                         elif (self.root/'STOP').exists():reason='STOP file'
                         elif now>=self.core.operator_until:reason='Browser / Homebrain heartbeat lost'
-                        elif self.profile!='rosmaster_dock' and self.core.measured_arm() is None:reason='Arm feedback lost'
+                        elif self.profile!='rosmaster_dock' and self.core.measured_arm(self.ARM_FEEDBACK_HOLD_S) is None:
+                            reason='Arm feedback lost: '+json.dumps(self.ages(now)['joints_s'])
                         if reason:self.stop(reason)
                         elif self.preparing:self.prepare_step(now)
                         else:
                             self.controls.tick(dt,now)
-                            if not self.controls.armed:self.stop('Native controls stopped: '+str(self.controls.mirror.blocked or self.controls.jog.blocked))
+                            if not self.controls.armed:self.stop('Native controls stopped: '+str(self.controls.stop_reason or self.controls.mirror.blocked or self.controls.jog.blocked))
                             else:
                                 parts=[]
                                 for name,(scan,stamp) in self.scans.items():
@@ -125,6 +149,12 @@ class Runtime:
                 self.error=f'{type(exc).__name__}: {exc}'
                 try:self.stop(self.error)
                 finally:self.log(self.error)
+
+    def controller_detail(self,now):
+        core=self.core;state=core.state or {}
+        age=now-core.last_status if core.last_status is not None else None
+        return (f"phase={core.phase} status_age={age if age is None else round(age,3)} mode={state.get('mode')} "
+                f"fault={state.get('fault')} cancel_pending={state.get('arm_cancel_pending')}")
 
     def transport_loop(self):
         try:
@@ -162,6 +192,10 @@ class Runtime:
                 else:
                     self.controls.arm_mode=arm_mode
                     self.controls.enable(profile,time.monotonic())
+                self.session={'started':time.time(),'started_monotonic':time.monotonic(),'profile':profile,
+                    'arm_mode':arm_mode,'commands':0,'stale_commands':0,'max_command_gap':0.,
+                    'last_command':time.monotonic(),'max_loop_dt':0.,'battery_at_enable':volts}
+                self.log('Управление включено: '+profile)
                 return {'lease':self.lease,'profile':profile}
             except Exception:
                 self.stop('Enable failed')
@@ -170,8 +204,16 @@ class Runtime:
     def command(self, lease, sequence, intent, leader=None, mirror=False):
         with self.lock:
             if not self.lease or not secrets.compare_digest(lease,self.lease):raise PermissionError('Сессия остановлена')
-            if type(sequence) is not int or sequence<=self.sequence:raise ValueError('Out-of-order command')
+            if type(sequence) is not int:raise ValueError('Invalid command sequence')
+            if sequence<=self.sequence:
+                # A request delayed past a client-side timeout: drop it; the newer one already applied.
+                if self.session:self.session['stale_commands']+=1
+                return self.status()
             with self.core_lock:self.core.heartbeat()
+            if self.session:
+                now=time.monotonic();session=self.session
+                session['max_command_gap']=max(session['max_command_gap'],now-session['last_command'])
+                session['last_command']=now;session['commands']+=1
             if not self.preparing:
                 self.controls.set_input(intent,time.monotonic())
                 if self.profile=='rosmaster_manual':self.io.guard_off=bool(intent.get('free',False))
@@ -212,9 +254,28 @@ class Runtime:
     def stop(self,reason='Operator STOP'):
         # Cancel transport before waiting for an IK calculation holding the control lock.
         if self.core:
-            with self.core_lock:self.core.disarm(reason)
+            with self.core_lock:
+                if not self.core.permitted and self.core.stop_reason and self.session is not None:
+                    reason=self.core.stop_reason+' (затем: '+reason+')'
+                self.core.disarm(reason)
         with self.lock:
-            self.reason=reason;self.preparing=False;self.lease=None
+            # Keep the first cause: a later operator STOP must not hide why the session ended.
+            session,self.session=self.session,None
+            if session is not None or self.lease is not None or self.reason is None:
+                self.reason=reason
+                if session is not None:
+                    now=time.monotonic()
+                    self.record({'at':time.time(),'event':'stop','reason':reason,'profile':session['profile'],
+                        'arm_mode':session['arm_mode'],'duration_s':round(now-session['started_monotonic'],3),
+                        'commands':session['commands'],'stale_commands':session['stale_commands'],
+                        'max_command_gap_s':round(session['max_command_gap'],3),
+                        'since_last_command_s':round(now-session['last_command'],3),
+                        'max_loop_dt_s':round(session['max_loop_dt'],3),'ages':self.ages(now),
+                        'battery_v':self.battery_value,'battery_at_enable':session['battery_at_enable'],
+                        'controller':self.controller_detail(now) if self.core else None,
+                        'motion_commands_sent':self.core.motion_commands_sent if self.core else None})
+                    self.log('STOP: '+reason)
+            self.preparing=False;self.lease=None
             if self.core:
                 try:self.controls.stop_all()
                 finally:
@@ -235,7 +296,8 @@ class Runtime:
                 'guard':self.io.guard.last_block,
                 'mirror_target':[round(float(v),1) for v in self.controls.mirror.target],
                 'mirror_blocked':self.controls.mirror.blocked,'mode':self.controls.mode,
-                'battery_voltage':self.voltage(),'measured_velocity':self.odom if now-self.odom_at<.5 else None,
+                'battery_voltage':self.voltage(self.BATTERY_HOLD_S if self.armed else 2.),
+                'battery_age_s':round(now-self.battery_at,2) if self.battery_at else None,'measured_velocity':self.odom if now-self.odom_at<.5 else None,
                 'base_command':list(self.io.last_output),'lidar_available':self.io.scan is not None,
                 'motion_commands_sent':self.core.motion_commands_sent,
                 'physical_stop_confirmed':False,'logs':list(self.logs)}

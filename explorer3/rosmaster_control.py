@@ -1,6 +1,8 @@
 """Explorer manual operator channel; UI presence never auto-enables a robot."""
 import asyncio
 import json
+import subprocess
+from pathlib import Path
 import threading
 import time
 import httpx
@@ -30,6 +32,25 @@ def request(path,value=None,timeout=2):
         if not result.is_success:
             raise RuntimeError(result.json().get('detail','ROSMASTER request failed'))
         return result.json()
+
+
+def ensure_agent(wait=40):
+    """Start the inert agent unit after a robot reboot; it opens nothing until /acquire."""
+    try:
+        request('/health');return False
+    except httpx.TransportError:pass
+    cfg=json.loads((DATA/'configs/rosmaster-agent.json').read_text())
+    key=Path.home()/'.ssh/rosmaster-collector'
+    result=subprocess.run(['ssh','-i',str(key),'-o','BatchMode=yes','-o','ConnectTimeout=5',
+        f"{cfg.get('ssh_user','vlad')}@{cfg['host']}",'systemctl --user start explorer3-rosmaster-agent.service'],
+        capture_output=True,text=True,timeout=40)
+    if result.returncode:raise RuntimeError('Агент ROSMASTER не запущен: '+(result.stderr.strip() or 'ssh error'))
+    end=time.monotonic()+wait
+    while time.monotonic()<end:
+        try:
+            request('/health');return True
+        except httpx.TransportError:time.sleep(1)
+    raise RuntimeError('Агент ROSMASTER запущен, но не отвечает')
 
 
 class Operator:
@@ -64,10 +85,9 @@ class Operator:
     def stop(self,reason='STOP'):
         with self.lock:
             stamp,_=self.inputs.get(self.owner,(0,ZERO))
-            record={'at':time.time(),'reason':reason,'had_session':self.lease is not None,
-                    'browser_age_s':time.monotonic()-stamp if stamp else None}
-            path=DATA/'logs/rosmaster-control.jsonl';path.parent.mkdir(parents=True,exist_ok=True)
-            with path.open('a') as output:output.write(json.dumps(record,ensure_ascii=False)+'\n')
+            if self.lease is not None:
+                self.record({'reason':reason,'source':'homebrain','browser_age_s':round(time.monotonic()-stamp,3) if stamp else None,
+                             **getattr(self,'stats',{})})
             self.generation+=1;self.lease=None;self.owner=None;self.mirror=False
             self.error=reason;self.leader_done.set()
         try:request('/stop',{},timeout=1)
@@ -109,8 +129,40 @@ class Operator:
             if self.leader_sample is None or time.monotonic()-self.leader_sample[0]>.2:raise RuntimeError('Нет свежих данных Leader')
             self.mirror=True
 
+    # Browser input older than INPUT_HOLD_S is replaced by zero intent (motion stops at once,
+    # session stays); after BROWSER_LOST_S without input the session is stopped. The agent's own
+    # 0.4 s heartbeat and the controller's 240 ms lease remain the hard limits, so one late HTTP
+    # reply is retried instead of ending the session.
+    INPUT_HOLD_S=.25
+    BROWSER_LOST_S=1.
+    COMMAND_TIMEOUT_S=.25
+    COMMAND_LOST_S=.35
+
+    def record(self,event):
+        path=DATA/'logs/rosmaster-control.jsonl';path.parent.mkdir(parents=True,exist_ok=True)
+        with path.open('a') as output:output.write(json.dumps({'at':time.time(),**event},ensure_ascii=False)+'\n')
+
+    def agent_reason(self):
+        try:
+            with connection(.5) as client:
+                status=client.get('/health').json().get('status') or {}
+            return status.get('reason')
+        except Exception:return None
+
+    def ended_by_agent(self,generation,detail):
+        """The agent ended the session itself; show its own reason, do not mask it with STOP."""
+        reason=self.agent_reason() or detail
+        with self.lock:
+            if generation!=self.generation:return
+            self.generation+=1;self.lease=None;self.owner=None;self.mirror=False;self.leader_done.set()
+            self.error='Робот остановил сессию: '+str(reason)
+        self.record({'reason':self.error,'source':'agent','detail':detail,**self.stats})
+        try:request('/stop',{},timeout=1)
+        except Exception:pass
+
     def run(self):
         client=None;last=time.monotonic()
+        self.stats={}
         while not self.done.wait(max(.001,1/30-(time.monotonic()-last))):
             last=time.monotonic()
             with self.lock:
@@ -118,25 +170,46 @@ class Operator:
                 stamp,intent=self.inputs.get(self.owner,(0,ZERO))
                 if lease:self.sequence+=1
                 sample=self.leader_sample
+                age=last-stamp
+                if age>self.INPUT_HOLD_S:intent={**ZERO,'free':False}
                 packet={'lease':lease,'sequence':self.sequence,'intent':intent,'mirror':self.mirror}
-                if sample is not None and time.monotonic()-sample[0]<.2:packet['leader']=sample[1]
-            if lease:
-                if time.monotonic()-stamp>.3:
-                    self.stop('Нет heartbeat активной вкладки')
-                else:
-                    try:
-                        if client is None:client=connection(.2)
-                        response=client.post('/command',json=packet)
-                        if not response.is_success:raise RuntimeError(response.json().get('detail','Команда отклонена'))
-                        with self.lock:
-                            if generation==self.generation:
-                                self.status=response.json()
-                                if not self.status['armed']:
-                                    self.lease=None;self.owner=None;self.mirror=False;self.leader_done.set()
-                    except Exception as exc:
-                        with self.lock:
-                            if generation==self.generation:self.stop(str(exc))
-                        if client is not None:client.close();client=None
+                if sample is not None and last-sample[0]<.2:packet['leader']=sample[1]
+            if not lease:
+                self.stats={};continue
+            stats=self.stats
+            if not stats:stats.update(started=last,last_ok=last,commands=0,timeouts=0,held=0,max_rtt=0.,max_browser_gap=0.)
+            stats['max_browser_gap']=max(stats['max_browser_gap'],age)
+            if age>self.INPUT_HOLD_S:stats['held']+=1
+            if age>self.BROWSER_LOST_S:
+                self.stop(f'Нет heartbeat активной вкладки ({age:.2f} с)');continue
+            try:
+                if client is None:client=connection(self.COMMAND_TIMEOUT_S)
+                sent=time.monotonic()
+                response=client.post('/command',json=packet)
+                rtt=time.monotonic()-sent
+            except httpx.TransportError as exc:
+                stats['timeouts']+=1
+                if client is not None:client.close();client=None
+                if time.monotonic()-stats['last_ok']>self.COMMAND_LOST_S:
+                    with self.lock:current=generation==self.generation
+                    if current:self.stop(f'Нет ответа агента {time.monotonic()-stats["last_ok"]:.2f} с: {type(exc).__name__}')
+                continue
+            if not response.is_success:
+                try:detail=response.json().get('detail','Команда отклонена')
+                except ValueError:detail=f'HTTP {response.status_code}'
+                self.ended_by_agent(generation,detail);continue
+            stats['last_ok']=time.monotonic();stats['commands']+=1;stats['max_rtt']=max(stats['max_rtt'],rtt)
+            with self.lock:
+                if generation==self.generation:
+                    self.status=response.json()
+                    if not self.status['armed']:
+                        reason=self.status.get('reason')
+                        self.lease=None;self.owner=None;self.mirror=False;self.leader_done.set();self.generation+=1
+                        self.error='Сессия завершена: '+str(reason)
+                        done=True
+                    else:done=False
+                else:done=False
+            if done:self.record({'reason':self.error,'source':'agent-status',**stats})
         if client is not None:client.close()
 
 

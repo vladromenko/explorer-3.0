@@ -23,6 +23,7 @@ class NativeControls:
         self.arm_mode = 'cartesian'
         self.profile = None
         self.armed = False
+        self.stop_reason = None
 
     def enable(self, profile, now):
         if self.armed:raise ValueError('Stop the previous control session first')
@@ -32,7 +33,7 @@ class NativeControls:
             if measured is None:raise ValueError('Fresh native arm feedback required; estimates are not measurements')
             self.io._arm_cmd=list(measured)
             self.jog.reset(measured)
-        self.profile=profile;self.armed=True;self.last_input=now
+        self.profile=profile;self.armed=True;self.last_input=now;self.stop_reason=None
 
     def set_input(self, value, now):
         if not self.armed:raise PermissionError('Explicit enable required')
@@ -68,11 +69,20 @@ class NativeControls:
         self.io._arm_cmd=list(measured)
         self.mode='mirror'
 
+    # A late control loop (Python GC, camera/IK load) is not by itself a reason to end the
+    # session: the native arm jog still blocks steps longer than 0.15 s, and the controller
+    # lease (240 ms) and operator heartbeat (0.4 s) stay the hard limits.
+    MAX_DT=.3
+
     def tick(self, dt, now):
         if self.armed:
-            if not math.isfinite(dt) or not 0<dt<=.15 or now-self.last_input>=.4:
-                self.stop_all()
-            elif self.mode=='mirror':self._mirror_step(dt,now)
+            if not math.isfinite(dt) or not 0<dt<=self.MAX_DT:
+                self.stop_reason=f'control step {dt:.3f} s';self.stop_all()
+            elif now-self.last_input>=.4:
+                self.stop_reason=f'no operator input for {now-self.last_input:.2f} s';self.stop_all()
+            elif self.mode=='mirror':
+                self._mirror_step(dt,now)
+                if not self.armed:self.stop_reason='mirror: '+str(self.mirror.blocked)
             else:self._manual_step(dt,now)
 
     def stop_all(self):

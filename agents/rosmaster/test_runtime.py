@@ -88,3 +88,40 @@ def test_transport_watchdog_does_not_wait_for_control_lock(tmp_path):
             assert not runtime.core.permitted
             assert not any(board.velocity)
     finally:runtime.close();board.close()
+
+
+def ready_runtime(tmp_path):
+    (tmp_path/'config').mkdir()
+    (tmp_path/'config/controller-calibration.json').write_text(json.dumps(calibration()))
+    board=FakeBoard();runtime=Runtime(tmp_path,board.slave_path)
+    runtime.start();end=time.monotonic()+5
+    while time.monotonic()<end and not (runtime.core.ready() and runtime.voltage()):time.sleep(.03)
+    return board,runtime
+
+
+def test_late_duplicate_command_is_dropped_and_first_stop_reason_kept(tmp_path):
+    board,runtime=ready_runtime(tmp_path)
+    try:
+        session=runtime.enable('rosmaster_dock',observing=True)
+        runtime.command(session['lease'],5,{'drive':[.1,0,0]})
+        status=runtime.command(session['lease'],4,{'drive':[1,0,0]})
+        assert status['armed'] and runtime.controls.input['drive']==[.1,0,0]
+        runtime.stop('Battery telemetry stale (>30 s)');runtime.stop('Operator STOP')
+        assert runtime.status()['reason']=='Battery telemetry stale (>30 s)'
+        rows=[json.loads(l) for l in (tmp_path/'logs/control-sessions.jsonl').read_text().splitlines()]
+        assert len(rows)==1 and rows[0]['reason'].startswith('Battery') and rows[0]['stale_commands']==1
+    finally:runtime.close();board.close()
+
+
+def test_armed_session_keeps_last_battery_value_while_reports_pause(tmp_path):
+    board,runtime=ready_runtime(tmp_path)
+    try:
+        session=runtime.enable('rosmaster_dock',observing=True)
+        runtime.battery_at-=5  # firmware stopped ADC reports while the base streams
+        for i in range(4):
+            runtime.command(session['lease'],i,{'drive':[.1,0,0]});time.sleep(.08)
+        assert runtime.armed
+        runtime.battery_at-=60
+        runtime.command(session['lease'],9,{'drive':[0,0,0]});time.sleep(.12)
+        assert not runtime.armed and 'Battery telemetry stale' in runtime.status()['reason']
+    finally:runtime.close();board.close()
