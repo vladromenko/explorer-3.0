@@ -68,8 +68,8 @@ async def websocket(socket:WebSocket):
                         await asyncio.to_thread(operator.stop,'Возврат прежнего управления')
                         await asyncio.to_thread(request,'/restore',{},45);state['notice']='Прежнее управление восстановлено'
                     elif action in ('enable','prepare'):
-                        await asyncio.to_thread(operator.enable,owner,'prepare' if action=='prepare' else 'rosmaster_manual',state['mode'],value.get('observing') is True)
-                        state['notice']=''
+                        result=await asyncio.to_thread(operator.enable,owner,'prepare' if action=='prepare' else 'rosmaster_manual',state['mode'],value.get('observing') is True)
+                        state['notice']='Управление уже включено: двигайте клавишами (окно должно быть в фокусе)' if result=='already' else ''
                     elif action=='arm_mode':
                         if value.get('mode') not in {'cartesian','joint'}:raise ValueError('Неизвестный режим руки')
                         if operator.owner==owner:await asyncio.to_thread(operator.stop,'Смена режима руки')

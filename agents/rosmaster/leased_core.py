@@ -17,6 +17,21 @@ class LeasedCore(BridgeCore):
         self.joint_valid = [False]*6
         self.motion_commands_sent = 0
         self.arm_not_ready = 0
+        self.clock_resyncs = 0
+        self.clock_last_step_us = 0
+        self.clock_max_step_us = 0
+        self.clock_outlier = None
+
+    # The copied BridgeCore measures the MCU clock offset only while connecting. Command leases are
+    # 240 ms, so ordinary crystal drift (~100 ppm) makes every command EXPIRED after ~40 min in
+    # "ready" (the original bridge restarts itself for this). Re-measure it periodically instead.
+    RESYNC_S = 2.0
+
+    def tick(self):
+        now = self.clock()
+        if self.phase == 'ready' and now-self.last_hello > self.RESYNC_S:
+            self._hello(now)
+        super().tick()
 
     def _send(self, kind, data=b'', **kwargs):
         result=super()._send(kind,data,**kwargs)
@@ -88,6 +103,24 @@ class LeasedCore(BridgeCore):
         else:super()._stream(now)
 
     def _handle(self, kind, payload, now):
+        if kind==L.IDENTITY:
+            before=self.link.mcu_offset_us
+            super()._handle(kind,payload,now)
+            step=self.link.mcu_offset_us-before
+            if before and step:
+                # One HELLO round trip can be delayed by USB scheduling (seen: 11 ms). Smooth small
+                # corrections, ignore a single outlier, accept a large step once it is confirmed.
+                if abs(step)>5000:
+                    confirmed=self.clock_outlier is not None and abs(step-self.clock_outlier)<5000
+                    self.clock_outlier=None if confirmed else step
+                    if not confirmed:
+                        self.link.mcu_offset_us=before;return
+                else:
+                    self.clock_outlier=None
+                    self.link.mcu_offset_us=before+step//2;step//=2
+                self.clock_resyncs+=1;self.clock_last_step_us=step
+                self.clock_max_step_us=max(self.clock_max_step_us,abs(step))
+            return
         if kind==L.SERVO:
             _,joint,error,device,raw,_=struct.unpack_from('<QBBBHQ',payload)
             if 1<=joint<=6:

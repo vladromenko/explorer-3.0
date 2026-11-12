@@ -204,3 +204,39 @@ def test_unresolved_arm_cancel_stops(tmp_path):
     runtime.core.state['arm_cancel_pending']=True
     runtime.arm_recovering(clock[0]);clock[0]+=runtime.ARM_RECOVERY_S+.1;runtime.arm_recovering(clock[0])
     assert runtime.lease is None and 'не снялась' in runtime.reason
+
+
+def test_mcu_clock_offset_is_remeasured_while_ready(tmp_path):
+    board,runtime=ready_runtime(tmp_path)
+    try:
+        assert runtime.core.phase=='ready'
+        runtime.link.mcu_offset_us+=300_000  # simulated drift beyond the 240 ms lease
+        end=time.monotonic()+2*runtime.core.RESYNC_S+2
+        while time.monotonic()<end and runtime.core.clock_resyncs==0:time.sleep(.05)
+        # a large step is accepted only after a second HELLO confirms it
+        assert runtime.core.clock_resyncs>=1 and abs(runtime.core.clock_last_step_us+300_000)<20_000
+        session=runtime.enable('rosmaster_dock',observing=True)
+        runtime.command(session['lease'],0,{'drive':[.1,0,0]});time.sleep(.1)
+        assert runtime.armed
+    finally:runtime.close();board.close()
+
+
+def test_single_clock_outlier_is_ignored_and_small_steps_smoothed():
+    class Link:
+        boot_id=7;mcu_offset_us=1_000_000;session=1;sequence=0
+    import struct
+    c=LeasedCore(Link(),calibration()['joints'],lambda *a:None,clock=lambda:1.)
+    def identity(offset):
+        def base(kind,payload,now):c.link.mcu_offset_us=offset
+        return base
+    from rosmaster.core import BridgeCore
+    original=BridgeCore._handle
+    try:
+        BridgeCore._handle=lambda self,kind,payload,now:setattr(self.link,'mcu_offset_us',target[0])
+        target=[1_011_000];c._handle(L.IDENTITY,b'',1.)
+        assert c.link.mcu_offset_us==1_000_000
+        target=[1_000_400];c._handle(L.IDENTITY,b'',1.)
+        assert c.link.mcu_offset_us==1_000_200
+        target=[1_300_000];c._handle(L.IDENTITY,b'',1.);assert c.link.mcu_offset_us==1_000_200
+        target=[1_300_500];c._handle(L.IDENTITY,b'',1.);assert c.link.mcu_offset_us==1_300_500
+    finally:BridgeCore._handle=original

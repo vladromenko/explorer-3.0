@@ -279,6 +279,8 @@ class Runtime:
                 now=time.monotonic();session=self.session
                 session['max_command_gap']=max(session['max_command_gap'],now-session['last_command'])
                 session['last_command']=now;session['commands']+=1
+                if any(abs(v)>1e-3 for v in [*intent.get('drive',[]),*intent.get('arm',[]),intent.get('pitch',0),intent.get('roll',0),intent.get('grip',0)]):
+                    session['active_inputs']=session.get('active_inputs',0)+1
             if self.controls.armed:
                 # Keep operator input fresh during a preset too; it is applied only after the pose.
                 self.controls.set_input(intent if not self.preparing else {**intent,'arm':[0,0,0],'pitch':0,'roll':0,'grip':0},time.monotonic())
@@ -364,7 +366,7 @@ class Runtime:
                         'battery_v':self.battery_value,'battery_at_enable':session['battery_at_enable'],
                         'controller':self.controller_detail(now) if self.core else None,
                         'controller_diagnostics':(self.core.state or {}).get('diagnostics') if self.core else None,
-                        'arm_recoveries':session.get('recoveries',0),'arm_command':self.last_arm_command,
+                        'arm_recoveries':session.get('recoveries',0),'active_inputs':session.get('active_inputs',0),'arm_command':self.last_arm_command,
                         'motion_commands_sent':self.core.motion_commands_sent if self.core else None})
                     self.log('STOP: '+reason)
             self.preparing=False;self.lease=None
@@ -392,6 +394,8 @@ class Runtime:
                 'battery_age_s':round(now-self.battery_at,2) if self.battery_at else None,'measured_velocity':self.odom if now-self.odom_at<.5 else None,
                 'base_command':list(self.io.last_output),'lidar_available':self.io.scan is not None,
                 'motion_commands_sent':self.core.motion_commands_sent,
+                'clock_sync':{'resyncs':self.core.clock_resyncs,'last_step_us':self.core.clock_last_step_us,
+                              'max_step_us':self.core.clock_max_step_us},'arm_not_ready':self.core.arm_not_ready,
                 'physical_stop_confirmed':False,'logs':list(self.logs)}
 
     def close(self):

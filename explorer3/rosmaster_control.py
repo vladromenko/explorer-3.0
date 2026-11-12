@@ -69,7 +69,9 @@ class Operator:
         if not enabled():raise PermissionError('Ручное управление ROSMASTER ещё не разрешено')
         with self.operation:
             with self.lock:
-                if self.lease:raise RuntimeError('Сначала STOP: управление уже занято')
+                if self.lease:
+                    if self.owner==owner:return 'already'
+                    raise RuntimeError('Управление уже включено в другой вкладке или на другом устройстве. Нажмите STOP и включите здесь')
                 stamp,intent=self.inputs.get(owner,(0,ZERO))
                 if time.monotonic()-stamp>.3:raise RuntimeError('Вернитесь в активную вкладку управления')
                 if any(intent['drive']+intent['arm']+[intent['pitch'],intent['roll'],intent['grip']]):
@@ -205,6 +207,8 @@ class Operator:
             stats=self.stats
             if not stats:stats.update(started=last,last_ok=last,commands=0,timeouts=0,held=0,max_rtt=0.,max_browser_gap=0.)
             stats['max_browser_gap']=max(stats['max_browser_gap'],age)
+            if age<=self.INPUT_HOLD_S and any(abs(v)>1e-3 for v in [*intent.get('drive',[]),*intent.get('arm',[]),intent.get('pitch',0),intent.get('roll',0),intent.get('grip',0)]):
+                stats['active_inputs']=stats.get('active_inputs',0)+1
             if age>self.INPUT_HOLD_S:stats['held']+=1
             if age>self.BROWSER_LOST_S:
                 self.stop(f'Нет heartbeat активной вкладки ({age:.2f} с)');continue
