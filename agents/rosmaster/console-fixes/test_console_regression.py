@@ -23,6 +23,7 @@ class IO:
     def __init__(self, pose):
         self._arm_cmd = list(pose); self.measured = list(pose); self.sent = []; self.drives = []
     def measured_arm(self, **kw): return self.measured
+    def control_seed(self, **kw): return self.measured
     def arm_command(self): return self._arm_cmd
     def drive(self, *args, **kw): self.drives.append((args,kw))
     def move_arm(self, cmd, **kw):

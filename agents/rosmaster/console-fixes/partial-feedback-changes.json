@@ -1,0 +1,22 @@
+[
+  {
+    "path": "cubebot/robot_io.py",
+    "before": "628c6526ca10c86771b29c0e1b92151d5b1d7523f0480cd781360c50f6c369d5",
+    "after": "481ae570cc8bd77f9e573724832ad3d73c8dc9b3b82a695778362c00e5ecd0f4"
+  },
+  {
+    "path": "cubebot/ros_io.py",
+    "before": "531e47cc4278d1e07925c9c564ba19dd05a63cbdd3124fe00be2a736ef204727",
+    "after": "7bec7d346300bc599f05317b5d9dbcaf51cbe1656107f97ff87e2da12e826ded"
+  },
+  {
+    "path": "cubebot/web/page.py",
+    "before": "6b3d0968e79098af41fa513b38daa8c9b8eb617813ccda73930605b3ec36bfb7",
+    "after": "c3378c2eff287bcea794139fd3da964f962e8409f24758d721f99b653f981ad8"
+  },
+  {
+    "path": "cubebot/web/server.py",
+    "before": "5cc9a221eb6b08246f05970917d046a294565ec009f3195e9e993abab34e3f1b",
+    "after": "c3b9516e90454896b5afd0d4fc42fd17f4808536821bc6b20dede2f7260de782"
+  }
+]
