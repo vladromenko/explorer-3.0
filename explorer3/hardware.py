@@ -470,7 +470,7 @@ class HardwareSource:
         actual = [float(actual_by_id[bus.motors[name].id]) for name in JOINTS]
         self.last_command_ns = end_ns
         if self.teleoperate:self.last_teleop_target=list(actual)
-        return {'action':actual,'action_raw_ticks':[raw[n] for n in JOINTS],
+        return {'action':actual,'action_after_limits':[safe[n] for n in JOINTS],'action_raw_ticks':[raw[n] for n in JOINTS],
                 'action_timestamp_ns':end_ns,'action_send_start_ns':start_ns,'action_send_end_ns':end_ns,
                 'action_valid':True,'action_acknowledged':False,'action_provenance':'transmitted_quantized_goal_position',
                 'limits_applied':limited}

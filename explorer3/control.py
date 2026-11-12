@@ -4,6 +4,7 @@ import time
 import uuid
 from . import catalog
 from .paths import DATA
+from . import local_work
 
 class Control:
     def __init__(self):
@@ -22,6 +23,8 @@ class Control:
         self.maintenance=False
 
     def authorized(self):
+        if local_work.enabled():
+            return False
         if self.robot=='so101' and (DATA/'configs/so101-external-owner.json').exists():
             return False
         if self.robot=='tank' and (DATA/'validation/tank-motion-incident.json').exists():

@@ -1,0 +1,101 @@
+"""Immutable training selections; original recordings are never rewritten."""
+import hashlib
+import json
+import random
+from pathlib import Path
+from . import catalog
+from .paths import DATA
+from .profiles import profile
+
+
+def fingerprint(root):
+    root = Path(root).resolve()
+    if not root.is_relative_to(DATA / 'datasets'):
+        raise ValueError('Dataset outside Explorer storage')
+    files = sorted(p for p in root.rglob('*') if p.is_file() and p.suffix in {'.json', '.jsonl', '.parquet', '.mp4'})
+    digest = hashlib.sha256()
+    for path in files:
+        digest.update(str(path.relative_to(root)).encode())
+        with path.open('rb') as source:
+            for block in iter(lambda: source.read(1024 * 1024), b''):
+                digest.update(block)
+    return digest.hexdigest()
+
+
+def eligible(name):
+    profile(name)
+    return [e for e in catalog.rows('episodes') if e['profile'] == name and not e['excluded']
+            and e['category'] in {'demonstration', 'correction'} and e['outcome'] == 'success']
+
+
+def connected_groups(episodes):
+    # Connected components: sharing EITHER a session OR a scene prevents leakage,
+    # including transitive connections between several recording sessions.
+    groups = []
+    for episode in sorted(episodes, key=lambda e: e['id']):
+        linked = [g for g in groups if any(
+            episode['session'] == e['session'] or episode['scene'] == e['scene'] for e in g)]
+        merged = [episode] + [e for g in linked for e in g]
+        groups = [g for g in groups if g not in linked] + [merged]
+    return groups
+
+
+def grouped_split(episodes, seed=1000):
+    groups=connected_groups(episodes)
+    if len(groups) < 3:
+        raise ValueError('Нужны ≥3 независимые группы: общие сессии ИЛИ расстановки нельзя разделять между train/validation/test')
+    random.Random(seed).shuffle(groups)
+    hold = max(1, round(len(groups) * .1))
+    return {key: [e for group in part for e in group] for key, part in
+            [('test', groups[:hold]), ('validation', groups[hold:2*hold]), ('train', groups[2*hold:])]}
+
+
+def freeze(name, smoke, seed=1000):
+    episodes = eligible(name)
+    if len(episodes) < (3 if smoke else 50):
+        raise ValueError('Нужно минимум 3 показа для smoke или 50 для основного рецепта')
+    for episode in episodes:
+        root = Path(episode['dataset'])
+        provenance = json.loads((root / 'provenance.json').read_text())
+        if provenance.get('synthetic') is not False:
+            raise ValueError('Синтетические данные запрещены в физическом наборе')
+        validation = DATA / 'validation' / f"episode-{episode['id']}.json"
+        digest = fingerprint(root)
+        checked = json.loads(validation.read_text()) if validation.exists() else {}
+        if checked.get('readback') != 'PASS' or checked.get('dataset_sha256') != digest:
+            from .validation import validate
+            checked = validate(episode['id'])
+            if checked['dataset_sha256'] != digest:
+                raise ValueError('Dataset changed during validation')
+        sources = set(json.loads(line)['command_source'] for line in (root / 'research.jsonl').read_text().splitlines())
+        if sources != {'human'}:
+            raise ValueError('Behavior cloning принимает только отдельные сегменты human без границ переключения')
+        episode['sha256'] = digest
+    splits = {'train': episodes, 'validation': [], 'test': []} if smoke else grouped_split(episodes, seed)
+    plan = {'version': 1, 'profile': name, 'profile_contract': profile(name), 'smoke': bool(smoke),
+            'seed': seed, 'statistics': 'train_only', 'splits': splits,
+            'limitation': 'Smoke использует все показы; это не независимая оценка качества' if smoke else
+                          'Split заморожен; test не используется для выбора модели'}
+    blob = json.dumps(plan, sort_keys=True, ensure_ascii=False, indent=2)
+    ident = hashlib.sha256(blob.encode()).hexdigest()
+    directory = DATA / 'plans'
+    directory.mkdir(exist_ok=True)
+    path = directory / f'{ident}.json'
+    if not path.exists():
+        path.write_text(blob)
+    return ident, plan
+
+
+def load_plan(ident, verify=True):
+    if len(ident) != 64 or any(c not in '0123456789abcdef' for c in ident):
+        raise ValueError('Invalid plan ID')
+    blob = (DATA / 'plans' / f'{ident}.json').read_text()
+    if hashlib.sha256(blob.encode()).hexdigest() != ident:
+        raise ValueError('Frozen plan changed')
+    plan = json.loads(blob)
+    if verify:
+        for entries in plan['splits'].values():
+            for entry in entries:
+                if fingerprint(entry['dataset']) != entry['sha256']:
+                    raise ValueError('Frozen dataset changed: ' + entry['id'])
+    return plan

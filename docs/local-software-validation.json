@@ -1,0 +1,79 @@
+{
+  "scope": "local_only_no_robot_connections",
+  "local_tests": 32,
+  "native_control_tests": 19,
+  "real_recordings": 3,
+  "real_frames": 2636,
+  "frozen_plan": "a800f4387723cf55ea800f691b10578a2aa9315fe371f18621b2f6a54f181bd7",
+  "queue_evaluation_job": "b01f7ffe89144961b40c41fea4d2c265",
+  "resume": {
+    "resumed_from_step": 50,
+    "saved_state": {
+      "step": 52,
+      "num_processes": 1,
+      "batch_size": 8
+    },
+    "extra_steps": 2,
+    "source_checkpoint_unchanged": true,
+    "motor_commands_sent": false
+  },
+  "trial_preparation": {
+    "replay_plan": "f186437b60a54c2780ef009f12d66268",
+    "policy_plan": "7d238f61fcb14af388439d0efdd29db1",
+    "official_policy_action": [
+      -15.402033805847168,
+      -108.64057922363281,
+      82.55158996582031,
+      61.89411926269531,
+      -20.71756935119629,
+      22.024166107177734
+    ],
+    "action_channels": 6,
+    "source": "existing_real_recording",
+    "motor_commands_sent": false,
+    "physical_skill_verified": false,
+    "chunk_reset": "called_after_inference"
+  },
+  "resident_policy_load": {
+    "copies": 3,
+    "cycles": 10,
+    "checkpoint": "/home/jetsonnx/.local/share/explorer3/checkpoints/be7262c82f354190b82eead78129f6cf-b8/checkpoints/000050/pretrained_model",
+    "same_weights_in_all_copies": true,
+    "independent_ensemble": false,
+    "combined_replan_seconds_p50_p95_max": [
+      0.18725673551671207,
+      0.20219412598235068,
+      0.2030345860403031
+    ],
+    "peak_allocated_bytes": 694764032,
+    "peak_reserved_bytes": 750780416,
+    "all_replans_fit_50ms": false,
+    "all_replans_fit_33ms": false,
+    "scope": "Sequential GPU scheduling with all models resident; real recorded SO-101 input reused",
+    "excludes": [
+      "sensor latency",
+      "network",
+      "actuator execution",
+      "three different trained policies"
+    ],
+    "motor_commands_sent": false,
+    "physical_skill_verified": false,
+    "simultaneous_robot_acceptance": false
+  },
+  "http_pages": [
+    "/",
+    "/research",
+    "/jobs/b01f7ffe89144961b40c41fea4d2c265"
+  ],
+  "browser_visual_acceptance": false,
+  "browser_reason": "CUA browser inventory empty; iab unavailable",
+  "physical_acceptance": false,
+  "randomized_physical_research_episodes": 0,
+  "remaining": [
+    "Tank STOP bench retest and recordings",
+    "ROSMASTER feedback and own live-agent resource/camera integration",
+    "Physical trial acceptance",
+    "Independent demonstration groups and full training",
+    "Physical diagnostic pilot and multi-robot acceptance"
+  ]
+}

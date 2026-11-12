@@ -15,7 +15,7 @@ from .session import Session
 from .preview import LivePreview
 from . import handoff, tank_handoff, tank
 from .network import LocalNetworkOnly
-from . import viewer
+from . import viewer, local_work, local_pages, research, trials as trial_plans
 from .paths import DATA, ROOT, prepare
 from .profiles import PROFILES
 from .resources import owners
@@ -26,6 +26,8 @@ catalog.initialize()
 control=Control()
 jobs=Jobs(control)
 session=Session(control)
+research.initialize()
+local_pages.install(jobs)
 live_preview=LivePreview(session,stop_requested=lambda:Server.instance.should_exit)
 ROBOT_NAMES={'so101':'SO-101','tank':'Tank','rosmaster':'ROSMASTER'}
 DEVICE_PATHS={'leader':'/dev/so101-leader','follower':'/dev/so101-follower',
@@ -44,11 +46,12 @@ def current_stage():
 @app.get('/api/health')
 def health():
     return {'product':'Explorer 3.0','stage':current_stage(),'armed':False if control.owner is None else True,
-            'selected_robot':control.robot,'mode':control.mode,'devices':inventory(),'data_root':str(DATA),
+            'local_only':local_work.enabled(),'selected_robot':control.robot,'mode':control.mode,'devices':inventory(),'data_root':str(DATA),
             'session':{'phase':session.phase,'frames':session.frame_count,'error':session.error,
                        'recording':session.record_requested,'thread_active':bool(session.thread and session.thread.is_alive()),
                        'stop_reason':control.last_stop_reason,'heartbeat_count':control.heartbeat_count,
                        'heartbeat_age_s':time.monotonic()-control.last_heartbeat if control.last_heartbeat else None},
+            'compute_job':jobs.active_id,
             'preview':{'transport':'mjpeg_http','clients':live_preview.clients,'encoded_frames':live_preview.encoded}}
 
 @app.get('/api/live/camera.mjpg')
@@ -132,12 +135,13 @@ def index():
         ui.button('STOP',icon='stop_circle',color='negative',on_click=lambda:control.stop('STOP из интерфейса')).props('size=lg')
     stage_label=ui.label('Этап A · программная подготовка. Движение не разрешено. Запись и физические испытания ещё не проверены.').classes('notice')
     ready=ui.label('').classes('muted')
+    fleet_labels={}
     with ui.element('div').classes('fleet'):
         for ident,name in ROBOT_NAMES.items():
             with ui.card().classes('robot'):
                 ui.label(name).style('font-size:22px;font-weight:650')
                 label='USB обнаружены · требуется приёмка' if ident=='so101' and all(v['present'] for v in inventory().values()) else 'Подключение ещё не проверено'
-                ui.badge(label,color='grey-8')
+                fleet_labels[ident]=ui.badge(label,color='grey-8')
                 with ui.element('div').classes('preview'):
                     ui.label('Камера не открыта' if ident=='so101' else 'Подключение на этапе '+('C' if ident=='tank' else 'D'))
                 ui.button('Выбрать '+name,on_click=lambda robot=ident:select(robot)).props('outline')
@@ -168,6 +172,7 @@ def index():
                     ui.button('Наблюдение',on_click=lambda:control.stop('Наблюдение'))
                     async def transfer(restore=False):
                         try:
+                            local_work.require_hardware_mode()
                             with control.lock:
                                 if control.maintenance or (session.thread and session.thread.is_alive()):
                                     raise RuntimeError('Сначала STOP и дождитесь закрытия сессии')
@@ -198,10 +203,13 @@ def index():
             with ui.tab_panel(record):
                 task_title=ui.label('Кубик → коробка → отвести руку').style('font-size:20px')
                 task_description=ui.label('').classes('muted')
+                collection=ui.input('Сессия сбора (одна для серии показов)',value=time.strftime('%Y-%m-%d')+'-session-01')
                 scene=ui.input('Расстановка',value='scene-01')
+                category=ui.select({'demonstration':'Исходный показ','correction':'Отдельный сегмент коррекции'},value='demonstration',label='Тип записи')
+                ui.label('Коррекцию начинайте отдельной записью после остановки предыдущего исполнения: границы источников не смешиваются.').classes('muted')
                 def begin():
                     try:
-                        session.start(owner,task.value,scene.value)
+                        session.start(owner,task.value,scene.value,collection_id=collection.value,category=category.value)
                         ui.notify('Запуск разрешённой сессии')
                     except Exception as exc:
                         notify_error(exc)
@@ -219,7 +227,7 @@ def index():
                     'series':[{'name':'Команда','type':'line','data':[]},{'name':'Измерение','type':'line','data':[]}]}).style('height:240px;width:100%')
             with ui.tab_panel(datasets):
                 ui.label('Исходные эпизоды сохраняются. Исключение влияет только на подбор обучения.').classes('muted')
-                episode_table=ui.table(columns=[{'name':k,'label':v,'field':k} for k,v in [('id','Эпизод'),('profile','Задача'),('outcome','Исход'),('frames','Кадры'),('excluded','Исключён')]],rows=[],row_key='id',selection='single')
+                episode_table=ui.table(columns=[{'name':k,'label':v,'field':k} for k,v in [('id','Эпизод'),('profile','Задача'),('outcome','Исход'),('frames','Кадры'),('category','Тип'),('session','Сессия'),('scene','Расстановка'),('excluded','Исключён')]],rows=[],row_key='id',selection='single')
                 def exclusion():
                     for row in episode_table.selected:
                         catalog.exclude(row['id'],not bool(row['excluded']))
@@ -231,33 +239,91 @@ def index():
                     else:
                         ui.notify('Выберите эпизод в таблице')
                 ui.button('Посмотреть',on_click=view_selected)
+                async def validate_selected():
+                    from .validation import validate
+                    try:
+                        if not episode_table.selected:raise ValueError('Выберите эпизод')
+                        result=await asyncio.to_thread(validate,episode_table.selected[0]['id'])
+                        ui.notify(f"Запись прочитана: {result['frames']} кадров, {result['actual_hz']:.1f} Гц")
+                    except Exception as exc:notify_error(exc)
+                ui.button('Проверить данные и видео',on_click=validate_selected)
+                collection_info=ui.label().classes('muted')
             with ui.tab_panel(training):
                 ui.label('Один trainer · отдельная политика для каждой задачи').style('font-size:19px')
                 ui.label('ACT: upstream LeRobot 0.6.1. Smoke: 50 шагов; это проверка тракта, не навык.').classes('muted')
-                def enqueue():
+                async def enqueue_policy(policy,smoke):
                     try:
-                        ident=jobs.enqueue(task.value,'act',smoke=True)
-                        ui.notify('Задание '+ident+' поставлено в очередь')
-                    except Exception as exc:
-                        notify_error(exc)
+                        ident=await asyncio.to_thread(jobs.enqueue,task.value,policy,smoke)
+                        ui.notify('Задание '+ident[:8]+' поставлено в очередь; состав данных зафиксирован')
+                    except Exception as exc:notify_error(exc)
+                async def act_smoke():await enqueue_policy('act',True)
+                async def act_full():await enqueue_policy('act',False)
+                async def smol_smoke():await enqueue_policy('smolvla',True)
+                async def smol_full():await enqueue_policy('smolvla',False)
                 with ui.row():
-                    ui.button('ACT · проверить на 3 показах',on_click=enqueue)
-                    def smol():
-                        try:
-                            jobs.enqueue(task.value,'smolvla',smoke=True)
-                            ui.notify('SmolVLA поставлена в очередь')
-                        except Exception as exc:
-                            notify_error(exc)
-                    smol_button=ui.button('SmolVLA · smoke',on_click=smol)
-                    ui.button('Остановить trainer',on_click=jobs.cancel).props('outline')
-                job_table=ui.table(columns=[{'name':k,'label':v,'field':k} for k,v in [('id','Задание'),('profile','Задача'),('policy','Модель'),('status','Состояние'),('checkpoint','Checkpoint'),('error','Ошибка')]],rows=[],row_key='id')
+                    ui.button('ACT · smoke 50 шагов',on_click=act_smoke)
+                    ui.button('ACT · основное обучение',on_click=act_full)
+                    smol_button=ui.button('SmolVLA · smoke',on_click=smol_smoke)
+                    smol_full_button=ui.button('SmolVLA · основное обучение',on_click=smol_full)
+                ui.label('Основной рецепт: 100 000 шагов; checkpoint каждые 5 000. Validation отдельно; test не используется для подбора. Незавершённое обучение продолжается только явно.').classes('muted')
+                job_table=ui.table(columns=[{'name':k,'label':v,'field':k} for k,v in [('id','Задание'),('profile','Задача'),('policy','Модель'),('status','Состояние'),('checkpoint','Checkpoint'),('error','Ошибка')]],rows=[],row_key='id',selection='single')
+                def selected_job_action(action):
+                    try:
+                        if not job_table.selected:raise ValueError('Выберите задание')
+                        ident=job_table.selected[0]['id']
+                        if action=='open':ui.navigate.to('/jobs/'+ident)
+                        elif action=='resume':jobs.resume(ident);ui.notify('Продолжение в очереди')
+                        elif action=='cancel':jobs.cancel(ident)
+                        elif action=='benchmark':
+                            result=jobs.benchmark(ident);ui.notify('Проверка нагрузки в очереди '+result[:8])
+                        elif action in {'evaluate','test'}:
+                            result=jobs.evaluate(ident,'test' if action=='test' else 'validation');ui.notify('Диагностика в очереди '+result[:8])
+                    except Exception as exc:notify_error(exc)
+                with ui.row():
+                    ui.button('Журнал и результат',on_click=lambda:selected_job_action('open'))
+                    ui.button('Продолжить с checkpoint',on_click=lambda:selected_job_action('resume'))
+                    ui.button('Отменить выбранное',on_click=lambda:selected_job_action('cancel'))
+                    ui.button('Проверить checkpoint на записях',on_click=lambda:selected_job_action('evaluate'))
+                    ui.button('Финальный test выбранного checkpoint',on_click=lambda:selected_job_action('test'))
+                    ui.button('Измерить нагрузку 3 копий политики',on_click=lambda:selected_job_action('benchmark'))
             with ui.tab_panel(trials):
                 ui.label('Программная готовность ≠ checkpoint ≠ физический навык').style('font-size:19px')
+                prepared_trial=[None]
+                trial_details=ui.code('Выберите запись в Датасетах или обучение с checkpoint, затем подготовьте план.',language='json').style('max-height:260px;overflow:auto;width:100%')
+                def saved_plans():
+                    return {p.stem:json.loads(p.read_text())['profile']+' · '+json.loads(p.read_text())['kind']+' · '+p.stem[:8] for p in sorted((DATA/'trials').glob('*.json'))}
+                def choose_plan(event):
+                    if event.value:
+                        prepared_trial[0]=event.value
+                        trial_details.set_content(json.dumps(trial_plans.load(event.value),ensure_ascii=False,indent=2))
+                trial_select=ui.select(saved_plans(),label='Сохранённый план испытания',on_change=choose_plan).style('min-width:400px')
+                async def prepare_trial(kind):
+                    try:
+                        selected_rows=episode_table.selected if kind=='replay' else job_table.selected
+                        if not selected_rows:raise ValueError('Сначала выберите запись или задание обучения в соответствующей вкладке')
+                        plan=await asyncio.to_thread(trial_plans.prepare,kind,selected_rows[0]['id'])
+                        prepared_trial[0]=plan['id']
+                        trial_select.set_options(saved_plans(),value=plan['id'])
+                        trial_details.set_content(json.dumps(plan,ensure_ascii=False,indent=2))
+                        ui.notify('План сохранён; движения не запускались')
+                    except Exception as exc:notify_error(exc)
+                async def prepare_replay():await prepare_trial('replay')
+                async def prepare_policy():await prepare_trial('policy')
+                def start_trial():
+                    try:
+                        if not prepared_trial[0]:raise ValueError('Сначала подготовьте план')
+                        session.start_trial(owner,prepared_trial[0],scene.value)
+                    except Exception as exc:notify_error(exc)
                 with ui.row():
-                    ui.button('Посмотреть запись').disable()
-                    ui.button('Повторить команды на роботе').disable()
-                    ui.button('Испытать политику').disable()
-                ui.table(columns=[{'name':k,'label':v,'field':k} for k,v in [('profile','Задача'),('record','Запись'),('train','Обучение'),('skill','Физический навык')]],
+                    ui.button('Подготовить повтор записи',on_click=prepare_replay)
+                    ui.button('Подготовить испытание checkpoint',on_click=prepare_policy)
+                    trial_start_button=ui.button('Запустить разрешённое испытание',on_click=start_trial)
+                with ui.row():
+                    ui.button('Посмотреть запись',on_click=view_selected)
+
+                ui.label('Физический replay и rollout недоступны в локальном режиме. Checkpoint можно проверить на записях во вкладке Обучение.').classes('muted')
+                ui.link('Исследование вмешательств: пилот, журнал, оценщики','/research')
+                profile_table=ui.table(columns=[{'name':k,'label':v,'field':k} for k,v in [('profile','Задача'),('record','Запись'),('train','Обучение'),('skill','Физический навык')]],
                     rows=[{'profile':k,
                            'record':'проверена' if v['recording_status']=='verified' else 'не проверено',
                            'train':'smoke проверен · 50 шагов' if v['training_status']=='smoke_verified' else 'не проверено',
@@ -286,6 +352,7 @@ def index():
             options={k:k for k,v in PROFILES.items() if v['robot']==control.robot}
             task.set_options(options,value=next(iter(options)))
         authorized=control.authorized()
+        trial_start_button.set_enabled(authorized and not local_work.enabled() and bool(prepared_trial[0]))
         supported=control.robot in {'so101','tank'}
         idle=not control.maintenance and not (session.thread and session.thread.is_alive())
         start_button.set_enabled(authorized and supported and idle)
@@ -294,19 +361,27 @@ def index():
         old_button.set_enabled(authorized and supported and idle)
         tank_controls.set_visibility(control.robot=='tank')
         task_title.set_text('Подъехать к видимой цели → остановиться в зоне' if control.robot=='tank' else 'Кубик → коробка → отвести руку')
-        task_description.set_text('Передняя RGB; состояние — предыдущая команда, измеренной скорости колёс нет.' if control.robot=='tank' else 'Wrist RGB и измеренные суставы; цель — отправленная команда Follower.')
+        task_description.set_text({'so101':'Wrist RGB и измеренные суставы; цель — отправленная команда Follower.',
+            'tank':'Передняя RGB; состояние — предыдущая команда, измеренной скорости колёс нет.',
+            'rosmaster':'Каналы взяты из CubeBot 8090. Камера и контракт обратной связи Explorer требуют проверки на роботе.'}[control.robot])
         selected.set_text('Выбран: '+ROBOT_NAMES[control.robot])
         smol_pass=(DATA/'validation/smolvla-pass.json').exists()
         smol_button.set_enabled(smol_pass and task.value=='so101_pick_place')
+        smol_full_button.set_enabled(smol_pass and task.value=='so101_pick_place')
+        collection_info.set_text(local_pages.collection_status(task.value))
+        for ident,badge in fleet_labels.items():
+            badge.set_text('Не опрашивается · локальный режим' if local_work.enabled() else ('Выбран' if ident==control.robot else 'Не выбран'))
         act_pass=(DATA/'validation/act-pass.json').exists()
         ready.set_text('Программный smoke: ACT '+('PASS' if act_pass else 'не проверен')+' · SmolVLA '+('PASS' if smol_pass else 'не проверен')+' · физические навыки не проверены')
-        if control.robot=='tank' and (DATA/'validation/tank-motion-incident.json').exists():
+        if local_work.enabled():
+            stage_label.set_text('Локальный режим · роботы не опрашиваются. Датасеты, обучение и анализ доступны без включения устройств.')
+        elif control.robot=='tank' and (DATA/'validation/tank-motion-incident.json').exists():
             stage_label.set_text('Tank: движение заблокировано после отказа STOP. Диагностика; физическая приёмка не пройдена.')
         elif current_stage()=='C':
             stage_label.set_text('Этап C · подключение Tank. Приёмка SO-101 завершена; физический навык не проверен.')
         elif authorized:
             stage_label.set_text('Этап B · разрешённый физический блок. Движение начинается только явной кнопкой.')
-        phases={'idle':'Остановлено','preparing':'Подготовка — пока не двигайте Leader','aligning':'Плавное совмещение — держите Leader неподвижно','following':'Следование — можно двигать Leader','error':'Ошибка','saving':'Сохранение эпизода — дождитесь завершения'}
+        phases={'idle':'Остановлено','preparing':'Подготовка — пока не двигайте Leader','aligning':'Плавное совмещение — держите Leader неподвижно','following':'Следование — можно двигать Leader','error':'Ошибка','saving':'Сохранение эпизода — дождитесь завершения','trial':'Испытание — действует STOP, исход отмечается оператором'}
         if control.robot=='tank':
             phases.update(preparing='Подготовка камеры и питания — пока не нажимайте стрелки',aligning='Подготовка',following='Управление готово — можно удерживать стрелки')
         if control.robot=='tank' and session.phase=='idle':
@@ -315,6 +390,7 @@ def index():
         recording_status.set_text(session.error or (phase_text+' · кадров: '+str(session.frame_count)+((' · '+control.last_stop_reason) if control.last_stop_reason else '')))
         device_table.rows=[{'name':k,'state':('занято' if v['owners'] else 'USB обнаружено, не открыто') if v['present'] else 'отсутствует'} for k,v in inventory().items()]
         device_table.update()
+        profile_table.rows=local_pages.profile_statuses();profile_table.update()
         episode_table.rows=catalog.rows('episodes');episode_table.update()
         job_table.rows=catalog.rows('jobs');job_table.update()
         event_table.rows=catalog.rows('events')[:20];event_table.update()
@@ -332,7 +408,9 @@ def index():
             chart.update()
             last_frame[0]=sample['frame_id']
     async def refresh_tank():
-        if control.robot=='tank':
+        if local_work.enabled():
+            tank_status.set_text('Tank выключен по сообщению оператора; сетевой опрос отключён')
+        elif control.robot=='tank':
             def probe():
                 with tank.client() as http:
                     response=http.get('/health');response.raise_for_status();return response.json()

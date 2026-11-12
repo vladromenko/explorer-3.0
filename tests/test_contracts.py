@@ -24,7 +24,7 @@ class Contracts(unittest.TestCase):
             self.assertEqual(c.mode,'Наблюдение')
 
     def test_groups_cannot_leak(self):
-        episodes=[{'id':str(i),'session':str(i//2),'scene':'a'} for i in range(20)]
+        episodes=[{'id':str(i),'session':str(i//2),'scene':str(i//2)} for i in range(20)]
         split=split_episodes(episodes)
         sets=[{(e['session'],e['scene']) for e in values} for values in split.values()]
         for i,a in enumerate(sets):

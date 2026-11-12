@@ -59,29 +59,70 @@
   "rosmaster_dock": {
     "robot": "rosmaster",
     "fps": 20,
-    "version": 1,
+    "version": 2,
     "task": "Approach the visible target and stop inside the marked zone.",
     "policy": "act",
     "camera": "front",
-    "channels": null,
-    "units": null,
-    "schema_status": "BLOCKED_until_driver_inspection",
+    "channels": [
+      "forward_velocity",
+      "lateral_velocity",
+      "yaw_velocity"
+    ],
+    "units": [
+      "m/s",
+      "m/s",
+      "rad/s"
+    ],
+    "schema_status": "inspected_cubebot_8090_pending_explorer_physical_acceptance",
     "recording_status": "not_verified",
     "training_status": "not_verified",
-    "physical_skill_status": "not_verified"
+    "physical_skill_status": "not_verified",
+    "state_channels": [
+      "previous_forward_command",
+      "previous_lateral_command",
+      "previous_yaw_command"
+    ],
+    "state_provenance": "command_estimate_until_fresh_feedback_contract_is_accepted",
+    "camera_status": "existing_front_rgb_dimensions_to_verify_before_recording",
+    "image_shape": null
   },
   "rosmaster_pick_place": {
     "robot": "rosmaster",
     "fps": 20,
-    "version": 1,
+    "version": 2,
     "task": "Pick up the cube and place it in the box with the base stationary.",
     "policy": "act",
     "camera": "front",
-    "channels": null,
-    "units": null,
-    "schema_status": "BLOCKED_until_driver_inspection",
+    "channels": [
+      "base_rotation",
+      "shoulder",
+      "elbow",
+      "wrist_pitch",
+      "wrist_roll",
+      "gripper"
+    ],
+    "units": [
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees"
+    ],
+    "schema_status": "inspected_cubebot_8090_pending_explorer_physical_acceptance",
     "recording_status": "not_verified",
     "training_status": "not_verified",
-    "physical_skill_status": "not_verified"
+    "physical_skill_status": "not_verified",
+    "state_channels": [
+      "previous_base_rotation_command",
+      "previous_shoulder_command",
+      "previous_elbow_command",
+      "previous_wrist_pitch_command",
+      "previous_wrist_roll_command",
+      "previous_gripper_command"
+    ],
+    "state_provenance": "command_estimate_until_fresh_feedback_contract_is_accepted",
+    "camera_status": "existing_front_rgb_dimensions_to_verify_before_recording",
+    "image_shape": null
   }
 }

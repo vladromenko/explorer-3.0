@@ -1,0 +1,9 @@
+{
+  "source": "/home/vlad/CubeBot/cubebot/web/server.py",
+  "snapshot": "mirror-fix-20261112/candidate",
+  "source_sha256": "5cc9a221eb6b08246f05970917d046a294565ec009f3195e9e993abab34e3f1b",
+  "methods": {
+    "_manual_step": "617fa928c9c0c11fe662e8370f1f3ce0156024727f19fda2a238f57e7ee14896",
+    "_mirror_step": "8ade3f37851e68850f64a99ed94b02b22a784825a5ff5d116b1f8f572c06b46a"
+  }
+}
