@@ -87,14 +87,14 @@ class NativeControls:
 
     # A late control loop (Python GC, camera/IK load) is not by itself a reason to end the
     # session: the native arm jog still blocks steps longer than 0.15 s, and the controller
-    # lease (240 ms) and operator heartbeat (0.4 s) stay the hard limits.
+    # lease (240 ms) and the zero-motion rule for input older than 0.4 s stay the hard limits.
     MAX_DT=.3
 
     def tick(self, dt, now):
         if self.armed:
             if not math.isfinite(dt) or not 0<dt<=self.MAX_DT:
                 self.stop_reason=f'control step {dt:.3f} s';self.stop_all()
-            elif now-self.last_input>=.4:
+            elif now-self.last_input>=1.:  # motion is already zero after 0.4 s in _manual_step
                 self.stop_reason=f'no operator input for {now-self.last_input:.2f} s';self.stop_all()
             elif self.mode=='mirror':
                 self._mirror_step(dt,now)

@@ -50,7 +50,7 @@ def test_single_late_reply_does_not_end_session(op):
 
 
 def test_repeated_timeouts_stop(op):
-    start(op);feed(op,.2);op.agent.fail=1000;feed(op,.8)
+    start(op);feed(op,.2);op.agent.fail=1000;feed(op,1.3)
     assert op.lease is None and 'Нет ответа агента' in op.error and op.agent.stops>=1
 
 

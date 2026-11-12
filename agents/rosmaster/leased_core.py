@@ -8,6 +8,9 @@ NOT_READY=L.RESULT_NAMES.index('NOT_READY')
 
 
 class LeasedCore(BridgeCore):
+    # Session ends after this long without operator commands. Motion itself stops sooner: manual
+    # input older than 0.4 s is treated as zero, and base commands carry a 240 ms controller lease.
+    OPERATOR_TIMEOUT_S = 1.0
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.permitted = False
@@ -50,13 +53,13 @@ class LeasedCore(BridgeCore):
         self.arm_target = None
         self.arm_dirty = False
         self.permitted = True
-        self.operator_until = self.clock()+.4
+        self.operator_until = self.clock()+self.OPERATOR_TIMEOUT_S
         self.stop_reason = None
 
     def heartbeat(self):
         if self.clock()>=self.operator_until:self.disarm('Operator heartbeat expired')
         if not self.permitted:raise PermissionError('Session stopped; explicit enable required')
-        self.operator_until = self.clock()+.4
+        self.operator_until = self.clock()+self.OPERATOR_TIMEOUT_S
 
     def cancel_arm(self):
         self.arm_target = None

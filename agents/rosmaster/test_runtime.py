@@ -34,7 +34,7 @@ def test_stop_expiry_and_reconnect_never_replay_arm_target():
     assert all(k not in (L.ARM,L.ARM_ENABLE) for k,p in link.sent[before:])
     c._set_phase('searching');c._set_phase('ready')
     assert not c.permitted
-    c.last_status=clock[0];c.enable();clock[0]+=.401
+    c.last_status=clock[0];c.enable();clock[0]+=1.001
     with pytest.raises(PermissionError):c.heartbeat()
     assert not c.permitted
 
@@ -61,7 +61,7 @@ def test_native_serial_watchdog_and_explicit_restart(tmp_path):
         for i in range(6):
             runtime.command(session['lease'],i,{'drive':[.2,0,0]});time.sleep(.08)
         assert any(abs(vx)>0 for vx,vy,wz,t in board.base_commands)
-        time.sleep(.6)
+        time.sleep(1.2)
         assert not runtime.armed and not any(board.velocity)
         assert not board.arm_targets
         with pytest.raises(PermissionError):runtime.command(session['lease'],9,{'drive':[1,0,0]})
@@ -84,7 +84,7 @@ def test_transport_watchdog_does_not_wait_for_control_lock(tmp_path):
         runtime.command(session['lease'],0,{'drive':[.2,0,0]})
         time.sleep(.12)
         with runtime.lock:
-            time.sleep(.65)
+            time.sleep(1.25)
             assert not runtime.core.permitted
             assert not any(board.velocity)
     finally:runtime.close();board.close()
@@ -157,6 +157,7 @@ class StubControls:
 class StubIO:
     def __init__(self):self._arm_cmd=[90.]*6;self.base_stops=0
     def stop_base(self):self.base_stops+=1
+    def control_step(self,dt):pass
     def measured_arm(self,max_age=.25):return None
 
 
@@ -191,12 +192,20 @@ def test_controller_arm_cancel_recovers_from_measured_pose_a_bounded_number_of_t
     clock[0]+=.3;runtime.core.state['arm_cancel_pending']=False
     assert not runtime.arm_recovering(clock[0])
     assert runtime.io._arm_cmd==runtime.core.measured and runtime.lease=='L'
-    for i in range(runtime.ARM_RECOVERIES):
+    for i in range(runtime.ARM_CANCEL_MAX):
         clock[0]+=.1;runtime.core.state['arm_cancel_pending']=True;runtime.arm_recovering(clock[0])
         clock[0]+=.1;runtime.core.state['arm_cancel_pending']=False;runtime.arm_recovering(clock[0])
     assert runtime.lease is None and 'отменил движение руки' in runtime.reason
     rows=[json.loads(l) for l in (tmp_path/'logs/control-sessions.jsonl').read_text().splitlines()]
-    assert sum(r['event']=='arm_cancel' for r in rows)==runtime.ARM_RECOVERIES+1
+    assert sum(r['event']=='arm_cancel' for r in rows)==runtime.ARM_CANCEL_MAX+1
+
+
+def test_spaced_arm_cancels_are_recovered_without_limit(tmp_path):
+    runtime,clock=stub_runtime(tmp_path,'rosmaster_manual')
+    for i in range(12):
+        clock[0]+=3.;runtime.core.state['arm_cancel_pending']=True;runtime.arm_recovering(clock[0])
+        clock[0]+=.2;runtime.core.state['arm_cancel_pending']=False;runtime.arm_recovering(clock[0])
+    assert runtime.lease=='L' and runtime.session['recoveries']==12
 
 
 def test_unresolved_arm_cancel_stops(tmp_path):

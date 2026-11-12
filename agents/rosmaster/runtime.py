@@ -98,7 +98,10 @@ class Runtime:
     POSE_MAX_LEAD_DEG=10.
     # Controller-side arm cancellation (stale servo feedback / expired arm lease) is recoverable
     # a few times per session; the base is held and arm targets restart from measured angles.
-    ARM_RECOVERIES=3
+    # Like the native bridge, a controller arm cancellation is recovered transparently; only a
+    # burst (more than ARM_CANCEL_MAX within ARM_CANCEL_WINDOW_S) ends the session.
+    ARM_CANCEL_MAX=5
+    ARM_CANCEL_WINDOW_S=10.
     ARM_RECOVERY_S=1.5
 
     def ages(self,now=None):
@@ -147,7 +150,7 @@ class Runtime:
                             [round(v,1) for v in self.core.servo_deg] if getattr(self.core,'servo_deg',None) is not None else None,
                             self.controls.input.get('arm') if hasattr(self.controls,'input') else None,
                             bool(self.core.state.get('arm_enabled')),bool(self.core.state.get('arm_cancel_pending')),self.core.arm_not_ready))
-                        if not reason and self.arm_recovering(now):pass
+                        if not reason and self.arm_recovering(now,dt):pass
                         elif reason:self.stop(reason)
                         elif self.preparing:self.prepare_step(now,dt)
                         else:
@@ -198,7 +201,7 @@ class Runtime:
         return (core.phase=='ready' and core.last_status is not None and core.clock()-core.last_status<.25
                 and core.state.get('mode')==1 and not core.state.get('fault') and bool(core.state.get('arm_cancel_pending')))
 
-    def arm_recovering(self,now):
+    def arm_recovering(self,now,dt=.05):
         """True while a controller arm cancellation is being resolved; stops the session if it cannot be."""
         session=self.session
         if session is None:return False
@@ -207,17 +210,20 @@ class Runtime:
             if session.get('recovery_at') is None:
                 session['recoveries']=session.get('recoveries',0)+1
                 session['recovery_at']=now
+                recent=[t for t in session.get('cancel_times',[]) if now-t<self.ARM_CANCEL_WINDOW_S]+[now]
+                session['cancel_times']=recent
                 self.record({'at':time.time(),'event':'arm_cancel','recovery':session['recoveries'],
                     'controller':self.controller_detail(now),'ages':self.ages(now),
                     'diagnostics':(self.core.state or {}).get('diagnostics'),'arm_command':self.last_arm_command,
                     'arm_measured':self.core.measured_arm(self.ARM_FEEDBACK_HOLD_S),'preparing':self.preparing,
                     'trace':list(self.trace)})
-                if session['recoveries']>self.ARM_RECOVERIES:
-                    self.stop(f'Контроллер отменил движение руки {session["recoveries"]} раз: '+self.controller_detail(now));return True
-                self.log(f'Рука: контроллер отменил движение ({session["recoveries"]}/{self.ARM_RECOVERIES}), восстановление')
+                if len(recent)>self.ARM_CANCEL_MAX:
+                    self.stop(f'Контроллер отменил движение руки {len(recent)} раз за {self.ARM_CANCEL_WINDOW_S:.0f} с: '+self.controller_detail(now));return True
+                self.log(f'Рука: контроллер отменил движение (№{session["recoveries"]}), восстановление')
                 with self.core_lock:self.core.arm_target=None;self.core.arm_dirty=False
                 self.controls.jog.velocity[:]=0
-            self.io.stop_base()
+            # The cancellation concerns only the arm: keep the base control cycle (deadman, guard, shaping) running.
+            self.io.control_step(dt)
             if now-session['recovery_at']>self.ARM_RECOVERY_S:
                 self.stop('Отмена движения руки не снялась: '+self.controller_detail(now));return True
             return True

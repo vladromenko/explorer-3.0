@@ -177,7 +177,7 @@ class Operator:
     INPUT_HOLD_S=.25
     BROWSER_LOST_S=1.
     COMMAND_TIMEOUT_S=.25
-    COMMAND_LOST_S=.35
+    COMMAND_LOST_S=.8
 
     def record(self,event):
         path=DATA/'logs/rosmaster-control.jsonl';path.parent.mkdir(parents=True,exist_ok=True)

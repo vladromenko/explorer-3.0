@@ -31,6 +31,8 @@ def test_constructor_inert_and_base_does_not_require_arm_feedback():
     assert io.sent[-1]==('base',(.3,0.,0.))
     with pytest.raises(PermissionError):c.set_input({'arm':[1,0,0]},.2)
     c.tick(.05,.6)
+    assert c.armed and io.sent[-1][0]=='base' and io.sent[-1][1][0]==0  # stale input -> zero motion at once
+    c.tick(.05,1.2)
     assert io.sent[-1]==('stop',) and not c.armed
     with pytest.raises(PermissionError):c.set_input({'drive':[1,0,0]},.7)
 
