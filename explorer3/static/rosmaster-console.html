@@ -103,7 +103,7 @@ function render(s){
  $('volts').textContent=b.volts?b.volts.toFixed(2)+' В':'—';$('left').textContent=b.minutes_left!=null?'≈ '+b.minutes_left+' мин':'—';
  $('batnote').textContent=s.battery_stale?'Показание напряжения не обновляется (особенность прошивки при движении)':'';
  $('arm').textContent=s.arm.join(', ');$('tcp').textContent=s.tcp.join(', ');$('blocked').textContent=s.jog_blocked||'—';
- const mi=s.mirror;$('mir').textContent=(mi.on?'включено':'выкл')+' · Leader '+(mi.leader||'—')+(mi.blocked?' · '+mi.blocked:'')+(mi.age!=null?' · данные '+mi.age+' с назад':'');$('mirn').textContent=mi.frames;$('mirt').textContent=mi.target.join(', ');$('mirm').textContent=s.arm_measured?s.arm_measured.join(', '):'нет обратной связи';
+ const mi=s.mirror;$('mir').textContent=(mi.on?'включено':'выкл')+' · Leader '+(mi.leader||'—')+(mi.blocked?' · '+mi.blocked:'')+(mi.age!=null?' · данные '+mi.age+' с назад':'');$('mirn').textContent=mi.frames;$('mirt').textContent=mi.target.map(v=>(+v).toFixed(0)).join(', ');$('mirm').textContent=s.arm_measured?s.arm_measured.map(v=>v==null?'?':(+v).toFixed(1)).join(', '):'нет обратной связи';
  $('gmsg').textContent=s.guard?(s.guard[0]==='translate'?'⚠ препятствие впереди/сбоку — езда ограничена':'⚠ препятствие мешает повороту'):'';
  $('mstate').textContent=s.mission;$('mres').textContent=s.mission_result||'—';
  const R=s.recording||{};const P=R.pilot||{};const pb=$('pilotbar');
