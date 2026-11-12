@@ -68,6 +68,11 @@ async def websocket(socket:WebSocket):
                         await asyncio.to_thread(operator.stop,'Возврат прежнего управления')
                         await asyncio.to_thread(request,'/restore',{},45);state['notice']='Прежнее управление восстановлено'
                     elif action in ('enable','prepare'):
+                        # Connect automatically: start the inert agent and take serial/camera if needed.
+                        health=await asyncio.to_thread(lambda:(ensure_agent(),request('/health'))[1])
+                        if not health.get('hardware_open'):
+                            state['notice']='Подключение ROSMASTER…'
+                            await asyncio.to_thread(request,'/acquire',{},45)
                         result=await asyncio.to_thread(operator.enable,owner,'prepare' if action=='prepare' else 'rosmaster_manual',state['mode'],value.get('observing') is True)
                         state['notice']='Управление уже включено: двигайте клавишами (окно должно быть в фокусе)' if result=='already' else ''
                     elif action=='arm_mode':

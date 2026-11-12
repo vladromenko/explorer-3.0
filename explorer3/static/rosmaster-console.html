@@ -29,7 +29,6 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
 <button onclick="send({action:'acquire'})">Передать управление Explorer</button>
 <button class="go" onclick="send({action:'enable',observing:$('observing').checked})">Включить управление</button>
 <button onclick="send({action:'prepare',observing:$('observing').checked})">Поднять руку · 4 секунды</button>
-<button onclick="send({action:'restore'})">Прежнее управление</button>
 <label><input id="observing" type="checkbox">Я рядом, зарядник отключён, пространство свободно</label>
 <b id="notice" style="color:var(--warn)">Управление выключено</b></nav>
 <main>
@@ -73,6 +72,8 @@ function send(o){if(['stop','enable','prepare','restore','acquire'].includes(o.a
 function armMode(mode){clearControls();send({action:'arm_mode',mode});}
 function act(a,n){clearControls();send({action:a,name:n});}
 function light(level){try{localStorage.setItem('rosmasterLight2',level)}catch(e){}$('video').src='/api/rosmaster/camera.mjpg?light='+level+'&t='+Date.now();$('lightv').textContent=['Как есть','Авто','Ярче','Максимум'][level];this&&this.blur&&this.blur();document.activeElement&&document.activeElement.blur();}
+if(window.top!==window){document.querySelector('header').style.display='none';const back=document.querySelector('nav a[href="/"]');if(back)back.style.display='none';}
+document.addEventListener('pointerdown',()=>window.focus());
 function connect(){ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/rosmaster/console/ws');
  ws.onopen=()=>{$('link').textContent='связь есть';$('link').style.background='#1f3a2c'};
  ws.onclose=()=>{clearControls();$('link').textContent='нет связи';$('link').style.background='#3a1f1f';setTimeout(connect,1000)};

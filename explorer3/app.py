@@ -209,6 +209,12 @@ def index():
                 device_table=ui.table(columns=[{'name':'name','label':'Устройство','field':'name'}, {'name':'state','label':'Фактическое состояние','field':'state'}],
                     rows=[],row_key='name')
                 ui.label('SO-101 управляется Leader. Tank и ROSMASTER подключаются по очереди.').classes('muted')
+                # ROSMASTER: the same full control page (camera, keyboard/gamepad, poses, Leader mirror)
+                # embedded here; it connects the robot on «Включить управление». Loaded only while shown.
+                with ui.column().style('width:100%') as rosmaster_panel:
+                    ui.label('ROSMASTER: щёлкните по панели, затем клавиши/джойстик. Уход фокуса из панели = STOP.').classes('muted')
+                    rosmaster_frame=ui.element('iframe').props('src="about:blank" allow="gamepad"').style(
+                        'width:100%;height:1250px;border:0;border-radius:10px;background:#0e1116')
             with ui.tab_panel(record):
                 task_title=ui.label('Кубик → коробка → отвести руку').style('font-size:20px')
                 task_description=ui.label('').classes('muted')
@@ -369,6 +375,11 @@ def index():
         teleop_button.set_enabled(authorized and supported and idle)
         old_button.set_enabled(authorized and supported and idle)
         tank_controls.set_visibility(control.robot=='tank')
+        rosmaster_panel.set_visibility(control.robot=='rosmaster')
+        for button in (take_button,teleop_button,old_button):button.set_visibility(control.robot!='rosmaster')
+        wanted='/rosmaster/control' if control.robot=='rosmaster' else 'about:blank'
+        if rosmaster_frame.props.get('src')!=wanted:
+            rosmaster_frame.props(f'src="{wanted}"')
         task_title.set_text('Подъехать к видимой цели → остановиться в зоне' if control.robot=='tank' else 'Кубик → коробка → отвести руку')
         task_description.set_text({'so101':'Wrist RGB и измеренные суставы; цель — отправленная команда Follower.',
             'tank':'Передняя RGB; состояние — предыдущая команда, измеренной скорости колёс нет.',
