@@ -47,7 +47,7 @@ class Runtime:
         self.lease=None;self.sequence=-1;self.profile=None;self.preparing=False
         self.error=None;self.reason='Explicit enable required';self.logs=[]
         self.last_arm_command=None;self.last_arm_at=None
-        self.steps=0;self.direct=None;self.direct_source=None
+        self.steps=0;self.direct=None;self.direct_source=None;self.policy_session=False
         self.battery_value=None;self.battery_at=0.;self.odom=None;self.odom_at=0.
         self.scans={};self.controller_started=False
         self.session=None
@@ -266,6 +266,7 @@ class Runtime:
                 if source=='policy' and profile not in {'rosmaster_dock','rosmaster_pick_place'}:
                     raise ValueError('Policy/replay commands need a single-task profile')
                 self.direct_source=source if source=='policy' else None;self.direct=None
+                self.policy_session=source=='policy'
                 if self.preparing:
                     self.begin_pose([90]*6,measured,time.monotonic())
                 else:
@@ -280,7 +281,7 @@ class Runtime:
                 self.stop('Enable failed')
                 raise
 
-    def command(self, lease, sequence, intent, leader=None, mirror=False, direct=None):
+    def command(self, lease, sequence, intent, leader=None, mirror=False, direct=None, source=None):
         with self.lock:
             if not self.lease or not secrets.compare_digest(lease,self.lease):raise PermissionError('Сессия остановлена')
             if type(sequence) is not int:raise ValueError('Invalid command sequence')
@@ -295,6 +296,7 @@ class Runtime:
                 session['last_command']=now;session['commands']+=1
                 if any(abs(v)>1e-3 for v in [*intent.get('drive',[]),*intent.get('arm',[]),intent.get('pitch',0),intent.get('roll',0),intent.get('grip',0)]):
                     session['active_inputs']=session.get('active_inputs',0)+1
+            if source is not None and self.policy_session:self.switch_source(source)
             if direct is not None:
                 if not self.direct_source:raise PermissionError('Session is not a policy/replay session')
                 self.direct=(time.monotonic(),self.validate_direct(direct))
@@ -339,6 +341,18 @@ class Runtime:
     # shaping; arm joint limits, path collision test, 60 deg/s and the 12 deg tracking bound.
     DIRECT_HOLD_S=.25
     DIRECT_ARM_DEG_S=60.
+
+    def switch_source(self,source):
+        """Within a policy session: hand control to the human for a correction and back."""
+        if source not in {'human','policy'}:raise ValueError('Unknown command source')
+        current='policy' if self.direct_source else 'human'
+        if source==current:return
+        self.direct=None;self.io.stop_base()
+        measured=self.io.measured_arm()
+        if measured is not None:self.restart_arm_from(measured)
+        self.controls.input.update(drive=[0,0,0],arm=[0,0,0],pitch=0,roll=0,grip=0)
+        self.direct_source='policy' if source=='policy' else None
+        self.log('Источник команд: '+('политика' if source=='policy' else 'человек (коррекция)'))
 
     def validate_direct(self,direct):
         if self.profile=='rosmaster_dock':
@@ -387,6 +401,8 @@ class Runtime:
                 'base_requested':list(getattr(self.io,'_desired',(0.,0.,0.))),'base_after_limits':list(self.io.last_output),
                 'base_guard':self.io.guard.last_block,'base_sent':list(core.cmd),'base_sent_ns':ns(core.cmd_time) if core.cmd_time>0 else None,
                 'arm_sent':self.last_arm_command,'arm_sent_ns':ns(self.last_arm_at),'arm_blocked':self.controls.jog.blocked,
+                # Target in force at the controller: the measured pose at enable, then each sent command.
+                'arm_target':[float(v) for v in self.io.arm_command()],
                 'arm_measured':measured,'arm_measured_ages_s':[now-t if t is not None else None for t in core.joint_times],
                 'arm_measured_valid':list(core.joint_valid),
                 'base_measured':list(self.odom) if self.odom is not None else None,'base_measured_age_s':odom_age,
@@ -447,7 +463,7 @@ class Runtime:
                         'arm_recoveries':session.get('recoveries',0),'active_inputs':session.get('active_inputs',0),'arm_command':self.last_arm_command,
                         'motion_commands_sent':self.core.motion_commands_sent if self.core else None})
                     self.log('STOP: '+reason)
-            self.preparing=False;self.lease=None;self.direct=None;self.direct_source=None
+            self.preparing=False;self.lease=None;self.direct=None;self.direct_source=None;self.policy_session=False
             if self.core:
                 try:self.controls.stop_all()
                 finally:

@@ -65,7 +65,18 @@ def install(jobs):
                 refresh()
             except Exception as exc:ui.notify(str(exc),type='negative')
         ui.button('Сохранить проект пилота',on_click=create)
-        table=ui.table(columns=[{'name':k,'field':k,'label':v} for k,v in [('id','Пилот'),('profile','Профиль'),('status','Состояние'),('correction_limit_s','Лимит, с')]],rows=[],row_key='id')
+        table=ui.table(columns=[{'name':k,'field':k,'label':v} for k,v in [('id','Пилот'),('profile','Профиль'),('status','Состояние'),('decision_after_s','Точка решения, с'),('assigned_delays_s','Задержки, с'),('correction_limit_s','Лимит, с')]],rows=[],row_key='id',selection='single')
+        ui.label('После короткой физической проверки (робот безопасно ждёт в этой точке, вы успеваете взять управление) зафиксируйте время решения и задержки для выбранного пилота:').classes('text-sm')
+        with ui.row():
+            decision_s=ui.number('Точка решения, с от старта',value=3,min=1,max=60,step=.5)
+            delays_text=ui.input('Задержки помощи, с (через запятую)',value='0, 3')
+            def accept():
+                try:
+                    if not table.selected:raise ValueError('Выберите пилот в таблице')
+                    research.accept_timing(table.selected[0]['id'],float(decision_s.value),[float(v) for v in delays_text.value.split(',') if v.strip()])
+                    ui.notify('Время решения и задержки зафиксированы');refresh()
+                except Exception as exc:ui.notify(str(exc),type='negative')
+            ui.button('Подтвердить точку решения и задержки',on_click=accept)
         counts=ui.label()
         def analyze():
             try:

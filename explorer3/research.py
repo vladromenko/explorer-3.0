@@ -14,6 +14,8 @@ from .profiles import profile
 FEATURES = ('command_change', 'response_change', 'tracking_error', 'observation_age_s',
             'camera_age_s', 'send_latency_s', 'progress', 'assigned_delay_s')
 PHYSICAL = {'response_change', 'tracking_error'}
+# Measured (not command-estimated) response kinds; only these feed the physical features.
+MEASURED_KINDS = {'measured_joint_position', 'servo_position_readback', 'wheel_encoder_velocity'}
 
 
 def features(history, decision_ns, scales, delay_s=0., progress=None):
@@ -34,7 +36,7 @@ def features(history, decision_ns, scales, delay_s=0., progress=None):
     if (dt<=0).any():raise ValueError('Nonmonotonic command history')
     last = rows[-1]
     measured = [r for r in rows if r.get('state_valid') is True
-                and r.get('measured_response_kind') == 'measured_joint_position']
+                and r.get('measured_response_kind') in MEASURED_KINDS]
     response, residual = None, None
     if len(measured) >= 2 and measured[-1] is last:
         states = np.asarray([r['observation.state'] for r in measured], dtype=float)
@@ -79,6 +81,23 @@ def create_study(name, policy_checksum, delays=(0.,), correction_limit=10.):
     with catalog.connect() as db:
         db.execute('INSERT INTO studies VALUES(?,?,?)', (ident, json.dumps(cfg), time.time()))
     return ident
+
+
+def accept_timing(study_id, decision_after_s, delays):
+    """Recorded after the short physical check of the safe decision point and the hold delays."""
+    if not math.isfinite(decision_after_s) or not 1 <= decision_after_s <= 60:
+        raise ValueError('Decision point must be 1..60 s after the trial start')
+    if not delays or any(not math.isfinite(d) or not 0 <= d <= 30 for d in delays):
+        raise ValueError('Delay schedule invalid')
+    with catalog.connect() as db:
+        row = db.execute('SELECT config FROM studies WHERE id=?', (study_id,)).fetchone()
+        if row is None:
+            raise ValueError('Unknown study')
+        cfg = json.loads(row['config'])
+        cfg.update(timing_accepted=True, decision_after_s=float(decision_after_s), assigned_delays_s=[float(d) for d in delays],
+                   status='timing_accepted', timing_accepted_at=time.time())
+        db.execute('UPDATE studies SET config=? WHERE id=?', (json.dumps(cfg), study_id))
+    return cfg
 
 
 def studies():

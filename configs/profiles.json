@@ -59,7 +59,7 @@
   "rosmaster_dock": {
     "robot": "rosmaster",
     "fps": 20,
-    "version": 2,
+    "version": 3,
     "task": "Approach the visible target and stop inside the marked zone.",
     "policy": "act",
     "camera": "front",
@@ -73,23 +73,46 @@
       "m/s",
       "rad/s"
     ],
-    "schema_status": "inspected_cubebot_8090_pending_explorer_physical_acceptance",
+    "schema_status": "explorer_native_agent_v3",
     "recording_status": "not_verified",
     "training_status": "not_verified",
     "physical_skill_status": "not_verified",
     "state_channels": [
+      "measured_forward_velocity",
+      "measured_lateral_velocity",
+      "measured_yaw_velocity",
       "previous_forward_command",
       "previous_lateral_command",
       "previous_yaw_command"
     ],
-    "state_provenance": "command_estimate_until_fresh_feedback_contract_is_accepted",
-    "camera_status": "existing_front_rgb_dimensions_to_verify_before_recording",
-    "image_shape": null
+    "state_provenance": "controller wheel-encoder velocity (measured) + previous command sent to the controller",
+    "camera_status": "orbbec_rgb_on_arm_480x640",
+    "image_shape": [
+      480,
+      640,
+      3
+    ],
+    "state_units": [
+      "m/s",
+      "m/s",
+      "rad/s",
+      "m/s",
+      "m/s",
+      "rad/s"
+    ],
+    "action_provenance": "base command sent to the controller after native speed caps, lidar guard and shaping",
+    "arm_rule": "arm stays still (agent profile refuses arm input)",
+    "feature_scales": [
+      0.3,
+      0.25,
+      0.8
+    ],
+    "pipeline_check": "2026-11-12 PASS on the real robot without motion: 3 episodes x 60 frames at 20.0 Hz, readback PASS, ACT smoke 50 steps batch 8, reload+inference PASS (no commands); not demonstrations"
   },
   "rosmaster_pick_place": {
     "robot": "rosmaster",
     "fps": 20,
-    "version": 2,
+    "version": 3,
     "task": "Pick up the cube and place it in the box with the base stationary.",
     "policy": "act",
     "camera": "front",
@@ -109,20 +132,43 @@
       "native_servo_degrees",
       "native_servo_degrees"
     ],
-    "schema_status": "inspected_cubebot_8090_pending_explorer_physical_acceptance",
+    "schema_status": "explorer_native_agent_v3",
     "recording_status": "not_verified",
     "training_status": "not_verified",
     "physical_skill_status": "not_verified",
     "state_channels": [
-      "previous_base_rotation_command",
-      "previous_shoulder_command",
-      "previous_elbow_command",
-      "previous_wrist_pitch_command",
-      "previous_wrist_roll_command",
-      "previous_gripper_command"
+      "measured_base_rotation",
+      "measured_shoulder",
+      "measured_elbow",
+      "measured_wrist_pitch",
+      "measured_wrist_roll",
+      "measured_gripper"
     ],
-    "state_provenance": "command_estimate_until_fresh_feedback_contract_is_accepted",
-    "camera_status": "existing_front_rgb_dimensions_to_verify_before_recording",
-    "image_shape": null
+    "state_provenance": "servo position readback through the controller (all six joints, fresh <0.6 s)",
+    "camera_status": "orbbec_rgb_on_arm_480x640",
+    "image_shape": [
+      480,
+      640,
+      3
+    ],
+    "state_units": [
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees"
+    ],
+    "action_provenance": "arm target in force at the controller (measured pose at enable, then each sent command)",
+    "base_rule": "base stays still (agent profile refuses drive input)",
+    "feature_scales": [
+      90.0,
+      90.0,
+      90.0,
+      90.0,
+      90.0,
+      90.0
+    ],
+    "pipeline_check": "2026-11-12 PASS on the real robot without motion: 3 episodes x 60 frames at 20.0 Hz, readback PASS, ACT smoke 50 steps batch 8, reload+inference PASS (no commands); not demonstrations"
   }
 }

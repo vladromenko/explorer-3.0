@@ -333,6 +333,12 @@ def index():
                     ui.button('Подготовить повтор записи',on_click=prepare_replay)
                     ui.button('Подготовить испытание checkpoint',on_click=prepare_policy)
                     trial_start_button=ui.button('Запустить разрешённое испытание',on_click=start_trial)
+                    def authorize_trial():
+                        try:
+                            if not prepared_trial[0]:raise ValueError('Сначала подготовьте или выберите план')
+                            trial_plans.authorize(prepared_trial[0]);ui.notify('План разрешён на 3 часа. ROSMASTER: запуск в панели «Управление»')
+                        except Exception as exc:notify_error(exc)
+                    ui.button('Разрешить план (я рядом с роботом)',on_click=authorize_trial)
                 with ui.row():
                     ui.button('Посмотреть запись',on_click=view_selected)
 
@@ -383,7 +389,7 @@ def index():
         task_title.set_text('Подъехать к видимой цели → остановиться в зоне' if control.robot=='tank' else 'Кубик → коробка → отвести руку')
         task_description.set_text({'so101':'Wrist RGB и измеренные суставы; цель — отправленная команда Follower.',
             'tank':'Передняя RGB; состояние — предыдущая команда, измеренной скорости колёс нет.',
-            'rosmaster':'Каналы взяты из CubeBot 8090. Камера и контракт обратной связи Explorer требуют проверки на роботе.'}[control.robot])
+            'rosmaster':'ROSMASTER записывается в панели на вкладке «Управление» → карточка «Запись показа». Подъезд: камера + измеренная скорость колёс → команда базы. Кубик: камера + измеренные 6 суставов → цель руки. 20 Гц.'}[control.robot])
         selected.set_text('Выбран: '+ROBOT_NAMES[control.robot])
         smol_pass=(DATA/'validation/smolvla-pass.json').exists()
         smol_button.set_enabled(smol_pass and task.value=='so101_pick_place')

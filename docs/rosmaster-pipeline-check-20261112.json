@@ -1,0 +1,145 @@
+{
+  "started": 1794499376.168283,
+  "motion_commands_sent": "none (no armed session)",
+  "profiles": {
+    "rosmaster_dock": {
+      "episodes": [
+        {
+          "episode_id": "ea030b60897642719717cb5f6267285b",
+          "frames": 61,
+          "actual_hz": 20.1903712143907,
+          "interval_ms_p50_p95_max": [
+            49.823021499999996,
+            54.9164951,
+            56.05468
+          ],
+          "reused_camera_frames": 16,
+          "camera_age_ms_p95": 71.18765,
+          "readback": "PASS"
+        },
+        {
+          "episode_id": "986880bfbd734c2aa75a0ed25760a743",
+          "frames": 61,
+          "actual_hz": 19.969834825612025,
+          "interval_ms_p50_p95_max": [
+            50.024678,
+            56.35325475,
+            60.673391
+          ],
+          "reused_camera_frames": 16,
+          "camera_age_ms_p95": 69.692659,
+          "readback": "PASS"
+        },
+        {
+          "episode_id": "84f36f47c4bb49c09767b493e3910529",
+          "frames": 61,
+          "actual_hz": 19.99270239705571,
+          "interval_ms_p50_p95_max": [
+            50.0821045,
+            56.27896525,
+            62.80703
+          ],
+          "reused_camera_frames": 15,
+          "camera_age_ms_p95": 68.682388,
+          "readback": "PASS"
+        }
+      ],
+      "smoke": {
+        "job": "dad18009e6284988ac5615f6f5a8850e",
+        "status": "completed",
+        "error": null,
+        "result": {
+          "checkpoint": "/home/jetsonnx/.local/share/explorer3/pipeline-check/20261112-190255/checkpoints/dad18009e6284988ac5615f6f5a8850e-b8/checkpoints/last/pretrained_model",
+          "effective_batch": 8,
+          "seed": 1000,
+          "smoke": true,
+          "steps": 50,
+          "plan_id": "2d5361da972567ead3bdeeb8fc763c3f3d686ae656ddf7de169fc71ddaa55db4",
+          "physical_skill_verified": false,
+          "test_used": false
+        },
+        "reload": {
+          "reload": "PASS",
+          "inference": "PASS",
+          "action_shape": [
+            1,
+            3
+          ],
+          "latency_seconds": 0.4009410319849849,
+          "motor_commands_sent": false,
+          "physical_skill_verified": false
+        }
+      }
+    },
+    "rosmaster_pick_place": {
+      "episodes": [
+        {
+          "episode_id": "c4ba93c114d14c7b87d9516403a836e1",
+          "frames": 61,
+          "actual_hz": 19.9941292038184,
+          "interval_ms_p50_p95_max": [
+            49.957206,
+            56.648079749999994,
+            71.115846
+          ],
+          "reused_camera_frames": 16,
+          "camera_age_ms_p95": 68.810651,
+          "readback": "PASS"
+        },
+        {
+          "episode_id": "1bc7fa7f34d6410f872ec04a28890863",
+          "frames": 62,
+          "actual_hz": 20.023384095752295,
+          "interval_ms_p50_p95_max": [
+            50.09062,
+            55.957499,
+            64.026433
+          ],
+          "reused_camera_frames": 16,
+          "camera_age_ms_p95": 67.8573599,
+          "readback": "PASS"
+        },
+        {
+          "episode_id": "9f9cacb2b9af4a30a31915055d8c8d67",
+          "frames": 61,
+          "actual_hz": 19.97551301736766,
+          "interval_ms_p50_p95_max": [
+            49.964729500000004,
+            59.1823839,
+            64.045987
+          ],
+          "reused_camera_frames": 15,
+          "camera_age_ms_p95": 69.573655,
+          "readback": "PASS"
+        }
+      ],
+      "smoke": {
+        "job": "f50a3792648d463895dbaf4609763605",
+        "status": "completed",
+        "error": null,
+        "result": {
+          "checkpoint": "/home/jetsonnx/.local/share/explorer3/pipeline-check/20261112-190255/checkpoints/f50a3792648d463895dbaf4609763605-b8/checkpoints/last/pretrained_model",
+          "effective_batch": 8,
+          "seed": 1000,
+          "smoke": true,
+          "steps": 50,
+          "plan_id": "8c4fb9e4fd567782cb450dfc30377e35497a9eff49c171889a300f2a51168cad",
+          "physical_skill_verified": false,
+          "test_used": false
+        },
+        "reload": {
+          "reload": "PASS",
+          "inference": "PASS",
+          "action_shape": [
+            1,
+            6
+          ],
+          "latency_seconds": 0.3789029950276017,
+          "motor_commands_sent": false,
+          "physical_skill_verified": false
+        }
+      }
+    }
+  },
+  "finished": 1794499623.815771
+}

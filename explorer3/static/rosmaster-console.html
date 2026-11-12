@@ -22,6 +22,7 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
 .help{font-size:12.5px;color:var(--dim)}.help b{color:var(--text)}
 </style></head><body>
 <div class="banner" id="dry">DRY-RUN: движение не отправляется</div>
+<div class="banner" id="pilotbar" style="background:#ff5d5d;color:#fff;font-size:18px"></div>
 <header><h1>Explorer 3.0 · Rosmaster</h1><span class="pill" id="mode">manual</span><span class="pill" id="link">нет связи</span>
 <span class="grow"></span><span id="bat" class="pill">батарея …</span></header>
 <nav style="display:flex;gap:8px;padding:8px 16px;align-items:center;flex-wrap:wrap">
@@ -61,7 +62,22 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
    <div class="help">Поток Leader запускается на Homebrain. Дождитесь поступления кадров, затем включите зеркало. Текущая поза руки и захвата принимается за начало; после потери связи включите зеркало заново. Начинайте с малых движений.</div>
    <div class="kv" style="margin-top:6px"><span>Состояние</span><span id="mir">выкл</span><span>Кадров</span><span id="mirn">0</span><span>Цель</span><span id="mirt">—</span><span>Измерено</span><span id="mirm">—</span></div>
    <div class="row" style="margin-top:8px"><button onclick="send({action:'leader'})">Подключить Leader</button><button onclick="send({action:'leader_off'})">Отключить Leader</button><button class="go" onclick="send({action:'mirror',on:true})">Включить</button><button onclick="send({action:'mirror',on:false})">Выключить</button></div></div>
-  <div class="card"><h2>Показы и обучение Explorer</h2><div class="help">Запись ROSMASTER ещё не принята. Ручное управление и зеркало — на этом экране.</div><a href="/" style="color:var(--acc)">Датасеты и обучение</a><span id="mstate" hidden></span><span id="mres" hidden></span></div>
+  <div class="card"><h2>Запись показа (LeRobot)</h2>
+   <div class="help">1) Выберите задачу и расстановку. 2) Галочка «Я рядом…». 3) «Начать запись» — управление включится для этой задачи. 4) Покажите задачу клавишами/джойстиком. 5) Отметьте исход. Подъезд: рука не двигается. Кубик: база стоит.</div>
+   <div class="row" style="margin-top:8px"><select id="rprof"><option value="rosmaster_pick_place">Кубик → коробка (рука)</option><option value="rosmaster_dock">Подъезд к цели (база)</option></select>
+    <select id="rcat"><option value="demonstration">Показ</option><option value="correction">Коррекция</option></select>
+    <input id="rscene" value="scene-01" size="9" title="Расстановка: меняйте при новой расстановке предметов"></div>
+   <div class="row" style="margin-top:8px"><button class="go" onclick="send({action:'record_start',profile:$('rprof').value,category:$('rcat').value,scene:$('rscene').value,observing:$('observing').checked})">● Начать запись</button>
+    <button onclick="send({action:'record_finish',outcome:'success'})">Успех</button><button onclick="send({action:'record_finish',outcome:'failure'})">Неуспех</button><button onclick="send({action:'record_finish',outcome:'aborted'})">Прервать</button></div>
+   <div class="kv" style="margin-top:6px"><span>Запись</span><span id="rstate">—</span></div></div>
+  <div class="card"><h2>Испытание: повтор записи / политика</h2>
+   <div class="help">План готовится во вкладке «Испытания» Explorer и требует отдельного разрешения. Пока идёт испытание, STOP и потеря вкладки останавливают робота.</div>
+   <div class="row" style="margin-top:8px"><select id="tplan"><option value="">нет планов</option></select>
+    <select id="tstudy"><option value="">без пилота</option></select>
+    <button onclick="send({action:'trial_start',plan:$('tplan').value,study:$('tstudy').value,scene:$('rscene').value,observing:$('observing').checked})">Запустить</button></div>
+   <div class="row" style="margin-top:8px"><button onclick="send({action:'correction_done'})">Коррекция готова → политике</button><button class="stop" style="flex:0" onclick="send({action:'emergency'})">Аварийное вмешательство</button></div>
+   <div class="help">Исход испытания отмечайте кнопками «Успех / Неуспех / Прервать» выше.</div>
+   <a href="/" style="color:var(--acc)">Датасеты, обучение, исследование</a><span id="mstate" hidden></span><span id="mres" hidden></span></div>
   <div class="card"><div class="row"><button class="stop" onclick="send({action:'stop'})">STOP</button></div></div>
   <div class="card"><h2>Журнал</h2><div id="log"></div></div>
 </aside></main>
@@ -90,6 +106,13 @@ function render(s){
  const mi=s.mirror;$('mir').textContent=(mi.on?'включено':'выкл')+' · Leader '+(mi.leader||'—')+(mi.blocked?' · '+mi.blocked:'')+(mi.age!=null?' · данные '+mi.age+' с назад':'');$('mirn').textContent=mi.frames;$('mirt').textContent=mi.target.join(', ');$('mirm').textContent=s.arm_measured?s.arm_measured.join(', '):'нет обратной связи';
  $('gmsg').textContent=s.guard?(s.guard[0]==='translate'?'⚠ препятствие впереди/сбоку — езда ограничена':'⚠ препятствие мешает повороту'):'';
  $('mstate').textContent=s.mission;$('mres').textContent=s.mission_result||'—';
+ const R=s.recording||{};const P=R.pilot||{};const pb=$('pilotbar');
+ if(R.phase==='recording'&&P.phase==='human'){pb.style.display='block';pb.textContent='ВАША КОРРЕКЦИЯ: управляйте клавишами/джойстиком · осталось '+Math.max(0,Math.round((P.until*1000-Date.now())/1000))+' с · затем «Коррекция готова»';}
+ else if(R.phase==='recording'&&P.phase==='decided'&&P.assigned){pb.style.display='block';pb.textContent='Робот ждёт помощи (удержание '+P.delay_s+' с) — приготовьтесь';}
+ else pb.style.display='none';
+ const ts=$('tstudy'),sids=(s.studies||[]).map(p=>p.id).join(',');if(ts.dataset.ids!==sids){ts.dataset.ids=sids;ts.innerHTML='<option value="">без пилота</option>'+(s.studies||[]).map(p=>'<option value="'+p.id+'">'+p.label+'</option>').join('');}
+ $('rstate').textContent=R.phase&&R.phase!=='idle'?(R.phase==='recording'?'● идёт · ':R.phase+' · ')+(R.profile||'')+' · кадров '+R.frames+(R.hz?' · '+R.hz+' Гц':''):'нет'+(R.outcome?' · последняя: '+R.outcome+(R.error?' ('+R.error+')':''):'');
+ const tp=$('tplan'),ids=(s.plans||[]).map(p=>p.id).join(',');if(tp.dataset.ids!==ids){tp.dataset.ids=ids;tp.innerHTML=(s.plans||[]).length?(s.plans.map(p=>'<option value="'+p.id+'">'+p.label+'</option>').join('')):'<option value="">нет планов</option>';}
  const L=$('log');const atEnd=L.scrollTop+L.clientHeight>=L.scrollHeight-8;L.textContent=s.log.join('\n');if(atEnd)L.scrollTop=L.scrollHeight;}
 const map={w:['d',0,1],s:['d',0,-1],a:['d',1,1],d:['d',1,-1],q:['d',2,1],e:['d',2,-1],i:['a',0,1],k:['a',0,-1],j:['a',1,1],l:['a',1,-1],r:['a',2,1],f:['a',2,-1]};
 // Only text entry swallows keys. A focused checkbox/button must not (Safari keeps focus on the

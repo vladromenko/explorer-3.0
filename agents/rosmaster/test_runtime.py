@@ -240,3 +240,33 @@ def test_single_clock_outlier_is_ignored_and_small_steps_smoothed():
         target=[1_300_000];c._handle(L.IDENTITY,b'',1.);assert c.link.mcu_offset_us==1_000_200
         target=[1_300_500];c._handle(L.IDENTITY,b'',1.);assert c.link.mcu_offset_us==1_300_500
     finally:BridgeCore._handle=original
+
+
+class DirectIO(StubIO):
+    def __init__(self):
+        super().__init__();self.drives=[];self.moves=[];self.measured=[90.]*6
+    def drive(self,vx,vy,wz,manual=False):self.drives.append((vx,vy,wz))
+    def measured_arm(self,max_age=.25):return list(self.measured)
+    def arm_command(self):return list(self._arm_cmd)
+    def move_arm(self,servo,duration_ms=None,wait=True,check=True):self.moves.append(list(servo));self._arm_cmd=list(servo)
+
+
+def test_policy_actions_are_shape_checked_rate_limited_and_never_leave_tracking(tmp_path):
+    runtime,clock=stub_runtime(tmp_path,'rosmaster_pick_place');runtime.io=DirectIO();runtime.direct_source='policy'
+    with pytest.raises(ValueError):runtime.validate_direct({'base':[1,0,0]})
+    runtime.direct=(clock[0],runtime.validate_direct({'arm':[90,120,90,90,90,90]}))
+    import time as t
+    runtime.direct=(t.monotonic(),runtime.direct[1]);runtime.direct_step(.05,t.monotonic())
+    assert runtime.io.moves[-1][1]==93.  # 60 deg/s * 0.05 s
+    runtime.io.measured=[90.]*6;runtime.io._arm_cmd=[90,105,90,90,90,90]
+    with pytest.raises(RuntimeError):runtime.direct_step(.05,t.monotonic())
+    runtime.direct=(t.monotonic()-1,runtime.direct[1]);runtime.direct_step(.05,t.monotonic())
+    assert runtime.io.drives[-1]==(0.,0.,0.)
+
+
+def test_dock_policy_actions_are_capped_by_native_manual_limits(tmp_path):
+    import time as t
+    runtime,clock=stub_runtime(tmp_path,'rosmaster_dock');runtime.io=DirectIO();runtime.direct_source='policy'
+    with pytest.raises(ValueError):runtime.validate_direct({'arm':[90]*6})
+    runtime.direct=(t.monotonic(),runtime.validate_direct({'base':[5,-5,9]}));runtime.direct_step(.05,t.monotonic())
+    b=runtime.cfg['manual_base'];assert runtime.io.drives[-1]==(b['max_vx'],-b['max_vy'],b['max_wz'])

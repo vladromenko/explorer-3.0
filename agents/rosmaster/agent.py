@@ -141,7 +141,7 @@ def command(value:dict=Body(...)):
     current=runtime
     if current is None:raise HTTPException(409,'Runtime not acquired')
     try:return current.command(value.get('lease',''),value.get('sequence'),value.get('intent',{}),
-                                    value.get('leader'),value.get('mirror') is True,value.get('direct'))
+                                    value.get('leader'),value.get('mirror') is True,value.get('direct'),value.get('source'))
     except (ValueError,RuntimeError,PermissionError,TypeError) as exc:
         if value.get('lease')==current.lease:current.stop('Command rejected: '+str(exc))
         raise HTTPException(409,str(exc)) from exc

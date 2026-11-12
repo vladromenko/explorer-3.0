@@ -60,12 +60,13 @@ class Operator:
         self.leader=None;self.leader_sample=None;self.leader_thread=None;self.leader_done=threading.Event()
         self.mirror=False;self.done=threading.Event();self.operation=threading.Lock()
         self.leader_count=0;self.leader_owner=None;self.leader_error=None
+        self.direct=None;self.source=None
         self.thread=threading.Thread(target=self.run,daemon=True);self.thread.start()
 
     def input(self,owner,value):
         with self.lock:self.inputs[owner]=(time.monotonic(),value)
 
-    def enable(self,owner,profile,arm_mode,observing):
+    def enable(self,owner,profile,arm_mode,observing,source='human'):
         if not enabled():raise PermissionError('Ручное управление ROSMASTER ещё не разрешено')
         with self.operation:
             with self.lock:
@@ -77,12 +78,13 @@ class Operator:
                 if any(intent['drive']+intent['arm']+[intent['pitch'],intent['roll'],intent['grip']]):
                     raise RuntimeError('Отпустите клавиши и джойстик перед включением')
                 generation=self.generation
-            response=request('/session',{'profile':profile,'arm_mode':arm_mode,'observing':observing})
+            response=request('/session',{'profile':profile,'arm_mode':arm_mode,'observing':observing,'source':source})
             with self.lock:
                 if generation!=self.generation:
                     request('/stop',{})
                     raise RuntimeError('STOP во время включения')
-                self.owner=owner;self.lease=response['lease'];self.sequence=0;self.error=None
+                self.owner=owner;self.lease=response['lease'];self.sequence=0;self.error=None;self.direct=None;self.source=None
+                self.status={'profile':profile,'armed':True,'source':source}
 
     def stop(self,reason='STOP'):
         with self.lock:
@@ -90,7 +92,7 @@ class Operator:
             if self.lease is not None:
                 self.record({'reason':reason,'source':'homebrain','browser_age_s':round(time.monotonic()-stamp,3) if stamp else None,
                              **getattr(self,'stats',{})})
-            self.generation+=1;self.lease=None;self.owner=None;self.mirror=False
+            self.generation+=1;self.lease=None;self.owner=None;self.mirror=False;self.direct=None;self.source=None
             self.error=reason
         try:request('/stop',{},timeout=1)
         except (OSError,ValueError,httpx.HTTPError,RuntimeError) as exc:
@@ -154,6 +156,14 @@ class Operator:
             if self.leader_sample is None or time.monotonic()-self.leader_sample[0]>.2:raise RuntimeError('Нет свежих данных Leader: нажмите «Подключить Leader»')
             self.mirror=True
 
+    def set_source(self,value):
+        """'policy' or 'human' inside a policy session (pilot correction hand-over)."""
+        with self.lock:self.source=value;self.direct=None
+
+    def set_direct(self,value):
+        """Policy/replay action for the current single-task session; None clears it."""
+        with self.lock:self.direct=(time.monotonic(),value) if value is not None else None
+
     def disable_mirror(self,owner):
         with self.lock:self.mirror=False
 
@@ -202,6 +212,8 @@ class Operator:
                 if age>self.INPUT_HOLD_S:intent={**ZERO,'free':False}
                 packet={'lease':lease,'sequence':self.sequence,'intent':intent,'mirror':self.mirror}
                 if sample is not None and last-sample[0]<.2:packet['leader']=sample[1]
+                if self.direct is not None and last-self.direct[0]<.3:packet['direct']=self.direct[1]
+                if self.source:packet['source']=self.source
             if not lease:
                 self.stats={};continue
             stats=self.stats

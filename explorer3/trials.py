@@ -57,9 +57,18 @@ def load(ident):
     return json.loads((DATA/'trials'/(ident+'.json')).read_text())
 
 
+def authorize(ident, hours=3.):
+    """Operator's explicit permission for one prepared plan, limited in time."""
+    plan=load(ident)
+    path=DATA/'configs'/('trial-'+plan['id']+'-authorized.json')
+    path.write_text(json.dumps({'trial_id':plan['id'],'profile':plan['profile'],'authorized_at':time.time(),
+                                'expires_at':time.time()+hours*3600,'by':'operator in Explorer UI'}))
+    return path
+
+
 def require_physical(plan):
     local_work.require_hardware_mode()
-    if plan['profile']!='so101_pick_place':
+    if plan['profile'] not in {'so101_pick_place','rosmaster_dock','rosmaster_pick_place'}:
         raise PermissionError('Исполнитель этого профиля ещё не принят; план сохранён без движения')
     approval=DATA/'configs'/('trial-'+plan['id']+'-authorized.json')
     if not approval.exists():

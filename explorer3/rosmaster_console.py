@@ -9,6 +9,27 @@ from fastapi.responses import HTMLResponse
 from starlette.websockets import WebSocketDisconnected
 from nicegui import app
 from .rosmaster_control import operator, request, connection, ensure_agent
+from .rosmaster_session import RosmasterSession, PROFILES
+from .paths import DATA
+
+recorder=RosmasterSession(operator)
+_plans={'at':0,'items':[]}
+
+
+def plans():
+    """Prepared ROSMASTER trial plans (replay/policy), refreshed at most every 2 s."""
+    if time.monotonic()-_plans['at']>2:
+        items=[]
+        for path in sorted((DATA/'trials').glob('*.json')):
+            plan=json.loads(path.read_text())
+            if plan.get('profile') in PROFILES:
+                items.append({'id':plan['id'],'label':plan['profile']+' · '+plan['kind']+' · '+plan['id'][:8]})
+        from . import research
+        research.initialize()
+        studies=[{'id':st['id'],'label':st['profile']+' · пилот '+st['id'][:8]+(' · точка '+str(st.get('decision_after_s'))+' с' if st.get('timing_accepted') else ' · время не подтверждено')}
+                 for st in research.studies() if st.get('profile') in PROFILES]
+        _plans.update(at=time.monotonic(),items=items,studies=studies)
+    return _plans['items']
 
 
 @app.get('/rosmaster/control',response_class=HTMLResponse)
@@ -31,6 +52,7 @@ def telemetry(health,mode,notice):
                   'leader':'ошибка' if operator.leader_error else 'подключён' if sample else 'не подключён',
                   'age':round(age,2) if age is not None else None,'target':s.get('mirror_target') or []},
         'guard':s.get('guard'),'mission':'не запущена','mission_result':None,
+        'recording':recorder.status(),'plans':plans(),'studies':_plans.get('studies',[]),'session_profile':s.get('profile'),
         'log':(s.get('logs',[])+([operator.error] if operator.error else [])+([notice] if notice else []))[-14:]}
 
 
@@ -75,6 +97,39 @@ async def websocket(socket:WebSocket):
                             await asyncio.to_thread(request,'/acquire',{},45)
                         result=await asyncio.to_thread(operator.enable,owner,'prepare' if action=='prepare' else 'rosmaster_manual',state['mode'],value.get('observing') is True)
                         state['notice']='Управление уже включено: двигайте клавишами (окно должно быть в фокусе)' if result=='already' else ''
+                    elif action in ('record_start','trial_start'):
+                        if recorder.active():raise RuntimeError('Сначала закончите текущую запись')
+                        plan=None
+                        if action=='trial_start':
+                            from . import trials
+                            plan=trials.load(str(value.get('plan','')))
+                            trials.require_physical(plan)
+                            name=plan['profile']
+                            study=None
+                            if value.get('study'):
+                                from . import research
+                                study=next((x for x in research.studies() if x['id']==value.get('study')),None)
+                                if study is None:raise ValueError('Исследование не найдено')
+                        else:name=value.get('profile');study=None
+                        if name not in PROFILES:raise ValueError('Выберите задачу ROSMASTER')
+                        source='policy' if plan else 'human'
+                        current=operator.status or {}
+                        if not (operator.owner==owner and operator.lease and current.get('profile')==name and current.get('source','human')==source):
+                            if operator.lease:await asyncio.to_thread(operator.stop,'Переключение на задачу '+name)
+                            health=await asyncio.to_thread(lambda:(ensure_agent(),request('/health'))[1])
+                            if not health.get('hardware_open'):await asyncio.to_thread(request,'/acquire',{},45)
+                            await asyncio.to_thread(operator.enable,owner,name,state['mode'],value.get('observing') is True,source)
+                        recorder.start(owner,name,str(value.get('scene','scene-01'))[:60],
+                                       'correction' if value.get('category')=='correction' else 'demonstration',
+                                       str(value.get('collection') or time.strftime('%Y-%m-%d')+'-'+name)[:80],plan=plan,study=study)
+                        state['notice']=('Испытание' if plan else 'Запись')+' идёт: '+name+'. Затем «Успех», «Неуспех» или «Прервать»'
+                    elif action=='record_finish':
+                        recorder.finish(value.get('outcome'));state['notice']='Сохранение эпизода: '+str(value.get('outcome'))
+                    elif action=='correction_done':
+                        recorder.end_correction();state['notice']='Коррекция завершена, управление у политики'
+                    elif action=='emergency':
+                        await asyncio.to_thread(operator.stop,'Аварийное вмешательство оператора')
+                        recorder.finish('aborted',emergency=True);state['notice']='Аварийное вмешательство: STOP, эпизод помечен'
                     elif action=='arm_mode':
                         if value.get('mode') not in {'cartesian','joint'}:raise ValueError('Неизвестный режим руки')
                         if operator.owner==owner:await asyncio.to_thread(operator.stop,'Смена режима руки')
