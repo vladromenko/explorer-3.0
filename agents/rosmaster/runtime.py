@@ -50,6 +50,8 @@ class Runtime:
         self.battery_value=None;self.battery_at=0.;self.odom=None;self.odom_at=0.
         self.scans={};self.controller_started=False
         self.session=None
+        from collections import deque
+        self.trace=deque(maxlen=60)  # last ~3 s of arm command/measurement/input for diagnostics
         self.cfg=config.load()
         self.cfg['mission']['stop_file']=str(self.root/'STOP')
         self.model=ArmModel(self.cfg['arm']['tcp_offset_m'])
@@ -138,6 +140,10 @@ class Runtime:
                         elif now>=self.core.operator_until:reason='Browser / Homebrain heartbeat lost'
                         elif self.profile!='rosmaster_dock' and self.core.measured_arm(self.ARM_FEEDBACK_HOLD_S) is None:
                             reason='Arm feedback lost: '+json.dumps(self.ages(now)['joints_s'])
+                        self.trace.append((round(now,3),self.last_arm_command,
+                            [round(v,1) for v in self.core.servo_deg] if getattr(self.core,'servo_deg',None) is not None else None,
+                            self.controls.input.get('arm') if hasattr(self.controls,'input') else None,
+                            bool(self.core.state.get('arm_enabled')),bool(self.core.state.get('arm_cancel_pending')),self.core.arm_not_ready))
                         if not reason and self.arm_recovering(now):pass
                         elif reason:self.stop(reason)
                         elif self.preparing:self.prepare_step(now,dt)
@@ -178,7 +184,8 @@ class Runtime:
                 self.record({'at':time.time(),'event':'arm_cancel','recovery':session['recoveries'],
                     'controller':self.controller_detail(now),'ages':self.ages(now),
                     'diagnostics':(self.core.state or {}).get('diagnostics'),'arm_command':self.last_arm_command,
-                    'arm_measured':self.core.measured_arm(self.ARM_FEEDBACK_HOLD_S),'preparing':self.preparing})
+                    'arm_measured':self.core.measured_arm(self.ARM_FEEDBACK_HOLD_S),'preparing':self.preparing,
+                    'trace':list(self.trace)})
                 if session['recoveries']>self.ARM_RECOVERIES:
                     self.stop(f'Контроллер отменил движение руки {session["recoveries"]} раз: '+self.controller_detail(now));return True
                 self.log(f'Рука: контроллер отменил движение ({session["recoveries"]}/{self.ARM_RECOVERIES}), восстановление')
