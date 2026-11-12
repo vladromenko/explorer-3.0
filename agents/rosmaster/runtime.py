@@ -26,10 +26,21 @@ class NativeIO(BaseIO):
         self.runtime=runtime
 
     def now(self):return time.monotonic()
+    # A servo resting at a mechanical limit reads a fraction of a degree past it (seen: elbow -0.9,
+    # gripper 29.7). Within this margin the reading is pulled onto the limit so it can seed commands.
+    LIMIT_MARGIN_DEG=3.
+
     def measured_arm(self,max_age=.25):
         measured=self.runtime.core.measured_arm(max_age)
-        # Match the original ArmJoints ROS message conversion used by Console 8090.
-        return [float(round(v)) for v in measured] if measured is not None else None
+        if measured is None:return None
+        from cubebot.arm_model import SERVO_LIMITS
+        values=[]
+        for v,(lo,hi) in zip(measured,SERVO_LIMITS):
+            if lo-self.LIMIT_MARGIN_DEG<=v<lo:v=lo
+            elif hi<v<=hi+self.LIMIT_MARGIN_DEG:v=hi
+            # Match the original ArmJoints ROS message conversion used by Console 8090.
+            values.append(float(round(v)))
+        return values
     def battery(self):return self.runtime.voltage()
     def _publish_twist(self,*values):
         with self.runtime.core_lock:self.runtime.core.on_cmd_vel(*values)
@@ -127,52 +138,70 @@ class Runtime:
             self.scans[topic]=(data,now)
 
     def run(self):
-        last=time.monotonic()
-        try:
-            while not self.done.wait(max(0,.05-(time.monotonic()-last))):
-                now=time.monotonic();dt=now-last;last=now
-                self.steps+=1
+        """A fault in one control step ends the session, not the agent; serial loss stays fatal."""
+        while not self.done.is_set():
+            try:
+                self.control_loop();return
+            except Exception as exc:
+                message=f'{type(exc).__name__}: {exc}'
+                fatal=not (self.link and self.link.thread.is_alive())
+                import traceback
+                self.record({'at':time.time(),'event':'loop_fault','fatal':fatal,'error':message,
+                             'traceback':traceback.format_exc()[-2000:]})
                 with self.lock:
-                    if self.armed:
-                        reason=None
-                        volts=self.voltage(self.BATTERY_HOLD_S)
-                        if self.session:self.session['max_loop_dt']=max(self.session['max_loop_dt'],dt)
-                        if dt>self.LOOP_DEADLINE_S:reason=f'Control loop deadline missed ({dt:.3f} s)'
-                        elif not self.core.ready() and not self.arm_cancel_only():
-                            reason='Controller feedback lost: '+self.controller_detail(now)
-                        elif volts is None:reason=f'Battery telemetry stale (>{self.BATTERY_HOLD_S:.0f} s)'
-                        elif volts<self.cfg['mission']['min_battery_v']:reason='Low battery'
-                        elif (self.root/'STOP').exists():reason='STOP file'
-                        elif now>=self.core.operator_until:reason='Browser / Homebrain heartbeat lost'
-                        elif self.profile!='rosmaster_dock' and self.core.measured_arm(self.ARM_FEEDBACK_HOLD_S) is None:
-                            reason='Arm feedback lost: '+json.dumps(self.ages(now)['joints_s'])
-                        self.trace.append((round(now,3),self.last_arm_command,
-                            [round(v,1) for v in self.core.servo_deg] if getattr(self.core,'servo_deg',None) is not None else None,
-                            self.controls.input.get('arm') if hasattr(self.controls,'input') else None,
-                            bool(self.core.state.get('arm_enabled')),bool(self.core.state.get('arm_cancel_pending')),self.core.arm_not_ready))
-                        if not reason and self.arm_recovering(now,dt):pass
-                        elif reason:self.stop(reason)
-                        elif self.preparing:self.prepare_step(now,dt)
-                        else:
+                    if fatal:self.error=message
+                    try:self.stop(('Связь с контроллером потеряна: ' if fatal else 'Ошибка цикла управления: ')+message)
+                    finally:self.log(('Фатально: ' if fatal else 'Ошибка цикла: ')+message)
+                if fatal:return
+                self.done.wait(.1)
+
+    def control_loop(self):
+        last=time.monotonic()
+        while not self.done.wait(max(0,.05-(time.monotonic()-last))):
+            now=time.monotonic();dt=now-last;last=now
+            self.steps+=1
+            with self.lock:
+                if self.armed:
+                    reason=None
+                    volts=self.voltage(self.BATTERY_HOLD_S)
+                    if self.session:self.session['max_loop_dt']=max(self.session['max_loop_dt'],dt)
+                    if dt>self.LOOP_DEADLINE_S:reason=f'Control loop deadline missed ({dt:.3f} s)'
+                    elif not self.core.ready() and not self.arm_cancel_only():
+                        reason='Controller feedback lost: '+self.controller_detail(now)
+                    elif volts is None:reason=f'Battery telemetry stale (>{self.BATTERY_HOLD_S:.0f} s)'
+                    elif volts<self.cfg['mission']['min_battery_v']:reason='Low battery'
+                    elif (self.root/'STOP').exists():reason='STOP file'
+                    elif now>=self.core.operator_until:reason='Browser / Homebrain heartbeat lost'
+                    elif self.profile!='rosmaster_dock' and self.core.measured_arm(self.ARM_FEEDBACK_HOLD_S) is None:
+                        reason='Arm feedback lost: '+json.dumps(self.ages(now)['joints_s'])
+                    self.trace.append((round(now,3),self.last_arm_command,
+                        [round(v,1) for v in self.core.servo_deg] if getattr(self.core,'servo_deg',None) is not None else None,
+                        self.controls.input.get('arm') if hasattr(self.controls,'input') else None,
+                        bool(self.core.state.get('arm_enabled')),bool(self.core.state.get('arm_cancel_pending')),self.core.arm_not_ready))
+                    if not reason and self.arm_recovering(now,dt):pass
+                    elif reason:self.stop(reason)
+                    elif self.preparing:self.prepare_step(now,dt)
+                    else:
+                        try:
                             if self.direct_source:self.direct_step(dt,now)
                             else:self.controls.tick(dt,now)
-                            if not self.controls.armed:self.stop('Native controls stopped: '+str(self.controls.stop_reason or self.controls.mirror.blocked or self.controls.jog.blocked))
-                            else:
-                                parts=[]
-                                for name,(scan,stamp) in self.scans.items():
-                                    if now-stamp<.5:
-                                        parts.append(scan_to_base(scan['ranges'],0,2*math.pi/666,.02,12,
-                                            self.cfg['odometry']['lidar_mounts'][name]))
-                                self.io.scan=build_scan(parts,self.cfg['odometry']['lidar_self_mask']) if parts else None
-                                self.io.control_step(dt)
-                    elif self.lease is not None:
-                        self.stop(self.core.stop_reason or 'Controller stopped')
-                    if not self.link.thread.is_alive():raise RuntimeError('Serial reader exited')
-        except Exception as exc:
-            with self.lock:
-                self.error=f'{type(exc).__name__}: {exc}'
-                try:self.stop(self.error)
-                finally:self.log(self.error)
+                        except ValueError as exc:
+                            # An arm target outside limits / colliding: block the arm, keep the session.
+                            self.controls.jog.blocked=str(exc)[:160];self.controls.jog.velocity[:]=0
+                            self.controls._arm_tracking_blocked=True
+                            self.log('Рука: команда отклонена ('+str(exc)[:120]+'); отпустите клавиши')
+                        if not self.controls.armed:self.stop('Native controls stopped: '+str(self.controls.stop_reason or self.controls.mirror.blocked or self.controls.jog.blocked))
+                        else:
+                            parts=[]
+                            for name,(scan,stamp) in self.scans.items():
+                                if now-stamp<.5:
+                                    parts.append(scan_to_base(scan['ranges'],0,2*math.pi/666,.02,12,
+                                        self.cfg['odometry']['lidar_mounts'][name]))
+                            self.io.scan=build_scan(parts,self.cfg['odometry']['lidar_self_mask']) if parts else None
+                            self.io.control_step(dt)
+                elif self.lease is not None:
+                    self.stop(self.core.stop_reason or 'Controller stopped')
+                if not self.link.thread.is_alive():raise RuntimeError('Serial reader exited')
 
     MIRROR_OVERRIDES='config/mirror-explorer.json'
 
@@ -286,7 +315,8 @@ class Runtime:
                 if profile=='prepare':
                     if observing is not True:raise ValueError('Подтвердите свободное пространство и наблюдение за рукой')
                     if not self.model.collision_free([90]*6,self.cfg['arm']['floor_margin_m']):raise ValueError('Исходная поза не проходит прежнюю модель')
-                elif not self.model.within_limits(measured):raise ValueError('Рука сложена: сначала «Подготовить руку» под наблюдением')
+                elif not self.model.within_limits(measured):
+                    raise ValueError('Рука вне рабочих пределов '+json.dumps([round(v) for v in measured])+': сначала «Поднять руку» под наблюдением')
             with self.core_lock:self.core.enable()
             try:
                 self.profile=profile;self.sequence=-1;self.lease=secrets.token_urlsafe(24)

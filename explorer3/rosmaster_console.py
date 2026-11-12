@@ -54,6 +54,15 @@ def mirror_check(s):
             'leader_gripper':round(sample[1]['gripper'],1) if sample else None}
 
 
+REASONS={'Explicit enable required':'Управление выключено. Отметьте «Я рядом» и нажмите «▶ Включить»',
+         'Operator STOP':'Остановлено (STOP)','Operator heartbeat expired':'Связь с браузером прервалась — включите снова',
+         'Browser / Homebrain heartbeat lost':'Связь с браузером прервалась — включите снова'}
+
+
+def russian(text):
+    return REASONS.get(text,text) if text else text
+
+
 def telemetry(health,mode,notice):
     s=health.get('status') or {};observation=health.get('observation') or {}
     measured=s.get('arm_measured') or observation.get('arm_measured')
@@ -61,7 +70,7 @@ def telemetry(health,mode,notice):
     sample=operator.leader_sample
     age=time.monotonic()-sample[0] if sample else None
     return {'arm_mode':mode,'dry_run':False,'enabled':s.get('armed',False),
-        'notice':notice or s.get('reason') or ('Управление включено' if s.get('armed') else 'Включите управление'),
+        'notice':notice or russian(s.get('reason')) or ('Управление включено' if s.get('armed') else 'Включите управление'),
         'mode':s.get('mode','manual'),'battery':{'soc':None,'minutes_left':None,'volts':s.get('battery_voltage',observation.get('battery_voltage'))},
         'battery_stale':False,'arm':[round(v,1) if v is not None else '?' for v in arm],
         'arm_measured':measured,'tcp':s.get('tcp') or [],'jog_blocked':s.get('arm_blocked'),
@@ -170,6 +179,18 @@ async def websocket(socket:WebSocket):
                         if value.get('mode') not in {'cartesian','joint'}:raise ValueError('Неизвестный режим руки')
                         if operator.owner==owner:await asyncio.to_thread(operator.stop,'Смена режима руки')
                         state['mode']=value['mode'];state['notice']='Режим изменён. Нажмите «Включить управление»'
+                    elif action=='mirror_toggle':
+                        if operator.mirror:
+                            operator.disable_mirror(owner);state['notice']='Зеркало выключено, ручное управление продолжается'
+                        else:
+                            if operator.owner!=owner or not operator.lease:raise RuntimeError('Сначала «▶ Включить»')
+                            if operator.leader_sample is None or time.monotonic()-operator.leader_sample[0]>.2:
+                                await asyncio.to_thread(operator.start_leader,owner)
+                                end=time.monotonic()+5
+                                while time.monotonic()<end and (operator.leader_sample is None or time.monotonic()-operator.leader_sample[0]>.2):
+                                    if operator.leader_error:raise RuntimeError(operator.leader_error)
+                                    await asyncio.sleep(.1)
+                            operator.enable_mirror(owner);state['notice']='Зеркало включено: двигайте Leader понемногу'
                     elif action=='leader':
                         state['notice']=await asyncio.to_thread(operator.start_leader,owner)
                     elif action=='leader_off':

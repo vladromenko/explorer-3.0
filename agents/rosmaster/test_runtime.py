@@ -285,3 +285,29 @@ def test_measured_arm_never_returns_missing_angles():
     c=LeasedCore(Link(),calibration()['joints'],lambda *a:None,clock=lambda:10.)
     c.servo_deg=[90.]*5+[None];c.joint_times=[9.9]*6;c.joint_valid=[True]*6
     assert c.measured_arm() is None
+
+
+def test_near_limit_reading_is_clamped_far_outside_is_not(tmp_path):
+    from runtime import NativeIO
+    io=NativeIO.__new__(NativeIO)
+    class R:pass
+    io.runtime=R();io.runtime.core=type('C',(),{'measured_arm':lambda self,a=.25:[90.,129.5,-0.9,24.6,89.9,29.7]})()
+    assert io.measured_arm()==[90.,130.,0.,25.,90.,30.]
+    io.runtime.core=type('C',(),{'measured_arm':lambda self,a=.25:[90.,198.,-49.,24.,90.,36.]})()
+    assert io.measured_arm()[1:3]==[198.,-49.]
+
+
+def test_a_fault_in_one_step_ends_the_session_but_not_the_agent(tmp_path):
+    board,runtime=ready_runtime(tmp_path)
+    try:
+        session=runtime.enable('rosmaster_dock',observing=True)
+        original=runtime.controls.tick
+        def broken(dt,now):
+            runtime.controls.tick=original;raise ZeroDivisionError('test fault')
+        runtime.controls.tick=broken
+        runtime.command(session['lease'],0,{'drive':[0,0,0]});time.sleep(.4)
+        assert not runtime.armed and 'Ошибка цикла' in runtime.status()['reason'] and runtime.error is None
+        session=runtime.enable('rosmaster_dock',observing=True)
+        for i in range(3):runtime.command(session['lease'],i,{'drive':[0,0,0]});time.sleep(.05)
+        assert runtime.armed
+    finally:runtime.close();board.close()

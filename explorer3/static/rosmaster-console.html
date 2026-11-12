@@ -19,71 +19,72 @@ button.go{background:var(--ok);border-color:var(--ok);color:#06210f;font-weight:
 .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-variant-numeric:tabular-nums}.kv span:nth-child(odd){color:var(--dim)}
 kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;font-size:12px}
 #log{height:150px;overflow:auto;font:12px/1.35 ui-monospace,Menlo,monospace;color:#b8c0cc;white-space:pre-wrap}
-.help{font-size:12.5px;color:var(--dim)}.help b{color:var(--text)}
+.help{font-size:12.5px;color:var(--dim)}.angles{display:grid;grid-template-columns:repeat(6,1fr);text-align:center;font-size:11px;color:var(--dim)}.angles.nums{font:14px ui-monospace,Menlo,monospace;color:var(--text)}.bar1{display:flex;gap:10px;padding:10px 16px;align-items:center;flex-wrap:wrap}button.big{font-size:16px;padding:10px 18px;flex:0 0 auto}.near{font-size:14px}details>summary{cursor:pointer;color:var(--dim);font-size:13px}#tcp,#mirm,#mirt{font:12.5px/1.4 ui-monospace,Menlo,monospace;white-space:pre;overflow-x:auto;display:block}.help b{color:var(--text)}
 </style></head><body>
 <div class="banner" id="dry">DRY-RUN: движение не отправляется</div>
 <div class="banner" id="pilotbar" style="background:#ff5d5d;color:#fff;font-size:18px"></div>
-<header><h1>Explorer 3.0 · Rosmaster</h1><span class="pill" id="mode">manual</span><span class="pill" id="link">нет связи</span>
-<span class="grow"></span><span id="bat" class="pill">батарея …</span></header>
-<nav style="display:flex;gap:8px;padding:8px 16px;align-items:center;flex-wrap:wrap">
-<a href="/" style="color:var(--acc)">← Explorer</a>
-<button onclick="send({action:'acquire'})">Передать управление Explorer</button>
-<button class="go" onclick="send({action:'enable',observing:$('observing').checked})">Включить управление</button>
-<button onclick="send({action:'prepare',observing:$('observing').checked})">Поднять руку · 4 секунды</button>
-<label><input id="observing" type="checkbox">Я рядом, зарядник отключён, пространство свободно</label>
-<b id="notice" style="color:var(--warn)">Управление выключено</b></nav>
+<header><h1>ROSMASTER</h1><span class="pill" id="mode">остановлено</span><span class="pill" id="link">нет связи</span>
+<span class="grow"></span><span id="bat" class="pill">батарея …</span><a href="/" style="color:var(--acc);font-size:13px">Explorer</a></header>
+<nav class="bar1">
+ <label class="near"><input id="observing" type="checkbox"> Я рядом, место свободно</label>
+ <button class="go big" onclick="send({action:'enable',observing:$('observing').checked})">▶ Включить</button>
+ <button class="stop big" onclick="send({action:'stop'})">■ STOP <small>(пробел)</small></button>
+ <b id="notice" style="color:var(--warn)">Управление выключено</b></nav>
 <main>
 <section>
-  <div class="card"><img id="video" src="/api/rosmaster/camera.mjpg?light=0" alt="камера">
-   <div class="row" style="margin-top:8px;align-items:center"><span class="help">Яркость (только показ):</span>
-    <button onclick="light(0)">Как есть</button><button onclick="light(1)">Авто</button><button onclick="light(2)">Ярче</button><button onclick="light(3)">Максимум</button><b id="lightv" class="help">Как есть</b></div></div>
-  <div class="card" style="margin-top:12px"><h2>Управление</h2>
-   <div class="help">
-    <p><b>Езда:</b> <kbd>W</kbd><kbd>S</kbd> вперёд/назад · <kbd>A</kbd><kbd>D</kbd> влево/вправо · <kbd>Q</kbd><kbd>E</kbd> поворот. <b>Shift</b> — медленно. Максимум вперёд 0,30 м/с; вбок 0,25 м/с; поворот 0,80 рад/с.</p>
-    <div class="row"><button onclick="armMode('cartesian')">1 · Захват XYZ</button><button onclick="armMode('joint')">2 · Суставы</button><b id="armmode">Захват XYZ</b></div><p id="armhelp"></p><p><b>Рука:</b> <kbd>I</kbd><kbd>K</kbd> вперёд/назад · <kbd>J</kbd><kbd>L</kbd> влево/вправо (также стрелки) · <kbd>R</kbd><kbd>F</kbd> вверх/вниз · <kbd>,</kbd><kbd>.</kbd> наклон · <kbd>[</kbd><kbd>]</kbd> поворот кисти · <kbd>N</kbd>/<kbd>M</kbd> открыть/закрыть захват.</p>
-    <p><b>Стоп:</b> <kbd>Пробел</kbd> / <kbd>Esc</kbd>.</p>
-    <p><b>Джойстик:</b> левый стик — езда, LB/RB — поворот, правый стик — рука X/Y, крестовина ↑↓ — высота, ←→ — наклон, LT/RT — захват, A — поза обзора, X — переноска, B — стоп.</p>
+  <div class="card"><img id="video" src="/api/rosmaster/camera.mjpg?light=0" alt="камера"></div>
+  <div class="card" style="margin-top:12px">
+   <div class="row" style="gap:16px;align-items:flex-start">
+    <div><h2>Колёса</h2>
+     <div style="display:grid;grid-template-columns:repeat(3,52px);gap:6px">
+      <button class="hold" data-k="q">⟲</button><button class="hold" data-k="w">▲</button><button class="hold" data-k="e">⟳</button>
+      <button class="hold" data-k="a">◀</button><button class="hold" data-k="s">▼</button><button class="hold" data-k="d">▶</button></div>
+     <div class="help" style="margin-top:6px"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> езда · <kbd>Q</kbd><kbd>E</kbd> поворот</div></div>
+    <div style="flex:1;min-width:240px"><h2>Рука с клавиатуры · <span id="armmode">Захват XYZ</span></h2>
+     <div class="row"><button onclick="armMode('joint')">Суставы</button><button onclick="armMode('cartesian')">Захват XYZ</button></div>
+     <div class="help" id="armhelp" style="margin-top:6px"></div>
+     <div class="help"><kbd>,</kbd><kbd>.</kbd> кисть · <kbd>[</kbd><kbd>]</kbd> поворот кисти · <kbd>N</kbd><kbd>M</kbd> клешня · <b>Shift</b> — медленно</div></div>
    </div>
-   <div class="row" style="margin:10px 0 0;gap:6px;align-items:center">
-    <div style="display:grid;grid-template-columns:repeat(3,56px);gap:6px">
-     <button class="hold" data-k="q">⟲</button><button class="hold" data-k="w">▲</button><button class="hold" data-k="e">⟳</button>
-     <button class="hold" data-k="a">◀</button><button class="hold" data-k="s">▼</button><button class="hold" data-k="d">▶</button></div>
-    <span style="color:var(--mut);font-size:12px">Колёса: удерживайте кнопку (мышь или палец). Отпустили — стоп. Те же клавиши W A S D Q E.</span>
-    <label style="font-size:13px"><input type="checkbox" id="slowc"> медленно</label> <label style="font-size:13px"><input type="checkbox" id="freec"> без защиты от препятствий</label> <b id="gmsg" style="color:var(--warn);font-size:13px"></b></div>
+   <div class="row" style="margin-top:8px"><label class="help"><input type="checkbox" id="slowc"> всегда медленно</label><b id="gmsg" style="color:var(--warn);font-size:13px"></b></div>
   </div>
 </section>
 <aside style="display:grid;gap:12px;align-content:start">
-  <div class="card"><h2>Заряд</h2><div class="bar"><i id="socbar"></i></div>
-   <div class="kv" style="margin-top:8px"><span>Заряд</span><span id="soc">—</span><span>Напряжение</span><span id="volts">—</span><span>Осталось</span><span id="left">—</span></div>
-   <div class="help" id="batnote" style="margin-top:6px"></div></div>
-  <div class="card"><h2>Рука</h2><div class="kv"><span>Углы</span><span id="arm">—</span><span>Кисть x,y,z</span><span id="tcp">—</span><span>Ограничение</span><span id="blocked">—</span></div>
-   <div class="row" style="margin-top:8px"><button onclick="act('preset','look')">Обзор</button><button onclick="act('preset','near')">Ближний</button><button onclick="act('preset','carry')">Переноска</button><button onclick="act('preset','home')">Домой</button></div></div>
-  <div class="card"><h2>Зеркало: рука SO101 → рука Rosmaster</h2>
-   <div class="help">Поток Leader запускается на Homebrain. Дождитесь поступления кадров, затем включите зеркало. Текущая поза руки и захвата принимается за начало; после потери связи включите зеркало заново. Начинайте с малых движений.</div>
-   <div class="kv" style="margin-top:6px"><span>Состояние</span><span id="mir">выкл</span><span>Кадров</span><span id="mirn">0</span><span>Цель</span><span id="mirt">—</span><span>Измерено</span><span id="mirm">—</span></div>
-   <div class="help" style="margin-top:8px"><b>Проверка направлений:</b> включите зеркало, двигайте ОДИН сустав Leader понемногу. Смотрите на робот: сустав должен пойти в ту же сторону, что и у Leader (примерно вдвое меньше). Если пошёл в обратную — «Выключить», затем ⇄ у этого сустава и снова «Включить». Числа ниже — сдвиг с момента включения зеркала (знаки чисел у Leader и робота могут отличаться из-за разных нулей приводов).</div>
-   <table id="mcheck" style="width:100%;font-size:12.5px;font-variant-numeric:tabular-nums"></table>
-   <div class="help" style="margin-top:6px"><b>Клешня:</b> откройте Leader полностью → «Leader открыт»; закройте полностью → «Leader закрыт»; «Сохранить захват». Сейчас: <span id="gstate">—</span></div>
-   <div class="row" style="margin-top:4px"><button onclick="send({action:'grip_capture',which:'open'})">Leader открыт</button><button onclick="send({action:'grip_capture',which:'closed'})">Leader закрыт</button><button class="go" onclick="send({action:'grip_save'})">Сохранить захват</button><button onclick="send({action:'grip_reset'})">Прежний захват</button></div>
-   <div class="row" style="margin-top:8px"><button onclick="send({action:'leader'})">Подключить Leader</button><button onclick="send({action:'leader_off'})">Отключить Leader</button><button class="go" onclick="send({action:'mirror',on:true})">Включить</button><button onclick="send({action:'mirror',on:false})">Выключить</button></div></div>
-  <div class="card"><h2>Запись показа (LeRobot)</h2>
-   <div class="help">1) Выберите задачу и расстановку. 2) Галочка «Я рядом…». 3) «Начать запись» — управление включится для этой задачи. 4) Покажите задачу клавишами/джойстиком. 5) Отметьте исход. Подъезд: рука не двигается. Кубик: база стоит.</div>
-   <div class="row" style="margin-top:8px"><select id="rprof"><option value="rosmaster_pick_place">Кубик → коробка (рука)</option><option value="rosmaster_dock">Подъезд к цели (база)</option></select>
-    <select id="rcat"><option value="demonstration">Показ</option><option value="correction">Коррекция</option></select>
-    <input id="rscene" value="scene-01" size="9" title="Расстановка: меняйте при новой расстановке предметов"></div>
-   <div class="row" style="margin-top:8px"><button class="go" onclick="send({action:'record_start',profile:$('rprof').value,category:$('rcat').value,scene:$('rscene').value,observing:$('observing').checked})">● Начать запись</button>
-    <button onclick="send({action:'record_finish',outcome:'success'})">Успех</button><button onclick="send({action:'record_finish',outcome:'failure'})">Неуспех</button><button onclick="send({action:'record_finish',outcome:'aborted'})">Прервать</button></div>
-   <div class="kv" style="margin-top:6px"><span>Запись</span><span id="rstate">—</span></div></div>
-  <div class="card"><h2>Испытание: повтор записи / политика</h2>
-   <div class="help">План готовится во вкладке «Испытания» Explorer и требует отдельного разрешения. Пока идёт испытание, STOP и потеря вкладки останавливают робота.</div>
-   <div class="row" style="margin-top:8px"><select id="tplan"><option value="">нет планов</option></select>
-    <select id="tstudy"><option value="">без пилота</option></select>
+  <div class="card"><h2>Рука</h2>
+   <div class="angles"><span>осн.</span><span>плечо</span><span>локоть</span><span>кисть</span><span>пов.</span><span>клешня</span></div>
+   <div class="angles nums" id="arm"></div>
+   <div class="help" style="margin-top:4px">Ограничение: <span id="blocked">—</span></div>
+   <div class="row" style="margin-top:8px"><button onclick="send({action:'prepare',observing:$('observing').checked})">Поднять руку</button><button onclick="act('preset','look')">Обзор</button><button onclick="act('preset','home')">Домой</button></div></div>
+  <div class="card"><h2>Зеркало: Leader SO-101 → рука</h2>
+   <div class="row"><button class="go" id="mirbtn" onclick="send({action:'mirror_toggle'})">Включить зеркало</button><span id="mir" class="help">выкл</span></div>
+   <div class="help" style="margin-top:6px">Сначала «Включить». Двигайте Leader понемногу.</div>
+   <details style="margin-top:8px"><summary>Настройка направлений и клешни</summary>
+    <div class="help" style="margin-top:6px">Если сустав робота идёт в обратную сторону: выключите зеркало и нажмите ⇄ у этого сустава.</div>
+    <table id="mcheck" style="width:100%;font-size:12.5px;font-variant-numeric:tabular-nums"></table>
+    <div class="help" style="margin-top:6px">Клешня: откройте Leader полностью → «открыт», закройте → «закрыт» → «Сохранить». <span id="gstate">—</span></div>
+    <div class="row" style="margin-top:4px"><button onclick="send({action:'grip_capture',which:'open'})">открыт</button><button onclick="send({action:'grip_capture',which:'closed'})">закрыт</button><button class="go" onclick="send({action:'grip_save'})">Сохранить</button><button onclick="send({action:'grip_reset'})">Как было</button></div>
+    <div class="kv" style="margin-top:6px"><span>Кадров</span><span id="mirn">0</span><span>Цель</span><span id="mirt">—</span><span>Измерено</span><span id="mirm">—</span></div>
+    <div class="row" style="margin-top:6px"><button onclick="send({action:'leader_off'})">Отключить Leader</button></div>
+   </details></div>
+  <div class="card"><h2>Запись показа</h2>
+   <div class="row"><select id="rprof"><option value="rosmaster_pick_place">Кубик → коробка (рука)</option><option value="rosmaster_dock">Подъезд к цели (база)</option></select>
+    <input id="rscene" value="scene-01" size="8" title="Расстановка: меняйте при новой расстановке предметов"></div>
+   <div class="row" style="margin-top:8px" id="recstart"><button class="go" onclick="send({action:'record_start',profile:$('rprof').value,category:$('rcat').value,scene:$('rscene').value,observing:$('observing').checked})">● Начать запись</button></div>
+   <div class="row" style="margin-top:8px;display:none" id="recout"><button class="go" onclick="send({action:'record_finish',outcome:'success'})">✓ Успех</button><button onclick="send({action:'record_finish',outcome:'failure'})">✗ Неуспех</button><button onclick="send({action:'record_finish',outcome:'aborted'})">Прервать</button></div>
+   <div class="help" id="rstate" style="margin-top:6px">—</div></div>
+  <details class="card"><summary>Испытания и исследование</summary>
+   <div class="help" style="margin-top:6px">План готовится и разрешается во вкладке «Испытания» Explorer.</div>
+   <div class="row" style="margin-top:8px"><select id="tplan"><option value="">нет планов</option></select><select id="tstudy"><option value="">без пилота</option></select>
     <button onclick="send({action:'trial_start',plan:$('tplan').value,study:$('tstudy').value,scene:$('rscene').value,observing:$('observing').checked})">Запустить</button></div>
-   <div class="row" style="margin-top:8px"><button onclick="send({action:'correction_done'})">Коррекция готова → политике</button><button class="stop" style="flex:0" onclick="send({action:'emergency'})">Аварийное вмешательство</button></div>
-   <div class="help">Исход испытания отмечайте кнопками «Успех / Неуспех / Прервать» выше.</div>
-   <a href="/" style="color:var(--acc)">Датасеты, обучение, исследование</a><span id="mstate" hidden></span><span id="mres" hidden></span></div>
-  <div class="card"><div class="row"><button class="stop" onclick="send({action:'stop'})">STOP</button></div></div>
-  <div class="card"><h2>Журнал</h2><div id="log"></div></div>
+   <div class="row" style="margin-top:8px"><button onclick="send({action:'correction_done'})">Коррекция готова</button><button class="stop" style="flex:0" onclick="send({action:'emergency'})">Аварийное вмешательство</button></div>
+   <div class="row" style="margin-top:8px"><span class="help">Тип записи:</span><select id="rcat"><option value="demonstration">Показ</option><option value="correction">Коррекция</option></select></div></details>
+  <details class="card"><summary>Ещё: позы, камера, джойстик</summary>
+   <div class="row" style="margin-top:8px"><button onclick="act('preset','near')">Поза: ближний</button><button onclick="act('preset','carry')">Поза: переноска</button></div>
+   <div class="kv" style="margin-top:6px"><span>Кисть x,y,z</span><span id="tcp">—</span></div>
+   <div class="row" style="margin-top:8px"><span class="help">Яркость показа:</span><button onclick="light(0)">как есть</button><button onclick="light(2)">ярче</button><b id="lightv" class="help">Как есть</b></div>
+   <label class="help"><input type="checkbox" id="freec"> без защиты от препятствий (лидар)</label>
+   <div class="help">Джойстик: левый стик — езда, LB/RB — поворот, правый стик — рука, крестовина — высота/наклон, LT/RT — клешня, B — стоп.</div></details>
+  <details class="card"><summary>Журнал</summary><div id="log"></div></details>
+  <span hidden><i id="socbar"></i><span id="soc"></span><span id="volts"></span><span id="left"></span><span id="batnote"></span><span id="mstate"></span><span id="mres"></span></span>
 </aside></main>
 <script>
 const $=id=>document.getElementById(id);let ws,keys={},lockedKeys=new Set(),padBlocked=true,viewActive=true;
@@ -94,26 +95,30 @@ function act(a,n){clearControls();send({action:a,name:n});}
 function light(level){try{localStorage.setItem('rosmasterLight2',level)}catch(e){}$('video').src='/api/rosmaster/camera.mjpg?light='+level+'&t='+Date.now();$('lightv').textContent=['Как есть','Авто','Ярче','Максимум'][level];this&&this.blur&&this.blur();document.activeElement&&document.activeElement.blur();}
 if(window.top!==window){document.querySelector('header').style.display='none';const back=document.querySelector('nav a[href="/"]');if(back)back.style.display='none';}
 document.addEventListener('pointerdown',()=>window.focus());
+// Fixed-width numbers on one line, so the cards do not jump while values change.
+function fmt(values,digits,width){return (values||[]).map(v=>(typeof v==='number'?v.toFixed(digits):String(v??'—')).padStart(width,'\u2007')).join('')}
 function connect(){ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/rosmaster/console/ws');
  ws.onopen=()=>{$('link').textContent='связь есть';$('link').style.background='#1f3a2c'};
  ws.onclose=()=>{clearControls();$('link').textContent='нет связи';$('link').style.background='#3a1f1f';setTimeout(connect,1000)};
  ws.onmessage=e=>render(JSON.parse(e.data));}
 function render(s){
  $('armmode').textContent=s.arm_mode==='joint'?'Суставы':'Захват XYZ';$('armhelp').textContent=s.arm_mode==='joint'?'←/→ (J/L) — основание; ↑/↓ (I/K) — плечо; R/F — локоть; ,/. — кисть.':'↑/↓ (I/K) — вперёд/назад; ←/→ (J/L) — влево/вправо; R/F — вверх/вниз.';
- $('dry').style.display=s.dry_run?'block':'none';$('mode').textContent=s.enabled?'управление включено':'остановлено';$('notice').textContent=s.notice||'';
+ $('dry').style.display=s.dry_run?'block':'none';$('mode').textContent=s.enabled?'● управление включено':'остановлено';$('mode').style.background=s.enabled?'#1f3a2c':'#222a36';$('notice').textContent=s.notice||'';
  const b=s.battery;if(b.soc!=null){$('socbar').style.width=b.soc+'%';$('socbar').style.background=b.soc<20?'var(--bad)':b.soc<40?'var(--warn)':'var(--ok)';
   $('soc').textContent=b.soc+' % (±'+b.error_band_percent+')'+(b.charging?' · заряжается':'');$('bat').textContent='🔋 '+Math.round(b.soc)+' %  '+(b.volts?b.volts.toFixed(2)+' В':'')}
  if(b.soc==null)$('bat').textContent=b.volts?b.volts.toFixed(2)+' В':'напряжение неизвестно';
  $('volts').textContent=b.volts?b.volts.toFixed(2)+' В':'—';$('left').textContent=b.minutes_left!=null?'≈ '+b.minutes_left+' мин':'—';
  $('batnote').textContent=s.battery_stale?'Показание напряжения не обновляется (особенность прошивки при движении)':'';
- $('arm').textContent=s.arm.join(', ');$('tcp').textContent=s.tcp.join(', ');$('blocked').textContent=s.jog_blocked||'—';
- const mi=s.mirror;$('mir').textContent=(mi.on?'включено':'выкл')+' · Leader '+(mi.leader||'—')+(mi.blocked?' · '+mi.blocked:'')+(mi.age!=null?' · данные '+mi.age+' с назад':'');$('mirn').textContent=mi.frames;$('mirt').textContent=mi.target.map(v=>(+v).toFixed(0)).join(', ');$('mirm').textContent=s.arm_measured?s.arm_measured.map(v=>v==null?'?':(+v).toFixed(1)).join(', '):'нет обратной связи';
+ $('arm').innerHTML=(s.arm||[]).map(v=>'<span>'+(typeof v==='number'?v.toFixed(1):v)+'</span>').join('');$('tcp').textContent=fmt(s.tcp,3,7);$('blocked').textContent=s.jog_blocked||'—';
+ const mi=s.mirror;$('mir').textContent=(mi.on?'включено':'выкл')+' · Leader '+(mi.leader||'—')+(mi.blocked?' · '+mi.blocked:'')+(mi.age!=null?' · данные '+mi.age+' с назад':'');$('mirn').textContent=mi.frames;$('mirt').textContent=fmt(mi.target,0,6);$('mirm').textContent=s.arm_measured?fmt(s.arm_measured,1,6):'нет обратной связи';
  $('gmsg').textContent=s.guard?(s.guard[0]==='translate'?'⚠ препятствие впереди/сбоку — езда ограничена':'⚠ препятствие мешает повороту'):'';
  $('mstate').textContent=s.mission;$('mres').textContent=s.mission_result||'—';
  const MC=s.mirror_check;if(MC){const N=['основание','плечо','локоть','кисть','поворот кисти'];
-  $('mcheck').innerHTML='<tr><th style="text-align:left">сустав</th><th>Leader Δ°</th><th>робот Δ°</th><th>знак</th><th></th></tr>'+MC.rows.map((r,i)=>{return '<tr><td>'+N[i]+'</td><td style="text-align:center">'+(r.leader??'—')+'</td><td style="text-align:center">'+(r.robot??'—')+'</td><td style="text-align:center">'+(MC.sign?(MC.sign[i]>0?'+':'−'):'?')+'</td><td><button onclick="send({action:\'mirror_flip\',joint:'+i+'})">⇄</button>'+(bad?' не совпадает':'')+'</td></tr>'}).join('');
+  $('mcheck').innerHTML='<tr><th style="text-align:left">сустав</th><th>Leader Δ°</th><th>робот Δ°</th><th>знак</th><th></th></tr>'+MC.rows.map((r,i)=>{return '<tr><td>'+N[i]+'</td><td style="text-align:center">'+(r.leader??'—')+'</td><td style="text-align:center">'+(r.robot??'—')+'</td><td style="text-align:center">'+(MC.sign?(MC.sign[i]>0?'+':'−'):'?')+'</td><td><button onclick="send({action:\'mirror_flip\',joint:'+i+'})">⇄</button>'+'</td></tr>'}).join('');
   $('gstate').textContent='Leader '+(MC.leader_gripper??'—')+(MC.gripper_map?' · соответствие '+MC.gripper_map.map(v=>(+v).toFixed(0)).join(' → ')+' (открыт → закрыт)':' · относительный (прежний)');}
- const R=s.recording||{};const P=R.pilot||{};const pb=$('pilotbar');
+ const R=s.recording||{};const P=R.pilot||{};const rec=R.phase&&R.phase!=='idle';
+ $('recstart').style.display=rec?'none':'flex';$('recout').style.display=rec?'flex':'none';
+ $('mirbtn').textContent=s.mirror.on?'Выключить зеркало':'Включить зеркало';$('mirbtn').className=s.mirror.on?'':'go';const pb=$('pilotbar');
  if(R.phase==='recording'&&P.phase==='human'){pb.style.display='block';pb.textContent='ВАША КОРРЕКЦИЯ: управляйте клавишами/джойстиком · осталось '+Math.max(0,Math.round((P.until*1000-Date.now())/1000))+' с · затем «Коррекция готова»';}
  else if(R.phase==='recording'&&P.phase==='decided'&&P.assigned){pb.style.display='block';pb.textContent='Робот ждёт помощи (удержание '+P.delay_s+' с) — приготовьтесь';}
  else pb.style.display='none';
