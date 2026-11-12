@@ -147,6 +147,13 @@ def command(value:dict=Body(...)):
         raise HTTPException(409,str(exc)) from exc
 
 
+@app.post('/mirror_config')
+def mirror_config(value:dict=Body(...)):
+    if runtime is None:raise HTTPException(409,'Runtime not acquired')
+    try:return runtime.set_mirror_config(value.get('sign'),value.get('gripper_map'))
+    except (ValueError,PermissionError) as exc:raise HTTPException(409,str(exc)) from exc
+
+
 @app.post('/preset')
 def preset(value:dict=Body(...)):
     if runtime is None:raise HTTPException(409,'Runtime not acquired')

@@ -52,3 +52,18 @@ def test_copied_methods_match_recorded_hashes():
     for name,digest in expected['methods'].items():
         method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name==name)
         assert hashlib.sha256(''.join(lines[method.lineno-1:method.end_lineno]).encode()).hexdigest()==digest
+
+
+def test_absolute_gripper_reaches_full_close_and_joint_sign_override():
+    io,c=create()
+    leader={'shoulder_pan':0.,'shoulder_lift':0.,'elbow_flex':0.,'wrist_flex':0.,'wrist_roll':0.,'gripper':20.}
+    c.configure_mirror([1,-1,-1,1,1],(20.,80.))  # Leader open at 20, closed at 80
+    c.enable('rosmaster_pick_place',0.);assert c.leader(leader,0.)
+    c.enable_mirror(0.)
+    for k in range(1,120):
+        c.set_input({},k*.03);c.leader({**leader,'gripper':80.,'elbow_flex':10.},k*.03);c.tick(.03,k*.03)
+        io.feedback=list(io._arm_cmd)
+    cfg=config.load()['arm']
+    assert abs(c.mirror.servo[5]-cfg['gripper_close'])<=1          # fully closed, not stuck short
+    assert c.mirror.servo[2]<90                                       # elbow sign flipped: +10 Leader -> lower servo
+    with pytest.raises(PermissionError):c.configure_mirror([1,-1,1,1,1],None)

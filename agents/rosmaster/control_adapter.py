@@ -24,6 +24,7 @@ class NativeControls:
         self.profile = None
         self.armed = False
         self.stop_reason = None
+        self.gripper_map = None
 
     def enable(self, profile, now):
         if self.armed:raise ValueError('Stop the previous control session first')
@@ -56,7 +57,22 @@ class NativeControls:
         self.jog.reset(self.io.measured_arm(max_age=.25) or self.io.arm_command())
 
     def leader(self, positions, now):
+        # Absolute gripper: the operator's captured Leader open/closed values map to the native
+        # gripper_open..gripper_close range (the copied relative mode cannot reach full close).
+        if self.gripper_map is not None:
+            opened,closed=self.gripper_map
+            try:value=float(positions['gripper'])
+            except (KeyError,TypeError,ValueError):return False
+            positions={**positions,'gripper':min(100.,max(0.,(value-opened)/(closed-opened)*100.))}
         return self.mirror.update(positions,now)
+
+    def configure_mirror(self, sign, gripper_map):
+        """Operator-checked joint directions and gripper endpoints; only while the mirror is off."""
+        if self.mode=='mirror':raise PermissionError('Сначала выключите зеркало')
+        self.mirror.m['sign']=list(sign)
+        self.mirror.m['relative_gripper']=gripper_map is None
+        self.gripper_map=tuple(gripper_map) if gripper_map is not None else None
+        self.mirror.rebase()
 
     def enable_mirror(self, now):
         if not self.armed or self.profile not in {'rosmaster_pick_place','rosmaster_manual'}:raise PermissionError('Arm session required')

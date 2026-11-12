@@ -37,6 +37,23 @@ def console():
     return (Path(__file__).parent/'static/rosmaster-console.html').read_text()
 
 
+JOINT_NAMES=('shoulder_pan','shoulder_lift','elbow_flex','wrist_flex','wrist_roll')
+
+
+def mirror_check(s):
+    """Per-joint Leader vs robot movement since the mirror was enabled (degrees)."""
+    sample=operator.leader_sample;ref=operator.mirror_ref
+    measured=s.get('arm_measured')
+    rows=[]
+    for i,name in enumerate(JOINT_NAMES):
+        leader=robot=None
+        if sample and ref:leader=round(sample[1][name]-ref[0][name],1)
+        if measured and ref and ref[1]:robot=round(measured[i]-ref[1][i],1)
+        rows.append({'leader':leader,'robot':robot})
+    return {'rows':rows,'sign':s.get('mirror_sign'),'gripper_map':s.get('mirror_gripper_map'),
+            'leader_gripper':round(sample[1]['gripper'],1) if sample else None}
+
+
 def telemetry(health,mode,notice):
     s=health.get('status') or {};observation=health.get('observation') or {}
     measured=s.get('arm_measured') or observation.get('arm_measured')
@@ -52,7 +69,7 @@ def telemetry(health,mode,notice):
                   'leader':'ошибка' if operator.leader_error else 'подключён' if sample else 'не подключён',
                   'age':round(age,2) if age is not None else None,'target':s.get('mirror_target') or []},
         'guard':s.get('guard'),'mission':'не запущена','mission_result':None,
-        'recording':recorder.status(),'plans':plans(),'studies':_plans.get('studies',[]),'session_profile':s.get('profile'),
+        'mirror_check':mirror_check(s),'recording':recorder.status(),'plans':plans(),'studies':_plans.get('studies',[]),'session_profile':s.get('profile'),
         'log':(s.get('logs',[])+([operator.error] if operator.error else [])+([notice] if notice else []))[-14:]}
 
 
@@ -60,7 +77,7 @@ def telemetry(health,mode,notice):
 async def websocket(socket:WebSocket):
     await socket.accept()
     owner=uuid.uuid4().hex
-    state={'mode':'cartesian','notice':''}
+    state={'mode':'cartesian','notice':'','grip':{}}
     async def push():
         with connection(1) as client:
             while True:
@@ -125,6 +142,25 @@ async def websocket(socket:WebSocket):
                         state['notice']=('Испытание' if plan else 'Запись')+' идёт: '+name+'. Затем «Успех», «Неуспех» или «Прервать»'
                     elif action=='record_finish':
                         recorder.finish(value.get('outcome'));state['notice']='Сохранение эпизода: '+str(value.get('outcome'))
+                    elif action in ('mirror_flip','grip_capture','grip_save','grip_reset'):
+                        current=(operator.status or {})
+                        sign=list(current.get('mirror_sign') or [1,-1,1,1,1]);grip=current.get('mirror_gripper_map')
+                        if action=='grip_capture':
+                            sample=operator.leader_sample
+                            if not sample:raise RuntimeError('Сначала «Подключить Leader»')
+                            state['grip'][value.get('which')]=sample[1]['gripper']
+                            state['notice']='Захват Leader: '+str(value.get('which'))+' = '+str(round(sample[1]['gripper'],1))
+                        else:
+                            if operator.mirror:raise RuntimeError('Сначала выключите зеркало')
+                            if action=='mirror_flip':
+                                index=int(value.get('joint'));sign[index]=-sign[index]
+                            elif action=='grip_save':
+                                if 'open' not in state['grip'] or 'closed' not in state['grip']:raise ValueError('Снимите обе точки: Leader открыт и закрыт')
+                                grip=[state['grip']['open'],state['grip']['closed']]
+                            else:grip=None
+                            if not operator.lease:raise RuntimeError('Сначала «Включить управление»')
+                            await asyncio.to_thread(request,'/mirror_config',{'sign':sign,'gripper_map':grip})
+                            state['notice']='Зеркало: настройка сохранена на роботе'
                     elif action=='correction_done':
                         recorder.end_correction();state['notice']='Коррекция завершена, управление у политики'
                     elif action=='emergency':

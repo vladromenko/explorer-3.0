@@ -74,6 +74,7 @@ class Runtime:
             self.io=NativeIO(self,self.cfg,self.model)
             self.controls=NativeControls(self.io,self.cfg,self.model,
                 mirror_config(self.root/'config/mirror-original.json'),self.log)
+            self.load_mirror_overrides()
             self.transport_thread=threading.Thread(target=self.transport_loop,daemon=True)
             self.transport_thread.start()
             self.thread=threading.Thread(target=self.run,daemon=True)
@@ -169,6 +170,28 @@ class Runtime:
                 self.error=f'{type(exc).__name__}: {exc}'
                 try:self.stop(self.error)
                 finally:self.log(self.error)
+
+    MIRROR_OVERRIDES='config/mirror-explorer.json'
+
+    def load_mirror_overrides(self):
+        path=self.root/self.MIRROR_OVERRIDES
+        if path.exists():
+            value=json.loads(path.read_text())
+            self.controls.configure_mirror(value['sign'],value.get('gripper_map'))
+
+    def set_mirror_config(self,sign,gripper_map=None):
+        if type(sign) is not list or len(sign)!=5 or any(v not in (1,-1) for v in sign):raise ValueError('Пять знаков ±1')
+        if gripper_map is not None:
+            if type(gripper_map) is not list or len(gripper_map)!=2 or not all(isinstance(v,(int,float)) and math.isfinite(v) for v in gripper_map):
+                raise ValueError('Две точки захвата Leader')
+            if abs(gripper_map[1]-gripper_map[0])<10:raise ValueError('Откройте и закройте захват Leader полностью перед снятием точек')
+        with self.lock:
+            self.controls.configure_mirror(sign,gripper_map)
+            path=self.root/self.MIRROR_OVERRIDES;path.parent.mkdir(parents=True,exist_ok=True)
+            path.write_text(json.dumps({'sign':sign,'gripper_map':gripper_map,'saved_at':time.time(),
+                                        'original':'config/mirror-original.json'},indent=2))
+            self.log('Зеркало: знаки '+str(sign)+(' · захват '+str([round(v,1) for v in gripper_map]) if gripper_map else ''))
+        return {'sign':sign,'gripper_map':gripper_map}
 
     def arm_cancel_only(self):
         core=self.core
@@ -484,6 +507,7 @@ class Runtime:
                 'guard':self.io.guard.last_block,
                 'mirror_target':[round(float(v),1) for v in self.controls.mirror.target],
                 'mirror_blocked':self.controls.mirror.blocked,'mode':self.controls.mode,
+                'mirror_sign':list(self.controls.mirror.m['sign']),'mirror_gripper_map':self.controls.gripper_map,
                 'battery_voltage':self.voltage(self.BATTERY_HOLD_S if self.armed else 2.),
                 'battery_age_s':round(now-self.battery_at,2) if self.battery_at else None,'measured_velocity':self.odom if now-self.odom_at<.5 else None,
                 'base_command':list(self.io.last_output),'lidar_available':self.io.scan is not None,

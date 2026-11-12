@@ -60,7 +60,7 @@ class Operator:
         self.leader=None;self.leader_sample=None;self.leader_thread=None;self.leader_done=threading.Event()
         self.mirror=False;self.done=threading.Event();self.operation=threading.Lock()
         self.leader_count=0;self.leader_owner=None;self.leader_error=None
-        self.direct=None;self.source=None
+        self.direct=None;self.source=None;self.mirror_ref=None
         self.thread=threading.Thread(target=self.run,daemon=True);self.thread.start()
 
     def input(self,owner,value):
@@ -154,6 +154,9 @@ class Operator:
         with self.lock:
             if owner!=self.owner or not self.lease:raise RuntimeError('Сначала включите управление рукой')
             if self.leader_sample is None or time.monotonic()-self.leader_sample[0]>.2:raise RuntimeError('Нет свежих данных Leader: нажмите «Подключить Leader»')
+            measured=(self.status or {}).get('arm_measured')
+            # Reference for the operator's direction check: Leader and robot at mirror start.
+            self.mirror_ref=(dict(self.leader_sample[1]),list(measured) if measured else None)
             self.mirror=True
 
     def set_source(self,value):
