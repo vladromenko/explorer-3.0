@@ -59,7 +59,7 @@ class Operator:
         self.inputs={};self.sequence=0;self.error=None;self.status={}
         self.leader=None;self.leader_sample=None;self.leader_thread=None;self.leader_done=threading.Event()
         self.mirror=False;self.done=threading.Event();self.operation=threading.Lock()
-        self.leader_count=0
+        self.leader_count=0;self.leader_owner=None;self.leader_error=None
         self.thread=threading.Thread(target=self.run,daemon=True);self.thread.start()
 
     def input(self,owner,value):
@@ -89,7 +89,7 @@ class Operator:
                 self.record({'reason':reason,'source':'homebrain','browser_age_s':round(time.monotonic()-stamp,3) if stamp else None,
                              **getattr(self,'stats',{})})
             self.generation+=1;self.lease=None;self.owner=None;self.mirror=False
-            self.error=reason;self.leader_done.set()
+            self.error=reason
         try:request('/stop',{},timeout=1)
         except (OSError,ValueError,httpx.HTTPError,RuntimeError) as exc:
             self.error=reason+'; подтверждение STOP не получено: '+str(exc)
@@ -98,14 +98,28 @@ class Operator:
         with self.lock:
             self.inputs.pop(owner,None)
             active=self.owner==owner
+            leader=self.leader_owner==owner
         if active:self.stop('Вкладка скрыта / связь потеряна')
+        if leader:self.stop_leader()
+
+    # The Leader is read-only (no torque, no writes), so it stays connected across STOP and
+    # new sessions; only the mirror flag is per session. Short bus glitches are retried.
+    LEADER_HZ=30
+    LEADER_GLITCH_S=.5
 
     def start_leader(self,owner):
         with self.lock:
-            if owner!=self.owner or not self.lease:raise RuntimeError('Сначала включите управление рукой')
-            if self.leader_thread and self.leader_thread.is_alive():raise RuntimeError('Leader уже подключён')
-            self.leader_done.clear();self.leader_sample=None;self.leader_count=0
+            if self.leader_thread and self.leader_thread.is_alive():
+                self.leader_owner=owner;return 'Leader уже подключён'
+            self.leader_done.clear();self.leader_sample=None;self.leader_count=0;self.leader_error=None
+            self.leader_owner=owner
             self.leader_thread=threading.Thread(target=self.read_leader,daemon=True);self.leader_thread.start()
+        return 'Подключение Leader'
+
+    def stop_leader(self):
+        with self.lock:self.mirror=False;self.leader_done.set();thread=self.leader_thread
+        if thread and thread is not threading.current_thread():thread.join(2)
+        with self.lock:self.leader_owner=None
 
     def read_leader(self):
         from .leader import LeaderReader
@@ -113,21 +127,33 @@ class Operator:
         reader=LeaderReader()
         try:
             reader.start()
+            last_ok=time.monotonic()
             while not self.leader_done.is_set():
-                sample=reader.sample()
-                with self.lock:
-                    self.leader_sample=(time.monotonic(),dict(zip(JOINTS,sample['positions'])));self.leader_count+=1
-                self.leader_done.wait(1/30)
-        except Exception as exc:self.stop('Leader: '+str(exc))
+                try:
+                    sample=reader.sample()
+                except Exception as exc:
+                    if time.monotonic()-last_ok>self.LEADER_GLITCH_S:raise
+                    self.leader_glitches=getattr(self,'leader_glitches',0)+1
+                else:
+                    last_ok=time.monotonic()
+                    with self.lock:
+                        self.leader_sample=(last_ok,dict(zip(JOINTS,sample['positions'])));self.leader_count+=1
+                self.leader_done.wait(1/self.LEADER_HZ)
+        except Exception as exc:
+            # The agent's mirror times out on its own and returns the arm to manual mode.
+            with self.lock:self.leader_error='Leader: '+str(exc);self.mirror=False
         finally:
             reader.close()
             with self.lock:self.leader_sample=None
 
     def enable_mirror(self,owner):
         with self.lock:
-            if owner!=self.owner or not self.lease:raise RuntimeError('Нет вашей активной сессии')
-            if self.leader_sample is None or time.monotonic()-self.leader_sample[0]>.2:raise RuntimeError('Нет свежих данных Leader')
+            if owner!=self.owner or not self.lease:raise RuntimeError('Сначала включите управление рукой')
+            if self.leader_sample is None or time.monotonic()-self.leader_sample[0]>.2:raise RuntimeError('Нет свежих данных Leader: нажмите «Подключить Leader»')
             self.mirror=True
+
+    def disable_mirror(self,owner):
+        with self.lock:self.mirror=False
 
     # Browser input older than INPUT_HOLD_S is replaced by zero intent (motion stops at once,
     # session stays); after BROWSER_LOST_S without input the session is stopped. The agent's own
@@ -154,7 +180,7 @@ class Operator:
         reason=self.agent_reason() or detail
         with self.lock:
             if generation!=self.generation:return
-            self.generation+=1;self.lease=None;self.owner=None;self.mirror=False;self.leader_done.set()
+            self.generation+=1;self.lease=None;self.owner=None;self.mirror=False
             self.error='Робот остановил сессию: '+str(reason)
         self.record({'reason':self.error,'source':'agent','detail':detail,**self.stats})
         try:request('/stop',{},timeout=1)
@@ -204,7 +230,7 @@ class Operator:
                     self.status=response.json()
                     if not self.status['armed']:
                         reason=self.status.get('reason')
-                        self.lease=None;self.owner=None;self.mirror=False;self.leader_done.set();self.generation+=1
+                        self.lease=None;self.owner=None;self.mirror=False;self.generation+=1
                         self.error='Сессия завершена: '+str(reason)
                         done=True
                     else:done=False
@@ -222,8 +248,27 @@ def shutdown():
     if operator.lease:operator.stop('Homebrain shutting down')
 
 
+def brighten(jpeg,level):
+    """Display-only enhancement for a dark room; recordings and the agent keep raw frames."""
+    import cv2
+    import numpy as np
+    image=cv2.imdecode(np.frombuffer(jpeg,np.uint8),cv2.IMREAD_COLOR)
+    if image is None:return jpeg
+    lab=cv2.cvtColor(image,cv2.COLOR_BGR2LAB);light=lab[:,:,0]
+    mean=max(float(light.mean()),1.)/255
+    target=(.35,.45,.55)[level-1]
+    gamma=min(1.,max(.25,np.log(target)/np.log(mean))) if mean<target else 1.
+    table=(np.linspace(0,1,256)**gamma*255).astype(np.uint8)
+    light=cv2.LUT(light,table)
+    light=cv2.createCLAHE(clipLimit=(1.5,2.5,3.5)[level-1],tileGridSize=(8,8)).apply(light)
+    if level==3:light=cv2.GaussianBlur(light,(3,3),0)
+    lab[:,:,0]=light
+    ok,data=cv2.imencode('.jpg',cv2.cvtColor(lab,cv2.COLOR_LAB2BGR),[cv2.IMWRITE_JPEG_QUALITY,80])
+    return data.tobytes() if ok else jpeg
+
+
 @app.get('/api/rosmaster/camera.mjpg')
-async def camera(request_:Request):
+async def camera(request_:Request,light:int=1):
     cfg=json.loads((DATA/'configs/rosmaster-agent.json').read_text())
     async def frames():
         async with httpx.AsyncClient(base_url=f"http://{cfg['host']}:{cfg['port']}",
@@ -232,7 +277,9 @@ async def camera(request_:Request):
                 start=time.monotonic()
                 try:
                     result=await client.get('/frame.jpg');result.raise_for_status()
-                    yield b'--frame\r\nContent-Type: image/jpeg\r\nContent-Length: '+str(len(result.content)).encode()+b'\r\n\r\n'+result.content+b'\r\n'
+                    content=result.content
+                    if light in (1,2,3):content=await asyncio.to_thread(brighten,content,light)
+                    yield b'--frame\r\nContent-Type: image/jpeg\r\nContent-Length: '+str(len(content)).encode()+b'\r\n\r\n'+content+b'\r\n'
                 except httpx.HTTPError:await asyncio.sleep(.2)
                 await asyncio.sleep(max(0,.1-(time.monotonic()-start)))
     return StreamingResponse(frames(),media_type='multipart/x-mixed-replace; boundary=frame',headers={'Cache-Control':'no-store'})

@@ -125,3 +125,82 @@ def test_armed_session_keeps_last_battery_value_while_reports_pause(tmp_path):
         runtime.command(session['lease'],9,{'drive':[0,0,0]});time.sleep(.12)
         assert not runtime.armed and 'Battery telemetry stale' in runtime.status()['reason']
     finally:runtime.close();board.close()
+
+
+class StubCore:
+    def __init__(self,clock):
+        self.clock=clock;self.phase='ready';self.last_status=clock()
+        self.state={'mode':1,'fault':0,'arm_enabled':True,'arm_cancel_pending':False}
+        self.permitted=True;self.arm_target=None;self.arm_dirty=False;self.sent=[]
+        self.joint_times=[clock()]*6;self.joint_valid=[True]*6;self.operator_until=clock()+1
+        self.stop_reason=None;self.motion_commands_sent=0;self.measured=[90.,148.,12.,52.,90.,63.]
+    def ready(self):return not self.state['arm_cancel_pending']
+    def measured_arm(self,max_age=.25):return list(self.measured)
+    def disarm(self,reason):self.permitted=False;self.stop_reason=reason;self.arm_target=None
+    def on_arm(self,servo,ms):self.arm_target=(servo,ms);self.sent.append((list(servo),ms))
+
+
+class StubControls:
+    def __init__(self):
+        import numpy as np
+        class Jog:
+            velocity=np.zeros(6);blocked=None
+            def reset(self,servo):self.servo=list(servo)
+        class Mirror:
+            blocked=None
+            def rebase(self):pass
+        self.jog=Jog();self.mirror=Mirror();self.mode='manual';self.armed=True
+        self._arm_tracking_blocked=False;self._arm_input_active=False;self.last_input=0
+    def stop_all(self):self.armed=False
+
+
+class StubIO:
+    def __init__(self):self._arm_cmd=[90.]*6;self.base_stops=0
+    def stop_base(self):self.base_stops+=1
+    def measured_arm(self,max_age=.25):return None
+
+
+def stub_runtime(tmp_path,profile='prepare'):
+    clock=[100.]
+    runtime=Runtime(tmp_path)
+    runtime.core=StubCore(lambda:clock[0]);runtime.controls=StubControls();runtime.io=StubIO()
+    runtime.lease='L';runtime.profile=profile
+    runtime.session={'started':0,'started_monotonic':clock[0],'profile':profile,'arm_mode':'cartesian','commands':0,
+                     'stale_commands':0,'max_command_gap':0.,'last_command':clock[0],'max_loop_dt':0.,'battery_at_enable':11.7}
+    return runtime,clock
+
+
+def test_prepare_streams_short_steps_and_never_runs_far_ahead(tmp_path):
+    runtime,clock=stub_runtime(tmp_path)
+    runtime.begin_pose([90]*6,runtime.core.measured,clock[0])
+    for _ in range(10):
+        clock[0]+=.05;runtime.prepare_step(clock[0],.05)
+    commands=[c for c,ms in runtime.core.sent]
+    assert all(ms==runtime.POSE_STEP_MS for c,ms in runtime.core.sent)
+    assert commands[0][1]==147. and abs(commands[-1][1]-148.)==10.  # held at the 10 degree lead
+    runtime.core.measured=[90.]*6
+    clock[0]+=.05;runtime.prepare_step(clock[0],.05)
+    assert runtime.lease is None and 'Поза достигнута' in runtime.reason
+
+
+def test_controller_arm_cancel_recovers_from_measured_pose_a_bounded_number_of_times(tmp_path):
+    runtime,clock=stub_runtime(tmp_path,'rosmaster_manual')
+    runtime.core.arm_target=([100]*6,160)
+    runtime.core.state['arm_cancel_pending']=True
+    assert runtime.arm_recovering(clock[0]) and runtime.core.arm_target is None and runtime.lease=='L'
+    clock[0]+=.3;runtime.core.state['arm_cancel_pending']=False
+    assert not runtime.arm_recovering(clock[0])
+    assert runtime.io._arm_cmd==runtime.core.measured and runtime.lease=='L'
+    for i in range(runtime.ARM_RECOVERIES):
+        clock[0]+=.1;runtime.core.state['arm_cancel_pending']=True;runtime.arm_recovering(clock[0])
+        clock[0]+=.1;runtime.core.state['arm_cancel_pending']=False;runtime.arm_recovering(clock[0])
+    assert runtime.lease is None and 'отменил движение руки' in runtime.reason
+    rows=[json.loads(l) for l in (tmp_path/'logs/control-sessions.jsonl').read_text().splitlines()]
+    assert sum(r['event']=='arm_cancel' for r in rows)==runtime.ARM_RECOVERIES+1
+
+
+def test_unresolved_arm_cancel_stops(tmp_path):
+    runtime,clock=stub_runtime(tmp_path,'rosmaster_manual')
+    runtime.core.state['arm_cancel_pending']=True
+    runtime.arm_recovering(clock[0]);clock[0]+=runtime.ARM_RECOVERY_S+.1;runtime.arm_recovering(clock[0])
+    assert runtime.lease is None and 'не снялась' in runtime.reason

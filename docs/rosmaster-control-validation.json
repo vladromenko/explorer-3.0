@@ -1,6 +1,6 @@
 {
   "software_tests": {
-    "python": 52,
+    "python": 51,
     "result": "PASS",
     "physical_acceptance": false,
     "js": "Keyboard/release/blur/no held-key resume/modes/gamepad neutral/B STOP PASS"
@@ -24,11 +24,13 @@
     "agent_port": 8042
   },
   "files": {
-    "agents/rosmaster/runtime.py": "e840c56d8b38fc4d88e89aace6b249a82a4610aef0fbb3f526d6e88efdc4584c",
-    "agents/rosmaster/leased_core.py": "51fbafecdd3ffc3f6c3b94759b02ce83596d35ed8b30f6036bf3a246ee9d358f",
+    "agents/rosmaster/runtime.py": "4e82ac52cbae0226048a66abe34cd87d2d532b1aad5322f8df2010b15c8ef83b",
+    "agents/rosmaster/leased_core.py": "3b00a29229bec30ad923a5d7ecceb371529e195cfbd67f38f65d75c1fba5db9c",
     "agents/rosmaster/handoff.py": "11b747a02c3f3ad1f993749be7e26932f7748f3892d0fb3cbd386cf10bf598be",
-    "explorer3/rosmaster_control.py": "194da6b32739d49d4ab7379e76b53481fee645d6fd687bd8b0849e2808d7a316",
-    "agents/rosmaster/control_adapter.py": "941734ab1f4f4585d73deec108daca1901f1be986f31dbfcc66f4029eb68fd2c"
+    "explorer3/rosmaster_control.py": "8d913b5c275167672c48ddf82c9f7e3104134961b76fbfb05d141baf03be6616",
+    "agents/rosmaster/control_adapter.py": "4c6ddea765161ff730f7602ee07e02bae3248b7b27c20275a7aebe9acfd70b42",
+    "explorer3/rosmaster_console.py": "4ca3651644d1b2fd2354c4ccd22f68c580df010c2a2db32d7670369ab826409e",
+    "explorer3/static/rosmaster-console.html": "b0a4da36796f28ffb68941a17f8b0590dfe3f84e5d547789e43e48f1afc914ce"
   },
   "operator_trial_observed": {
     "active_control": true,

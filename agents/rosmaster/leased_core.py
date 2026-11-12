@@ -4,6 +4,8 @@ import struct
 from rosmaster.core import BridgeCore
 from rosmaster import link as L
 
+NOT_READY=L.RESULT_NAMES.index('NOT_READY')
+
 
 class LeasedCore(BridgeCore):
     def __init__(self, *args, **kwargs):
@@ -14,6 +16,7 @@ class LeasedCore(BridgeCore):
         self.joint_times = [None]*6
         self.joint_valid = [False]*6
         self.motion_commands_sent = 0
+        self.arm_not_ready = 0
 
     def _send(self, kind, data=b'', **kwargs):
         result=super()._send(kind,data,**kwargs)
@@ -94,7 +97,11 @@ class LeasedCore(BridgeCore):
         if kind==L.RESULT:
             _,_,op,result,_,_=struct.unpack('<QQBBBB',payload)
             if result and op in (L.ARM,L.ARM_ENABLE,L.BASE) and self.permitted:
-                self.disarm('Controller rejected command: '+str(op)+' / '+str(result))
+                # NOT_READY for the arm is the controller's normal answer while it finishes an arm
+                # cancellation; the runtime bounds that state (time and count) and logs it.
+                if result==NOT_READY and op in (L.ARM,L.ARM_ENABLE):
+                    self.arm_not_ready+=1
+                else:self.disarm('Controller rejected command: '+str(op)+' / '+str(result))
 
     def measured_arm(self, max_age=.25):
         now=self.clock()

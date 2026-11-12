@@ -27,7 +27,8 @@ def telemetry(health,mode,notice):
         'mode':s.get('mode','manual'),'battery':{'soc':None,'minutes_left':None,'volts':s.get('battery_voltage',observation.get('battery_voltage'))},
         'battery_stale':False,'arm':[round(v,1) if v is not None else '?' for v in arm],
         'arm_measured':measured,'tcp':s.get('tcp') or [],'jog_blocked':s.get('arm_blocked'),
-        'mirror':{'on':s.get('mode')=='mirror','blocked':s.get('mirror_blocked'),'frames':operator.leader_count,
+        'mirror':{'on':s.get('mode')=='mirror','blocked':s.get('mirror_blocked') or operator.leader_error,'frames':operator.leader_count,
+                  'leader':'ошибка' if operator.leader_error else 'подключён' if sample else 'не подключён',
                   'age':round(age,2) if age is not None else None,'target':s.get('mirror_target') or []},
         'guard':s.get('guard'),'mission':'не запущена','mission_result':None,
         'log':(s.get('logs',[])+([operator.error] if operator.error else [])+([notice] if notice else []))[-14:]}
@@ -74,12 +75,14 @@ async def websocket(socket:WebSocket):
                         if operator.owner==owner:await asyncio.to_thread(operator.stop,'Смена режима руки')
                         state['mode']=value['mode'];state['notice']='Режим изменён. Нажмите «Включить управление»'
                     elif action=='leader':
-                        await asyncio.to_thread(operator.start_leader,owner);state['notice']='Подключение Leader'
+                        state['notice']=await asyncio.to_thread(operator.start_leader,owner)
+                    elif action=='leader_off':
+                        await asyncio.to_thread(operator.stop_leader);state['notice']='Leader отключён'
                     elif action=='mirror':
                         if value.get('on'):
                             operator.enable_mirror(owner);state['notice']=''
                         else:
-                            await asyncio.to_thread(operator.stop,'Зеркало выключено');state['notice']='Зеркало выключено'
+                            operator.disable_mirror(owner);state['notice']='Зеркало выключено, ручное управление продолжается'
                     elif action=='preset':
                         if operator.owner!=owner:raise PermissionError('Сначала включите управление')
                         await asyncio.to_thread(request,'/preset',{'lease':operator.lease,'name':value.get('name')})

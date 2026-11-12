@@ -87,6 +87,15 @@ class Runtime:
     BATTERY_HOLD_S=30.
     LOOP_DEADLINE_S=.3
     ARM_FEEDBACK_HOLD_S=.6
+    # Poses are streamed as short targets (like the native jog) instead of one long native
+    # trajectory resent every tick; the controller cancelled those during preparation.
+    POSE_DEG_S=20.
+    POSE_STEP_MS=160
+    POSE_MAX_LEAD_DEG=10.
+    # Controller-side arm cancellation (stale servo feedback / expired arm lease) is recoverable
+    # a few times per session; the base is held and arm targets restart from measured angles.
+    ARM_RECOVERIES=3
+    ARM_RECOVERY_S=1.5
 
     def ages(self,now=None):
         now=time.monotonic() if now is None else now
@@ -121,15 +130,17 @@ class Runtime:
                         volts=self.voltage(self.BATTERY_HOLD_S)
                         if self.session:self.session['max_loop_dt']=max(self.session['max_loop_dt'],dt)
                         if dt>self.LOOP_DEADLINE_S:reason=f'Control loop deadline missed ({dt:.3f} s)'
-                        elif not self.core.ready():reason='Controller feedback lost or cancellation pending: '+self.controller_detail(now)
+                        elif not self.core.ready() and not self.arm_cancel_only():
+                            reason='Controller feedback lost: '+self.controller_detail(now)
                         elif volts is None:reason=f'Battery telemetry stale (>{self.BATTERY_HOLD_S:.0f} s)'
                         elif volts<self.cfg['mission']['min_battery_v']:reason='Low battery'
                         elif (self.root/'STOP').exists():reason='STOP file'
                         elif now>=self.core.operator_until:reason='Browser / Homebrain heartbeat lost'
                         elif self.profile!='rosmaster_dock' and self.core.measured_arm(self.ARM_FEEDBACK_HOLD_S) is None:
                             reason='Arm feedback lost: '+json.dumps(self.ages(now)['joints_s'])
-                        if reason:self.stop(reason)
-                        elif self.preparing:self.prepare_step(now)
+                        if not reason and self.arm_recovering(now):pass
+                        elif reason:self.stop(reason)
+                        elif self.preparing:self.prepare_step(now,dt)
                         else:
                             self.controls.tick(dt,now)
                             if not self.controls.armed:self.stop('Native controls stopped: '+str(self.controls.stop_reason or self.controls.mirror.blocked or self.controls.jog.blocked))
@@ -149,6 +160,60 @@ class Runtime:
                 self.error=f'{type(exc).__name__}: {exc}'
                 try:self.stop(self.error)
                 finally:self.log(self.error)
+
+    def arm_cancel_only(self):
+        core=self.core
+        return (core.phase=='ready' and core.last_status is not None and core.clock()-core.last_status<.25
+                and core.state.get('mode')==1 and not core.state.get('fault') and bool(core.state.get('arm_cancel_pending')))
+
+    def arm_recovering(self,now):
+        """True while a controller arm cancellation is being resolved; stops the session if it cannot be."""
+        session=self.session
+        if session is None:return False
+        pending=bool(self.core.state.get('arm_cancel_pending'))
+        if pending:
+            if session.get('recovery_at') is None:
+                session['recoveries']=session.get('recoveries',0)+1
+                session['recovery_at']=now
+                self.record({'at':time.time(),'event':'arm_cancel','recovery':session['recoveries'],
+                    'controller':self.controller_detail(now),'ages':self.ages(now),
+                    'diagnostics':(self.core.state or {}).get('diagnostics'),'arm_command':self.last_arm_command,
+                    'arm_measured':self.core.measured_arm(self.ARM_FEEDBACK_HOLD_S),'preparing':self.preparing})
+                if session['recoveries']>self.ARM_RECOVERIES:
+                    self.stop(f'Контроллер отменил движение руки {session["recoveries"]} раз: '+self.controller_detail(now));return True
+                self.log(f'Рука: контроллер отменил движение ({session["recoveries"]}/{self.ARM_RECOVERIES}), восстановление')
+                with self.core_lock:self.core.arm_target=None;self.core.arm_dirty=False
+                self.controls.jog.velocity[:]=0
+            self.io.stop_base()
+            if now-session['recovery_at']>self.ARM_RECOVERY_S:
+                self.stop('Отмена движения руки не снялась: '+self.controller_detail(now));return True
+            return True
+        if session.get('recovery_at') is not None:
+            measured=self.core.measured_arm(self.ARM_FEEDBACK_HOLD_S)
+            if measured is None:
+                if now-session['recovery_at']>self.ARM_RECOVERY_S:self.stop('Нет обратной связи руки после отмены')
+                return True
+            session['recovery_at']=None
+            self.restart_arm_from(measured)
+            self.log('Рука: восстановлено от измеренной позы')
+            return False
+        disabled=self.profile!='rosmaster_dock' and self.core.arm_target is not None and not self.core.state.get('arm_enabled')
+        if disabled:
+            since=session.setdefault('arm_disabled_at',now)
+            if now-since>self.ARM_RECOVERY_S:
+                self.stop('Контроллер не включил руку: '+self.controller_detail(now));return True
+        else:session.pop('arm_disabled_at',None)
+        return False
+
+    def restart_arm_from(self,measured):
+        """New arm targets start from where the arm really is; no old target is replayed."""
+        self.io._arm_cmd=list(measured)
+        self.controls.jog.reset(measured);self.controls.jog.velocity[:]=0
+        self.controls._arm_tracking_blocked=False;self.controls._arm_input_active=False
+        if self.controls.mode=='mirror':
+            self.controls.mirror.servo=np.array(measured,float);self.controls.mirror.target=self.controls.mirror.servo.copy()
+            self.controls.mirror.rebase()
+        if self.preparing:self.pose_cmd=list(measured)
 
     def controller_detail(self,now):
         core=self.core;state=core.state or {}
@@ -188,7 +253,7 @@ class Runtime:
                 self.profile=profile;self.sequence=-1;self.lease=secrets.token_urlsafe(24)
                 self.reason=None;self.preparing=profile=='prepare'
                 if self.preparing:
-                    self.prepare_started=time.monotonic();self.pose_target=[90]*6;self.pose_runtime=4000
+                    self.begin_pose([90]*6,measured,time.monotonic())
                 else:
                     self.controls.arm_mode=arm_mode
                     self.controls.enable(profile,time.monotonic())
@@ -214,11 +279,17 @@ class Runtime:
                 now=time.monotonic();session=self.session
                 session['max_command_gap']=max(session['max_command_gap'],now-session['last_command'])
                 session['last_command']=now;session['commands']+=1
-            if not self.preparing:
-                self.controls.set_input(intent,time.monotonic())
+            if self.controls.armed:
+                # Keep operator input fresh during a preset too; it is applied only after the pose.
+                self.controls.set_input(intent if not self.preparing else {**intent,'arm':[0,0,0],'pitch':0,'roll':0,'grip':0},time.monotonic())
                 if self.profile=='rosmaster_manual':self.io.guard_off=bool(intent.get('free',False))
                 if leader is not None and not self.controls.leader(leader,time.monotonic()):raise ValueError('Invalid Leader frame')
                 if mirror and self.controls.mode!='mirror':self.controls.enable_mirror(time.monotonic())
+                elif not mirror and self.controls.mode=='mirror':
+                    measured=self.io.measured_arm()
+                    self.controls.mode='manual';self.io.stop_base()
+                    if measured is not None:self.restart_arm_from(measured)
+                    self.log('Зеркало выключено; ручное управление продолжается')
             self.sequence=sequence
             return self.status()
 
@@ -231,25 +302,44 @@ class Runtime:
             if self.odom is None or time.monotonic()-self.odom_at>.25 or any(abs(v)>.01 for v in self.odom):raise ValueError('Сначала остановите шасси')
             measured=self.io.measured_arm()
             if measured is None:raise ValueError('Нет свежих измерений руки')
+            target=[float(v) for v in self.cfg['arm'][poses[name]]]
+            if not self.model.within_limits(target):raise ValueError('Поза вне пределов руки')
+            start=np.array(measured,float);end=np.array(target,float)
+            for frac in (0.,.25,.5,.75,1.):
+                if not self.model.collision_free(start+(end-start)*frac,self.cfg['arm']['floor_margin_m']):
+                    raise ValueError('Путь к позе пересекает пол или шасси')
             self.io._arm_cmd=list(measured)
             self.io.stop_base()
-            self.io.move_arm(list(self.cfg['arm'][poses[name]]),wait=False)
-            self.pose_target=list(self.last_arm_command)
-            self.pose_runtime=self.core.arm_target[1]
-            self.prepare_started=time.monotonic();self.preparing=True
+            self.controls.jog.velocity[:]=0
+            self.begin_pose(target,measured,time.monotonic())
             self.log('arm -> '+name)
 
-    def prepare_step(self,now):
-        measured=self.core.measured_arm()
+    def begin_pose(self,target,measured,now):
+        self.pose_target=[float(v) for v in target];self.pose_cmd=[float(v) for v in measured]
+        distance=max(abs(a-b) for a,b in zip(self.pose_target,self.pose_cmd))
+        self.prepare_started=now;self.pose_deadline=now+distance/self.POSE_DEG_S+4.
+        self.preparing=True
+
+    def prepare_step(self,now,dt=.05):
+        measured=self.core.measured_arm(self.ARM_FEEDBACK_HOLD_S)
         if measured is None:self.stop('Feedback lost during arm preparation');return
-        elapsed=now-self.prepare_started
-        if elapsed>self.pose_runtime/1000 and max(abs(v-target) for v,target in zip(measured,self.pose_target))<4:
-            self.stop('Поза достигнута: подтверждено измерениями');return
-        if elapsed>self.pose_runtime/1000+3:self.stop('Поза не достигнута за отведённое время');return
-        # The same 90-degree / 4-second preparation used by the former startup.
-        # No changes to raw calibration or limits and no automatic execution at boot.
-        with self.core_lock:self.core.on_arm(self.pose_target,self.pose_runtime)
-        self.last_arm_command=list(self.pose_target)
+        error=[abs(v-target) for v,target in zip(measured,self.pose_target)]
+        if max(error[:5])<4 and error[5]<8:
+            self.io._arm_cmd=list(measured);self.controls.jog.reset(measured)
+            if self.profile=='prepare' or not self.controls.armed:
+                self.stop('Поза достигнута: подтверждено измерениями');return
+            self.preparing=False;self.controls.last_input=now
+            self.log('Поза достигнута; ручное управление продолжается');return
+        if now>self.pose_deadline:
+            self.stop('Поза не достигнута за отведённое время: '+json.dumps([round(v,1) for v in measured]));return
+        # Advance the commanded pose at a limited rate, but never far ahead of the measured arm.
+        lead=max(abs(c-m) for c,m in zip(self.pose_cmd,measured))
+        if lead<self.POSE_MAX_LEAD_DEG:
+            limit=self.POSE_DEG_S*min(dt,.1)
+            self.pose_cmd=[c+max(-limit,min(limit,t-c)) for c,t in zip(self.pose_cmd,self.pose_target)]
+        command=[float(round(v)) for v in self.pose_cmd]
+        with self.core_lock:self.core.on_arm(command,self.POSE_STEP_MS)
+        self.last_arm_command=list(command)
 
     def stop(self,reason='Operator STOP'):
         # Cancel transport before waiting for an IK calculation holding the control lock.
@@ -273,6 +363,8 @@ class Runtime:
                         'max_loop_dt_s':round(session['max_loop_dt'],3),'ages':self.ages(now),
                         'battery_v':self.battery_value,'battery_at_enable':session['battery_at_enable'],
                         'controller':self.controller_detail(now) if self.core else None,
+                        'controller_diagnostics':(self.core.state or {}).get('diagnostics') if self.core else None,
+                        'arm_recoveries':session.get('recoveries',0),'arm_command':self.last_arm_command,
                         'motion_commands_sent':self.core.motion_commands_sent if self.core else None})
                     self.log('STOP: '+reason)
             self.preparing=False;self.lease=None

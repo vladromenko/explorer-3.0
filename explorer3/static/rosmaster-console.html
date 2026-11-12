@@ -34,7 +34,9 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
 <b id="notice" style="color:var(--warn)">Управление выключено</b></nav>
 <main>
 <section>
-  <div class="card"><img id="video" src="/api/rosmaster/camera.mjpg" alt="камера"></div>
+  <div class="card"><img id="video" src="/api/rosmaster/camera.mjpg?light=1" alt="камера">
+   <div class="row" style="margin-top:8px;align-items:center"><span class="help">Яркость (только показ):</span>
+    <button onclick="light(0)">Как есть</button><button onclick="light(1)">Авто</button><button onclick="light(2)">Ярче</button><button onclick="light(3)">Максимум</button><b id="lightv" class="help">Авто</b></div></div>
   <div class="card" style="margin-top:12px"><h2>Управление</h2>
    <div class="help">
     <p><b>Езда:</b> <kbd>W</kbd><kbd>S</kbd> вперёд/назад · <kbd>A</kbd><kbd>D</kbd> влево/вправо · <kbd>Q</kbd><kbd>E</kbd> поворот. <b>Shift</b> — медленно. Максимум вперёд 0,30 м/с; вбок 0,25 м/с; поворот 0,80 рад/с.</p>
@@ -59,7 +61,7 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
   <div class="card"><h2>Зеркало: рука SO101 → рука Rosmaster</h2>
    <div class="help">Поток Leader запускается на Homebrain. Дождитесь поступления кадров, затем включите зеркало. Текущая поза руки и захвата принимается за начало; после потери связи включите зеркало заново. Начинайте с малых движений.</div>
    <div class="kv" style="margin-top:6px"><span>Состояние</span><span id="mir">выкл</span><span>Кадров</span><span id="mirn">0</span><span>Цель</span><span id="mirt">—</span><span>Измерено</span><span id="mirm">—</span></div>
-   <div class="row" style="margin-top:8px"><button onclick="send({action:'leader'})">Подключить Leader</button><button class="go" onclick="send({action:'mirror',on:true})">Включить</button><button onclick="send({action:'mirror',on:false})">Выключить</button></div></div>
+   <div class="row" style="margin-top:8px"><button onclick="send({action:'leader'})">Подключить Leader</button><button onclick="send({action:'leader_off'})">Отключить Leader</button><button class="go" onclick="send({action:'mirror',on:true})">Включить</button><button onclick="send({action:'mirror',on:false})">Выключить</button></div></div>
   <div class="card"><h2>Показы и обучение Explorer</h2><div class="help">Запись ROSMASTER ещё не принята. Ручное управление и зеркало — на этом экране.</div><a href="/" style="color:var(--acc)">Датасеты и обучение</a><span id="mstate" hidden></span><span id="mres" hidden></span></div>
   <div class="card"><div class="row"><button class="stop" onclick="send({action:'stop'})">STOP</button></div></div>
   <div class="card"><h2>Журнал</h2><div id="log"></div></div>
@@ -70,6 +72,7 @@ function clearControls(){for(const k in keys)lockedKeys.add(k);keys={};padBlocke
 function send(o){if(['stop','enable','prepare','restore','acquire'].includes(o.action))clearControls();if(ws&&ws.readyState===1)ws.send(JSON.stringify(o));}
 function armMode(mode){clearControls();send({action:'arm_mode',mode});}
 function act(a,n){clearControls();send({action:a,name:n});}
+function light(level){try{localStorage.setItem('rosmasterLight',level)}catch(e){}$('video').src='/api/rosmaster/camera.mjpg?light='+level+'&t='+Date.now();$('lightv').textContent=['Как есть','Авто','Ярче','Максимум'][level];this&&this.blur&&this.blur();document.activeElement&&document.activeElement.blur();}
 function connect(){ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/rosmaster/console/ws');
  ws.onopen=()=>{$('link').textContent='связь есть';$('link').style.background='#1f3a2c'};
  ws.onclose=()=>{clearControls();$('link').textContent='нет связи';$('link').style.background='#3a1f1f';setTimeout(connect,1000)};
@@ -83,7 +86,7 @@ function render(s){
  $('volts').textContent=b.volts?b.volts.toFixed(2)+' В':'—';$('left').textContent=b.minutes_left!=null?'≈ '+b.minutes_left+' мин':'—';
  $('batnote').textContent=s.battery_stale?'Показание напряжения не обновляется (особенность прошивки при движении)':'';
  $('arm').textContent=s.arm.join(', ');$('tcp').textContent=s.tcp.join(', ');$('blocked').textContent=s.jog_blocked||'—';
- const mi=s.mirror;$('mir').textContent=(mi.on?'включено':'выкл')+(mi.blocked?' · '+mi.blocked:'')+(mi.age!=null?' · данные '+mi.age+' с назад':'');$('mirn').textContent=mi.frames;$('mirt').textContent=mi.target.join(', ');$('mirm').textContent=s.arm_measured?s.arm_measured.join(', '):'нет обратной связи';
+ const mi=s.mirror;$('mir').textContent=(mi.on?'включено':'выкл')+' · Leader '+(mi.leader||'—')+(mi.blocked?' · '+mi.blocked:'')+(mi.age!=null?' · данные '+mi.age+' с назад':'');$('mirn').textContent=mi.frames;$('mirt').textContent=mi.target.join(', ');$('mirm').textContent=s.arm_measured?s.arm_measured.join(', '):'нет обратной связи';
  $('gmsg').textContent=s.guard?(s.guard[0]==='translate'?'⚠ препятствие впереди/сбоку — езда ограничена':'⚠ препятствие мешает повороту'):'';
  $('mstate').textContent=s.mission;$('mres').textContent=s.mission_result||'—';
  const L=$('log');const atEnd=L.scrollTop+L.clientHeight>=L.scrollHeight-8;L.textContent=s.log.join('\n');if(atEnd)L.scrollTop=L.scrollHeight;}
@@ -112,4 +115,5 @@ function collect(){if(document.hidden||!viewActive||!ws||ws.readyState!==1)retur
 document.querySelectorAll('button.hold').forEach(b=>{const k=b.dataset.k,on=e=>{e.preventDefault();if(!lockedKeys.has(k))keys[k]=true},off=()=>{delete keys[k];lockedKeys.delete(k)};
  b.addEventListener('pointerdown',on);['pointerup','pointerleave','pointercancel'].forEach(t=>b.addEventListener(t,off))});
 setInterval(()=>{if(!document.hidden&&document.hasFocus())send(collect())},33);connect();
+try{const saved=+localStorage.getItem('rosmasterLight');if(saved>=0&&saved<=3&&localStorage.getItem('rosmasterLight')!==null)light(saved)}catch(e){}
 </script></body></html>

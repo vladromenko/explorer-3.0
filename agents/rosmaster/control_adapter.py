@@ -82,7 +82,14 @@ class NativeControls:
                 self.stop_reason=f'no operator input for {now-self.last_input:.2f} s';self.stop_all()
             elif self.mode=='mirror':
                 self._mirror_step(dt,now)
-                if not self.armed:self.stop_reason='mirror: '+str(self.mirror.blocked)
+                if not self.armed:
+                    # The verbatim mirror step stopped everything; keep the session in manual
+                    # mode with zero intent instead, so the operator can re-enable the mirror.
+                    reason=self.mirror.blocked
+                    self.armed=True;self.mode='manual';self.last_input=now
+                    self.jog.reset(self.io.measured_arm(max_age=.25) or self.io.arm_command())
+                    self.mirror.blocked=reason
+                    self.log('Зеркало остановлено: '+str(reason)+'; рука стоит, ручное управление доступно')
             else:self._manual_step(dt,now)
 
     def stop_all(self):
