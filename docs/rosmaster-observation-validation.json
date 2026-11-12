@@ -1,0 +1,170 @@
+{
+  "health": {
+    "robot": "rosmaster",
+    "hardware_open": false,
+    "armed": false,
+    "monotonic_ns": 867197720688,
+    "physical_acceptance": false,
+    "observation": {
+      "monotonic_ns": 867197729232,
+      "clock": "rosmaster_monotonic_ns",
+      "read_only": true,
+      "motor_commands_sent": false,
+      "error": null,
+      "counts": {
+        "arm": 14617,
+        "battery": 76,
+        "camera": 565,
+        "odom": 1899
+      },
+      "arm_measured": [
+        90.65454545454543,
+        163.47272727272724,
+        -60.709090909090946,
+        31.745454545454514,
+        89.8644578313253,
+        11.04545454545453
+      ],
+      "arm_received_ns": 867176044464,
+      "arm_outside_native_model": [
+        3,
+        6
+      ],
+      "arm_complete": true,
+      "battery_voltage": 11.704809188842773,
+      "battery_received_ns": 866827129040,
+      "measured_velocity": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "odom_received_ns": 867169920335,
+      "camera": {
+        "available": true,
+        "shape": [
+          480,
+          640,
+          3
+        ],
+        "received_ns": 867172244452,
+        "source_timestamp_ns": 1794485664536979968,
+        "source_clock": "ros_header_time_not_homebrain",
+        "sequence": 565
+      },
+      "controller_command_readiness": "not_measured_by_this_observer",
+      "physical_acceptance": false
+    },
+    "observation_error": null,
+    "status": null,
+    "prepared": true,
+    "reason": "Separate physical block D not accepted"
+  },
+  "jpeg_reads": [
+    {
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "request_s": 0.04216381098376587,
+      "camera": {
+        "available": true,
+        "shape": [
+          480,
+          640,
+          3
+        ],
+        "received_ns": 867172244452,
+        "source_timestamp_ns": 1794485664536979968,
+        "source_clock": "ros_header_time_not_homebrain",
+        "sequence": 565
+      }
+    },
+    {
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "request_s": 0.037448350980412215,
+      "camera": {
+        "available": true,
+        "shape": [
+          480,
+          640,
+          3
+        ],
+        "received_ns": 867232248521,
+        "source_timestamp_ns": 1794485664605049088,
+        "source_clock": "ros_header_time_not_homebrain",
+        "sequence": 566
+      }
+    },
+    {
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "request_s": 0.03296502499142662,
+      "camera": {
+        "available": true,
+        "shape": [
+          480,
+          640,
+          3
+        ],
+        "received_ns": 867232248521,
+        "source_timestamp_ns": 1794485664605049088,
+        "source_clock": "ros_header_time_not_homebrain",
+        "sequence": 566
+      }
+    },
+    {
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "request_s": 0.03059537400258705,
+      "camera": {
+        "available": true,
+        "shape": [
+          480,
+          640,
+          3
+        ],
+        "received_ns": 867301700617,
+        "source_timestamp_ns": 1794485664673004032,
+        "source_clock": "ros_header_time_not_homebrain",
+        "sequence": 567
+      }
+    },
+    {
+      "shape": [
+        480,
+        640,
+        3
+      ],
+      "request_s": 0.024881285964511335,
+      "camera": {
+        "available": true,
+        "shape": [
+          480,
+          640,
+          3
+        ],
+        "received_ns": 867301700617,
+        "source_timestamp_ns": 1794485664673004032,
+        "source_clock": "ros_header_time_not_homebrain",
+        "sequence": 567
+      }
+    }
+  ],
+  "auth_denied": 403,
+  "session_denied": 409,
+  "stop": {
+    "armed": false,
+    "physical_stop_confirmed": false
+  }
+}

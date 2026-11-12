@@ -1,0 +1,39 @@
+{
+  "captured": "2026-11-12",
+  "source_host": "ROSMASTER",
+  "files": [
+    {
+      "source": "/home/vlad/CubeBot/rosmaster/__init__.py",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "previous_copy_equal": true
+    },
+    {
+      "source": "/home/vlad/CubeBot/rosmaster/bridge_ros.py",
+      "source_sha256": "8231784694121a43486179243e6cbf08f3db0c1ee922898b16837ff513b74930",
+      "previous_copy_equal": true
+    },
+    {
+      "source": "/home/vlad/CubeBot/rosmaster/core.py",
+      "source_sha256": "7d86c9622545fe1cad8f80d001baefedcca9852b2ce8847357afdffd3688aa0d",
+      "previous_copy_equal": true
+    },
+    {
+      "source": "/home/vlad/CubeBot/rosmaster/decode.py",
+      "source_sha256": "0a8f71b07e9d50ba21a12afe0c29bca6cd42ff828aad8a96a1aad9f48050b8de",
+      "previous_copy_equal": true
+    },
+    {
+      "source": "/home/vlad/CubeBot/rosmaster/fake_board.py",
+      "source_sha256": "29fe24509aa558495622a111c6ebb5a7cac63419b8d12194e7865d9b7e2a5693",
+      "previous_copy_equal": false
+    },
+    {
+      "source": "/home/vlad/CubeBot/rosmaster/link.py",
+      "source_sha256": "a360f05c4741950205138911da3d2e01c2f6d5cad5e77af2d37f07d7c3aff4a1",
+      "previous_copy_equal": true
+    }
+  ],
+  "calibration_sha256": "3203d59ef9a06fb5215446b0e3e1f7f4aaf68d27c8b85f26375fdb5dca5be53a",
+  "motor_runtime_started": false,
+  "pending_isolation": "Own bridge CAL_PATHS must use explorer3/config only; native fallback still references Explorer/config. Do not start own bridge until corrected and tested."
+}

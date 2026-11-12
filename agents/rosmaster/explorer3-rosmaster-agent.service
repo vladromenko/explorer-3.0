@@ -1,0 +1,14 @@
+[Unit]
+Description=Explorer 3.0 ROSMASTER telemetry (no actuator ownership)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/explorer3
+ExecStart=/bin/bash %h/explorer3/start-agent.sh
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target

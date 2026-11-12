@@ -15,7 +15,7 @@ from .session import Session
 from .preview import LivePreview
 from . import handoff, tank_handoff, tank
 from .network import LocalNetworkOnly
-from . import viewer, local_work, local_pages, research, trials as trial_plans
+from . import viewer, local_work, local_pages, research, rosmaster_monitor, trials as trial_plans
 from .paths import DATA, ROOT, prepare
 from .profiles import PROFILES
 from .resources import owners
@@ -145,6 +145,7 @@ def index():
                 with ui.element('div').classes('preview'):
                     ui.label('Камера не открыта' if ident=='so101' else 'Подключение на этапе '+('C' if ident=='tank' else 'D'))
                 ui.button('Выбрать '+name,on_click=lambda robot=ident:select(robot)).props('outline')
+                if ident=='rosmaster':ui.link('Камера и диагностика', '/rosmaster')
     with ui.element('div').classes('workspace'):
         selected=ui.label('Выбран: '+ROBOT_NAMES[control.robot]).classes('selected')
         mode_label=ui.label('Наблюдение · приводы не включены').classes('muted')
