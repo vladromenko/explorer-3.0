@@ -121,12 +121,13 @@ class LeasedCore(BridgeCore):
                 self.clock_resyncs+=1;self.clock_last_step_us=step
                 self.clock_max_step_us=max(self.clock_max_step_us,abs(step))
             return
+        super()._handle(kind,payload,now)
         if kind==L.SERVO:
+            # Mark validity only after the native core stored the angle (it is read without this lock).
             _,joint,error,device,raw,_=struct.unpack_from('<QBBBHQ',payload)
             if 1<=joint<=6:
+                self.joint_valid[joint-1]=error==0 and device==0 and 96<=raw<=4000 and self.servo_deg[joint-1] is not None
                 self.joint_times[joint-1]=now
-                self.joint_valid[joint-1]=error==0 and device==0 and 96<=raw<=4000
-        super()._handle(kind,payload,now)
         if kind==L.RESULT:
             _,_,op,result,_,_=struct.unpack('<QQBBBB',payload)
             if result and op in (L.ARM,L.ARM_ENABLE,L.BASE) and self.permitted:
@@ -138,7 +139,8 @@ class LeasedCore(BridgeCore):
 
     def measured_arm(self, max_age=.25):
         now=self.clock()
-        if all(valid and stamp is not None and 0<=now-stamp<max_age
-               for valid,stamp in zip(self.joint_valid,self.joint_times)):
-            return list(self.servo_deg)
+        values=list(self.servo_deg)
+        if all(valid and stamp is not None and 0<=now-stamp<max_age and value is not None
+               for valid,stamp,value in zip(self.joint_valid,self.joint_times,values)):
+            return values
         return None

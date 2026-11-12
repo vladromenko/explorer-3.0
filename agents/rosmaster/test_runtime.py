@@ -270,3 +270,9 @@ def test_dock_policy_actions_are_capped_by_native_manual_limits(tmp_path):
     with pytest.raises(ValueError):runtime.validate_direct({'arm':[90]*6})
     runtime.direct=(t.monotonic(),runtime.validate_direct({'base':[5,-5,9]}));runtime.direct_step(.05,t.monotonic())
     b=runtime.cfg['manual_base'];assert runtime.io.drives[-1]==(b['max_vx'],-b['max_vy'],b['max_wz'])
+
+
+def test_measured_arm_never_returns_missing_angles():
+    c=LeasedCore(Link(),calibration()['joints'],lambda *a:None,clock=lambda:10.)
+    c.servo_deg=[90.]*5+[None];c.joint_times=[9.9]*6;c.joint_valid=[True]*6
+    assert c.measured_arm() is None
