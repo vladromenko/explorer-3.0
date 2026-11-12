@@ -1,6 +1,8 @@
-"""Only the trusted home LAN and loopback may reach HTTP or websocket control."""
+"""Only loopback, the trusted home LAN and the owner's Tailscale tailnet may reach HTTP or websocket control."""
 import ipaddress
 from urllib.parse import urlsplit
+
+TRUSTED=[ipaddress.ip_network(n) for n in ('192.168.0.0/24','100.64.0.0/10','fd7a:115c:a1e0::/48')]
 
 class LocalNetworkOnly:
     def __init__(self,app):
@@ -10,7 +12,7 @@ class LocalNetworkOnly:
             host=(scope.get('client') or ('',0))[0]
             try:
                 ip=ipaddress.ip_address(host)
-                allowed=ip.is_loopback or ip in ipaddress.ip_network('192.168.0.0/24')
+                allowed=ip.is_loopback or any(ip in net for net in TRUSTED)
             except ValueError:
                 allowed=False
             headers=dict(scope.get('headers',[]))
