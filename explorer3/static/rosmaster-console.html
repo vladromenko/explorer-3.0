@@ -91,10 +91,15 @@ function render(s){
  $('mstate').textContent=s.mission;$('mres').textContent=s.mission_result||'—';
  const L=$('log');const atEnd=L.scrollTop+L.clientHeight>=L.scrollHeight-8;L.textContent=s.log.join('\n');if(atEnd)L.scrollTop=L.scrollHeight;}
 const map={w:['d',0,1],s:['d',0,-1],a:['d',1,1],d:['d',1,-1],q:['d',2,1],e:['d',2,-1],i:['a',0,1],k:['a',0,-1],j:['a',1,1],l:['a',1,-1],r:['a',2,1],f:['a',2,-1]};
+// Only text entry swallows keys. A focused checkbox/button must not (Safari keeps focus on the
+// last clicked checkbox, which silently disabled all driving/arm keys).
+function typing(t){return t&&(t.tagName==='TEXTAREA'||t.isContentEditable||(t.tagName==='INPUT'&&!['checkbox','radio','button','submit','range'].includes((t.type||'').toLowerCase())))}
+document.addEventListener('change',e=>{if(e.target&&e.target.type==='checkbox')e.target.blur()});
+document.addEventListener('click',e=>{const t=e.target.closest&&e.target.closest('button');if(t)t.blur()});
 function physical(e){const c=e.code;return {ArrowUp:'i',ArrowDown:'k',ArrowLeft:'j',ArrowRight:'l',Comma:',',Period:'.',BracketLeft:'[',BracketRight:']',ShiftLeft:'shift',ShiftRight:'shift'}[c]||(c&&c.startsWith('Key')?c.slice(3).toLowerCase():c);}
 addEventListener('keydown',e=>{const k=physical(e);
  if(k==='Space'||k==='Escape'){e.preventDefault();send({action:'stop',reason:'клавиша STOP'});return}
- if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.isContentEditable)return;
+ if(typing(e.target))return;
  if(k==='Digit1'||k==='Digit2'){if(!e.repeat)armMode(k==='Digit1'?'cartesian':'joint');return}
  if(!document.hidden&&viewActive&&!lockedKeys.has(k)&&ws&&ws.readyState===1)keys[k]=true;
  if(k in map||[',','.','[',']','n','m'].includes(k))e.preventDefault();});
