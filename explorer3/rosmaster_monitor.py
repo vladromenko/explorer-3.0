@@ -47,8 +47,8 @@ def page():
         try:
             result = await observation()
             state = result.get('observation') or {}
-            outside = state.get('arm_outside_native_model', [])
-            status.set_text('Связь есть · движение не включено' +
+            outside = state.get('arm_outside_native_model') or []
+            status.set_text(('Управление активно' if result.get('armed') else 'Связь есть · управление не включено') +
                 (' · за пределами модели: '+', '.join(map(str,outside)) if outside else ''))
             report.set_content(json.dumps(state, ensure_ascii=False, indent=2))
             image.set_source('/api/rosmaster/frame.jpg?t='+str(time.monotonic_ns()))

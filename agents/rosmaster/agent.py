@@ -6,7 +6,7 @@ from pathlib import Path
 import threading
 import time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Body
 from fastapi.responses import Response
 
 ROOT = Path(os.environ.get('EXPLORER3_ROOT', '/home/vlad/explorer3'))
@@ -18,7 +18,7 @@ observer_error = None
 
 @asynccontextmanager
 async def lifespan(app):
-    global observer, observer_error
+    global observer, observer_error, runtime
     if config().get('observation_enabled') is True:
         from observer import Observer
         observer = Observer()
@@ -29,6 +29,9 @@ async def lifespan(app):
     try:
         yield
     finally:
+        if runtime is not None:
+            runtime.close()
+            runtime=None
         if observer is not None:
             observer.close()
             observer = None
@@ -53,12 +56,22 @@ async def authenticate(request: Request, call_next):
 
 @app.get('/health')
 def health():
+    observation=observer.snapshot() if observer else None
+    state=runtime.status() if runtime else None
+    if state is not None and observation is not None:
+        observation={**observation,'source':'native_serial_owner','read_only':False,
+            'motor_commands_sent':state['motion_commands_sent']>0,
+            'arm_measured':state['arm_measured'],'arm_complete':state['arm_measured'] is not None,
+            'arm_received_ns':None,'battery_received_ns':None,'odom_received_ns':None,
+            'battery_voltage':state['battery_voltage'],'measured_velocity':state['measured_velocity'],
+            'controller_command_readiness':state['controller_ready'],
+            'arm_outside_native_model':None}
     return {'robot': 'rosmaster', 'hardware_open': runtime is not None,
             'armed': False if runtime is None else runtime.armed,
             'monotonic_ns': time.monotonic_ns(), 'physical_acceptance': False,
-            'observation': observer.snapshot() if observer else None,
+            'observation': observation,
             'observation_error': observer_error,
-            'status': runtime.status() if runtime else None,
+            'status': state,
             'prepared': (ROOT/'native-manifest.json').exists(),
             'reason': 'Separate physical block D not accepted' if not (ROOT/'stage-d-authorized.json').exists() else 'Explicit start required'}
 
@@ -79,13 +92,62 @@ def frame():
 
 
 @app.post('/session')
-def session():
+def session(value:dict=Body(default={})):
     with lock:
         if not (ROOT/'stage-d-authorized.json').is_file():
             raise HTTPException(409, 'Нужна отдельная физическая проверка ROSMASTER')
-        # The working keyboard scheme has been copied. Hardware lifecycle is still under
-        # acceptance; a marker alone must never make incomplete control reachable.
-        raise HTTPException(409, 'Передача ресурсов и драйвер Explorer 3.0 ещё не приняты')
+        if runtime is None:raise HTTPException(409,'Сначала передайте управление Explorer')
+        try:return runtime.enable(value.get('profile'),value.get('arm_mode','cartesian'),value.get('observing') is True)
+        except (ValueError,RuntimeError,PermissionError) as exc:raise HTTPException(409,str(exc)) from exc
+
+
+@app.post('/acquire')
+def acquire():
+    global runtime
+    with lock:
+        if not (ROOT/'stage-d-authorized.json').is_file():raise HTTPException(409,'Физический блок ROSMASTER не разрешён')
+        if runtime is not None:return {'acquired':True,'status':runtime.status()}
+        from handoff import Handoff
+        from runtime import Runtime
+        handoff=Handoff(ROOT)
+        try:
+            handoff.enter()
+            candidate=Runtime(ROOT)
+            try:candidate.start()
+            except Exception:
+                handoff.restore()
+                raise
+            runtime=candidate
+            return {'acquired':True,'armed':False}
+        except Exception as exc:raise HTTPException(409,str(exc)) from exc
+
+
+@app.post('/command')
+def command(value:dict=Body(...)):
+    with lock:
+        if runtime is None:raise HTTPException(409,'Runtime not acquired')
+        try:return runtime.command(value.get('lease',''),value.get('sequence'),value.get('intent',{}),
+                                    value.get('leader'),value.get('mirror') is True)
+        except (ValueError,RuntimeError,PermissionError,TypeError) as exc:
+            runtime.stop('Command rejected: '+str(exc))
+            raise HTTPException(409,str(exc)) from exc
+
+
+@app.post('/restore')
+def restore():
+    global runtime
+    with lock:
+        from handoff import Handoff
+        try:
+            if runtime is not None:runtime.close();runtime=None
+            return Handoff(ROOT).restore()
+        except Exception as exc:raise HTTPException(409,str(exc)) from exc
+
+
+@app.get('/ownership')
+def ownership():
+    from handoff import Handoff
+    return Handoff(ROOT).status()
 
 
 @app.post('/stop')
@@ -98,6 +160,6 @@ def stop():
 
 @app.get('/controls')
 def controls():
-    return {'source': 'CubeBot Console 8090', 'prepared_only': True,
+    return {'source': 'CubeBot Console 8090', 'prepared_only': False,
             'arm_modes': ['cartesian', 'joint'], 'leader_mapper': 'cubebot.mirror.MirrorMapper',
-            'reason': 'Native control copied; Explorer runtime integration pending'}
+            'physical_acceptance':False,'reason': 'Explicit ownership and control session required'}

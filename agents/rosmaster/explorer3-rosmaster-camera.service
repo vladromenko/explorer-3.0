@@ -1,0 +1,11 @@
+[Unit]
+Description=Explorer 3.0 isolated Orbbec camera
+After=network.target
+
+[Service]
+WorkingDirectory=%h/explorer3
+ExecStart=/bin/bash %h/explorer3/start-camera.sh
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=8
+KillMode=control-group

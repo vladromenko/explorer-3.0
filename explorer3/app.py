@@ -15,7 +15,7 @@ from .session import Session
 from .preview import LivePreview
 from . import handoff, tank_handoff, tank
 from .network import LocalNetworkOnly
-from . import viewer, local_work, local_pages, research, rosmaster_monitor, trials as trial_plans
+from . import viewer, local_work, local_pages, research, rosmaster_monitor, rosmaster_control, trials as trial_plans
 from .paths import DATA, ROOT, prepare
 from .profiles import PROFILES
 from .resources import owners
@@ -45,7 +45,8 @@ def current_stage():
 
 @app.get('/api/health')
 def health():
-    return {'product':'Explorer 3.0','stage':current_stage(),'armed':False if control.owner is None else True,
+    return {'product':'Explorer 3.0','stage':current_stage(),'armed':control.owner is not None or rosmaster_control.operator.lease is not None,
+            'rosmaster_manual_enabled':rosmaster_control.enabled(),'rosmaster_manual_active':rosmaster_control.operator.lease is not None,
             'local_only':local_work.enabled(),'selected_robot':control.robot,'mode':control.mode,'devices':inventory(),'data_root':str(DATA),
             'session':{'phase':session.phase,'frames':session.frame_count,'error':session.error,
                        'recording':session.record_requested,'thread_active':bool(session.thread and session.thread.is_alive()),
@@ -91,6 +92,11 @@ def notify_error(exc):
     catalog.event('error',str(exc))
     ui.notify(str(exc),type='negative')
 
+async def stop_all():
+    control.stop('STOP из интерфейса')
+    if rosmaster_control.operator.lease is not None:
+        await asyncio.to_thread(rosmaster_control.operator.stop,'Главный STOP Explorer')
+
 @ui.page('/')
 def index():
     owner=ui.context.client.id
@@ -132,7 +138,7 @@ def index():
             ui.label('HOMEBRAIN / ЛОКАЛЬНАЯ ЛАБОРАТОРИЯ').classes('kicker')
             ui.html('<h1>Explorer 3.0</h1>')
             ui.label('Показы → обучение → проверяемые испытания').classes('muted')
-        ui.button('STOP',icon='stop_circle',color='negative',on_click=lambda:control.stop('STOP из интерфейса')).props('size=lg')
+        ui.button('STOP',icon='stop_circle',color='negative',on_click=stop_all).props('size=lg')
     stage_label=ui.label('Этап A · программная подготовка. Движение не разрешено. Запись и физические испытания ещё не проверены.').classes('notice')
     ready=ui.label('').classes('muted')
     fleet_labels={}
@@ -145,7 +151,9 @@ def index():
                 with ui.element('div').classes('preview'):
                     ui.label('Камера не открыта' if ident=='so101' else 'Подключение на этапе '+('C' if ident=='tank' else 'D'))
                 ui.button('Выбрать '+name,on_click=lambda robot=ident:select(robot)).props('outline')
-                if ident=='rosmaster':ui.link('Камера и диагностика', '/rosmaster')
+                if ident=='rosmaster':
+                    ui.link('Открыть управление', '/rosmaster/control')
+                    ui.link('Камера и диагностика', '/rosmaster')
     with ui.element('div').classes('workspace'):
         selected=ui.label('Выбран: '+ROBOT_NAMES[control.robot]).classes('selected')
         mode_label=ui.label('Наблюдение · приводы не включены').classes('muted')
@@ -371,11 +379,12 @@ def index():
         smol_full_button.set_enabled(smol_pass and task.value=='so101_pick_place')
         collection_info.set_text(local_pages.collection_status(task.value))
         for ident,badge in fleet_labels.items():
-            badge.set_text('Не опрашивается · локальный режим' if local_work.enabled() else ('Выбран' if ident==control.robot else 'Не выбран'))
+            badge.set_text('Отдельная страница управления' if ident=='rosmaster' and rosmaster_control.enabled() else
+                ('Не опрашивается · локальный режим' if local_work.enabled() else ('Выбран' if ident==control.robot else 'Не выбран')))
         act_pass=(DATA/'validation/act-pass.json').exists()
         ready.set_text('Программный smoke: ACT '+('PASS' if act_pass else 'не проверен')+' · SmolVLA '+('PASS' if smol_pass else 'не проверен')+' · физические навыки не проверены')
         if local_work.enabled():
-            stage_label.set_text('Локальный режим · роботы не опрашиваются. Датасеты, обучение и анализ доступны без включения устройств.')
+            stage_label.set_text('Сбор и испытания остаются в локальном режиме. Ручное управление ROSMASTER доступно по отдельной ссылке в его карточке.' if rosmaster_control.enabled() else 'Локальный режим · роботы не опрашиваются. Датасеты, обучение и анализ доступны без включения устройств.')
         elif control.robot=='tank' and (DATA/'validation/tank-motion-incident.json').exists():
             stage_label.set_text('Tank: движение заблокировано после отказа STOP. Диагностика; физическая приёмка не пройдена.')
         elif current_stage()=='C':

@@ -34,6 +34,10 @@
     }
   ],
   "calibration_sha256": "3203d59ef9a06fb5215446b0e3e1f7f4aaf68d27c8b85f26375fdb5dca5be53a",
-  "motor_runtime_started": false,
-  "pending_isolation": "Own bridge CAL_PATHS must use explorer3/config only; native fallback still references Explorer/config. Do not start own bridge until corrected and tested."
+  "motor_runtime_started": true,
+  "isolation": {
+    "transport": "Own native/rosmaster/core.py + link.py, imported directly; bridge_ros.py is not imported",
+    "calibration": "Explicit EXPLORER3_ROOT/config/controller-calibration.json; no fallback",
+    "wrapper": "leased_core.py gates motion, cancels on STOP/lost heartbeat/phase change; native conversions/protocol unchanged"
+  }
 }

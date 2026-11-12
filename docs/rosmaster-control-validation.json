@@ -1,0 +1,38 @@
+{
+  "software_tests": {
+    "python": 57,
+    "result": "PASS",
+    "physical_acceptance": false,
+    "js": "Keyboard/release/blur/no held-key resume/modes/gamepad neutral/B STOP PASS"
+  },
+  "hardware_without_motion": {
+    "acquire": "PASS: own serial and camera; controller ready",
+    "restore": "PASS: exact original active service set",
+    "camera_shape": [
+      480,
+      640,
+      3
+    ],
+    "original_console_files_unchanged": 16,
+    "motion_commands_sent_before_user_check": 0
+  },
+  "physical_check": "Requested: prepare arm and STOP within first second; awaiting user",
+  "startup": "UI and agent inert; automatic boot arm lift NOT restored; explicit preparation button implemented",
+  "source": "Copied Console8090 BaseIO/CartesianJog/MirrorMapper + copied native BridgeCore/Link",
+  "urls": {
+    "control": "http://192.168.0.168:8030/rosmaster/control",
+    "agent_port": 8042
+  },
+  "files": {
+    "agents/rosmaster/runtime.py": "bea0611be1b5555c84ce6769e80ab308cb34d4bf14e96e4a449890b6e2b5f7e7",
+    "agents/rosmaster/leased_core.py": "51fbafecdd3ffc3f6c3b94759b02ce83596d35ed8b30f6036bf3a246ee9d358f",
+    "agents/rosmaster/handoff.py": "11b747a02c3f3ad1f993749be7e26932f7748f3892d0fb3cbd386cf10bf598be",
+    "explorer3/rosmaster_control.py": "b20cbcedc6dc3fdc319ef3e2a2dac30ab6452e3635aa373dcf41aa3ba94b170f"
+  },
+  "operator_trial_observed": {
+    "active_control": true,
+    "measured_joint_positions_changed": true,
+    "controller_ready": true,
+    "human_stop_confirmation": "pending"
+  }
+}
