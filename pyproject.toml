@@ -11,3 +11,6 @@ dependencies = ["nicegui==3.19.0", "lerobot[training,smolvla,feetech]==0.6.1", "
 
 [tool.setuptools.packages.find]
 include = ["explorer3*"]
+
+[tool.setuptools.package-data]
+explorer3 = ["static/*.html"]

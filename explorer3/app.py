@@ -15,7 +15,7 @@ from .session import Session
 from .preview import LivePreview
 from . import handoff, tank_handoff, tank
 from .network import LocalNetworkOnly
-from . import viewer, local_work, local_pages, research, rosmaster_monitor, rosmaster_control, trials as trial_plans
+from . import viewer, local_work, local_pages, research, rosmaster_monitor, rosmaster_control, rosmaster_console, trials as trial_plans
 from .paths import DATA, ROOT, prepare
 from .profiles import PROFILES
 from .resources import owners
@@ -438,7 +438,7 @@ def index():
 
 app.on_startup(lambda:catalog.event('info','Explorer 3.0 запущен без открытия аппаратуры'))
 app.on_shutdown(lambda:control.stop('Служба останавливается'))
-app.on_shutdown(jobs.cancel)
+app.on_shutdown(lambda:jobs.cancel())
 app.timer(.1,control.watchdog)
 app.timer(2,jobs.tick)
 ui.run(host=os.environ.get('EXPLORER3_HOST','127.0.0.1'),port=int(os.environ.get('EXPLORER3_PORT','8030')),title='Explorer 3.0',

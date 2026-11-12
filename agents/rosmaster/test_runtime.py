@@ -71,3 +71,20 @@ def test_native_serial_watchdog_and_explicit_restart(tmp_path):
         assert not runtime.armed and runtime.core.arm_target is None
         assert any(kind==L.ARM_CANCEL for kind,payload in board.received)
     finally:runtime.close();board.close()
+
+
+def test_transport_watchdog_does_not_wait_for_control_lock(tmp_path):
+    (tmp_path/'config').mkdir()
+    (tmp_path/'config/controller-calibration.json').write_text(json.dumps(calibration()))
+    board=FakeBoard();runtime=Runtime(tmp_path,board.slave_path)
+    try:
+        runtime.start();end=time.monotonic()+5
+        while time.monotonic()<end and not (runtime.core.ready() and runtime.voltage()):time.sleep(.03)
+        session=runtime.enable('rosmaster_dock',observing=True)
+        runtime.command(session['lease'],0,{'drive':[.2,0,0]})
+        time.sleep(.12)
+        with runtime.lock:
+            time.sleep(.65)
+            assert not runtime.core.permitted
+            assert not any(board.velocity)
+    finally:runtime.close();board.close()

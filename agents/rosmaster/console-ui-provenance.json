@@ -1,0 +1,14 @@
+{
+  "source": "/home/vlad/CubeBot/cubebot/web/page.py",
+  "snapshot": "mirror-fix-20261112/candidate",
+  "source_sha256": "6b3d0968e79098af41fa513b38daa8c9b8eb617813ccda73930605b3ec36bfb7",
+  "copy": "explorer3/static/rosmaster-console.html",
+  "adaptation": [
+    "Same CSS/layout/manual keys/gamepad/pointer buttons/mirror/poses",
+    "Own websocket and camera routes; explicit ownership/enable/prepare/restore bar",
+    "Unsupported mission/experiment links replaced with Explorer datasets link",
+    "No inferred battery percent/time; actual voltage only",
+    "Hidden/unfocused page does not renew operator heartbeat"
+  ],
+  "motion_algorithms": "No UI motor mapping changes"
+}

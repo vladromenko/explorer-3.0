@@ -124,13 +124,20 @@ def acquire():
 
 @app.post('/command')
 def command(value:dict=Body(...)):
-    with lock:
-        if runtime is None:raise HTTPException(409,'Runtime not acquired')
-        try:return runtime.command(value.get('lease',''),value.get('sequence'),value.get('intent',{}),
+    current=runtime
+    if current is None:raise HTTPException(409,'Runtime not acquired')
+    try:return current.command(value.get('lease',''),value.get('sequence'),value.get('intent',{}),
                                     value.get('leader'),value.get('mirror') is True)
-        except (ValueError,RuntimeError,PermissionError,TypeError) as exc:
-            runtime.stop('Command rejected: '+str(exc))
-            raise HTTPException(409,str(exc)) from exc
+    except (ValueError,RuntimeError,PermissionError,TypeError) as exc:
+        if value.get('lease')==current.lease:current.stop('Command rejected: '+str(exc))
+        raise HTTPException(409,str(exc)) from exc
+
+
+@app.post('/preset')
+def preset(value:dict=Body(...)):
+    if runtime is None:raise HTTPException(409,'Runtime not acquired')
+    try:return runtime.preset(value.get('lease',''),value.get('name'))
+    except (ValueError,RuntimeError,PermissionError) as exc:raise HTTPException(409,str(exc)) from exc
 
 
 @app.post('/restore')
@@ -152,10 +159,9 @@ def ownership():
 
 @app.post('/stop')
 def stop():
-    with lock:
-        if runtime:
-            runtime.stop('Operator STOP')
-        return {'armed': False, 'physical_stop_confirmed': False}
+    current=runtime
+    if current:current.stop('Operator STOP')
+    return {'armed': False, 'physical_stop_confirmed': False}
 
 
 @app.get('/controls')

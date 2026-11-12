@@ -26,8 +26,8 @@ class NativeControls:
 
     def enable(self, profile, now):
         if self.armed:raise ValueError('Stop the previous control session first')
-        if profile not in {'rosmaster_dock','rosmaster_pick_place'}:raise ValueError('Unknown profile')
-        if profile=='rosmaster_pick_place':
+        if profile not in {'rosmaster_dock','rosmaster_pick_place','rosmaster_manual'}:raise ValueError('Unknown profile')
+        if profile in {'rosmaster_pick_place','rosmaster_manual'}:
             measured=self.io.measured_arm(max_age=.25)
             if measured is None:raise ValueError('Fresh native arm feedback required; estimates are not measurements')
             self.io._arm_cmd=list(measured)
@@ -58,7 +58,7 @@ class NativeControls:
         return self.mirror.update(positions,now)
 
     def enable_mirror(self, now):
-        if not self.armed or self.profile!='rosmaster_pick_place':raise PermissionError('Arm session required')
+        if not self.armed or self.profile not in {'rosmaster_pick_place','rosmaster_manual'}:raise PermissionError('Arm session required')
         measured=self.io.measured_arm(max_age=.25)
         if measured is None or now-self.mirror.last_msg>self.mirror.m['timeout_s']:
             raise ValueError('Fresh arm feedback and Leader stream required')
