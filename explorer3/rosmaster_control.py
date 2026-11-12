@@ -272,7 +272,7 @@ def brighten(jpeg,level):
 
 
 @app.get('/api/rosmaster/camera.mjpg')
-async def camera(request_:Request,light:int=1):
+async def camera(request_:Request,light:int=0):
     cfg=json.loads((DATA/'configs/rosmaster-agent.json').read_text())
     async def frames():
         async with httpx.AsyncClient(base_url=f"http://{cfg['host']}:{cfg['port']}",
