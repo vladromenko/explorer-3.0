@@ -31,6 +31,7 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
  <button class="go big" onclick="send({action:'enable',profile:$('control-profile').value,observing:true})" title="Нажимая, вы подтверждаете, что вы рядом и место свободно. Сложенная рука сначала поднимается автоматически.">▶ Я рядом — включить</button>
  <button class="stop big" onclick="send({action:'stop'})">■ STOP <small>(пробел)</small></button>
  <b id="notice" style="color:var(--warn)">Управление выключено</b></nav>
+<div id="keyboardhint" class="help" style="padding:0 20px 8px;color:var(--warn)" role="status" hidden></div>
 <main>
 <section>
   <div class="card"><img id="video" src="/api/rosmaster/camera.mjpg?light=0" alt="камера"></div>
@@ -95,6 +96,7 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
 <script>
 const $=id=>document.getElementById(id);let ws,keys={},lockedKeys=new Set(),padBlocked=true,viewActive=true,lastReply=0,reconnectTimer=null,stopPending=false,activeProfile=null;
 function clearControls(){for(const k in keys)lockedKeys.add(k);keys={};padBlocked=true;}
+function releaseEditorFocus(){const el=document.activeElement;if(el&&el.blur)el.blur();}
 function profileChanged(){
  send({action:'stop'});$('control-profile').blur();
  if($('control-profile').value!=='rosmaster_manual')$('rprof').value=$('control-profile').value;
@@ -125,6 +127,7 @@ function stopHttp(){
  .finally(()=>{stopPending=false});
 }
 function send(o){
+ if(o.action)releaseEditorFocus();
  if(['stop','enable','prepare','restore','acquire'].includes(o.action))clearControls();
  if(o.action==='stop'){stopHttp();return;}
  if(o.action&&stopPending){$('notice').textContent='Дождитесь завершения STOP';return;}
@@ -135,7 +138,10 @@ function armMode(mode){clearControls();send({action:'arm_mode',mode});}
 function act(a,n){clearControls();send({action:a,name:n});}
 function light(level){try{localStorage.setItem('rosmasterLight2',level)}catch(e){}$('video').src='/api/rosmaster/camera.mjpg?light='+level+'&t='+Date.now();$('lightv').textContent=['Как есть','Авто','Ярче','Максимум'][level];this&&this.blur&&this.blur();document.activeElement&&document.activeElement.blur();}
 if(window.top!==window){document.querySelector('header').style.display='none';const back=document.querySelector('nav a[href="/"]');if(back)back.style.display='none';}
-document.addEventListener('pointerdown',()=>window.focus());
+document.addEventListener('pointerdown',e=>{
+ if(!e.target.closest('input,select,textarea,[contenteditable="true"]'))releaseEditorFocus();
+ window.focus();
+});
 // Fixed-width numbers on one line, so the cards do not jump while values change.
 function fmt(values,digits,width){return (values||[]).map(v=>(typeof v==='number'?v.toFixed(digits):String(v??'—')).padStart(width,'\u2007')).join('')}
 let mirrorWanted=false;
@@ -168,7 +174,7 @@ function render(s){
   $('mcheck').innerHTML='<tr><th style="text-align:left">сустав</th><th>Leader Δ°</th><th>робот Δ°</th><th>знак</th><th></th></tr>'+MC.rows.map((r,i)=>{return '<tr><td>'+N[i]+'</td><td style="text-align:center">'+(r.leader??'—')+'</td><td style="text-align:center">'+(r.robot??'—')+'</td><td style="text-align:center">'+(MC.sign?(MC.sign[i]>0?'+':'−'):'?')+'</td><td><button onclick="send({action:\'mirror_flip\',joint:'+i+'})">⇄</button>'+'</td></tr>'}).join('');
   $('gstate').textContent='Leader '+(MC.leader_gripper??'—')+(MC.gripper_map?' · соответствие '+MC.gripper_map.map(v=>(+v).toFixed(0)).join(' → ')+' (открыт → закрыт)':' · относительный (прежний)');}
  const R=s.recording||{};const P=R.pilot||{};const rec=R.phase&&R.phase!=='idle';
- $('control-profile').disabled=!!rec;$('rprof').disabled=!!rec;
+ $('control-profile').disabled=!!rec;$('rprof').disabled=!!rec;$('rscene').disabled=!!rec;$('rcat').disabled=!!rec;
  $('recstart').style.display=rec?'none':'flex';$('recout').style.display=rec?'flex':'none';
  const canFinish=R.phase==='recording'&&R.frames>0;
  $('recout').querySelectorAll('button').forEach((b,i)=>{b.disabled=R.phase==='saving'||(i<2&&!canFinish);});
@@ -185,11 +191,11 @@ const map={w:['d',0,1],s:['d',0,-1],a:['d',1,1],d:['d',1,-1],q:['d',2,1],e:['d',
 // last clicked checkbox, which silently disabled all driving/arm keys).
 function typing(t){return t&&(t.tagName==='SELECT'||t.tagName==='TEXTAREA'||t.isContentEditable||(t.tagName==='INPUT'&&!['checkbox','radio','button','submit','range'].includes((t.type||'').toLowerCase())))}
 document.addEventListener('change',e=>{if(e.target&&e.target.type==='checkbox')e.target.blur()});
-document.addEventListener('click',e=>{const t=e.target.closest&&e.target.closest('button');if(t)t.blur()});
+document.addEventListener('click',e=>{const t=e.target.closest&&e.target.closest('button');if(t)releaseEditorFocus()});
 function physical(e){const c=e.code;return {ArrowUp:'i',ArrowDown:'k',ArrowLeft:'j',ArrowRight:'l',Comma:',',Period:'.',BracketLeft:'[',BracketRight:']',ShiftLeft:'shift',ShiftRight:'shift'}[c]||(c&&c.startsWith('Key')?c.slice(3).toLowerCase():c);}
 addEventListener('keydown',e=>{const k=physical(e);
  if(k==='Space'||k==='Escape'){e.preventDefault();send({action:'stop',reason:'клавиша STOP'});return}
- if(typing(e.target))return;
+ if(typing(e.target)){if(k in map||[',','.','[',']','n','m'].includes(k))lockedKeys.add(k);return;}
  if(k==='Digit1'||k==='Digit2'){if(!e.repeat)armMode(k==='Digit1'?'cartesian':'joint');return}
  if(!document.hidden&&viewActive&&!lockedKeys.has(k)&&ws&&ws.readyState===1)keys[k]=true;
  if(k in map||[',','.','[',']','n','m'].includes(k))e.preventDefault();});
@@ -213,6 +219,10 @@ function collect(){if(document.hidden||!viewActive||!ws||ws.readyState!==1)retur
  const c=v=>Math.max(-1,Math.min(1,v));return{drive:d.map(c),arm:a.map(c),pitch:c(pitch),roll:c(roll),grip:c(grip),slow:!!(keys['shift'])||($('slowc')&&$('slowc').checked)}}
 document.querySelectorAll('button.hold').forEach(b=>{const k=b.dataset.k,on=e=>{e.preventDefault();if(!lockedKeys.has(k))keys[k]=true},off=()=>{delete keys[k];lockedKeys.delete(k)};
  b.addEventListener('pointerdown',on);['pointerup','pointerleave','pointercancel'].forEach(t=>b.addEventListener(t,off))});
-setInterval(()=>{if(!document.hidden)send(document.hasFocus()?collect():{drive:[0,0,0],arm:[0,0,0],pitch:0,roll:0,grip:0,slow:false})},33);connect();
+setInterval(()=>{
+ const hint=typing(document.activeElement)?'Вы редактируете поле — клавиши движения отключены. Нажмите на видео, чтобы вернуться к управлению.':!document.hasFocus()?'Окно не активно — команды движения не отправляются. Нажмите на видео.':'';
+ $('keyboardhint').textContent=hint;$('keyboardhint').hidden=!hint;
+ if(!document.hidden)send(document.hasFocus()?collect():{drive:[0,0,0],arm:[0,0,0],pitch:0,roll:0,grip:0,slow:false});
+},33);connect();
 try{const saved=+localStorage.getItem('rosmasterLight2');if(saved>=0&&saved<=3&&localStorage.getItem('rosmasterLight2')!==null)light(saved)}catch(e){}
 </script></body></html>

@@ -550,6 +550,12 @@ def index():
     ui.timer(2,refresh)
     ui.timer(.25,refresh_preview)
 
+async def prepare_recording_runtime():
+    from .recording import prepare_runtime
+    await asyncio.to_thread(prepare_runtime)
+    catalog.event('info','Записывающий модуль готов; аппаратура не открывалась')
+
+app.on_startup(prepare_recording_runtime)
 app.on_startup(lambda:catalog.event('info','Explorer 3.0 запущен без открытия аппаратуры'))
 app.on_shutdown(lambda:control.stop('Служба останавливается'))
 app.on_shutdown(lambda:jobs.cancel())

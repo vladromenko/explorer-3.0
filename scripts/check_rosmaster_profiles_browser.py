@@ -31,11 +31,23 @@ async def scenario():
             await page.get_by_label('Что управляем').select_option(profile)
             await page.wait_for_timeout(300)
             n=len(get(AGENT+'/_requests'))
-            await page.get_by_role('button',name='▶ Я рядом — включить').click()
+            # Safari-style activation: clicking a button need not move focus from an editor.
+            await page.evaluate("$('rscene').focus();document.querySelector('button.go.big').click()")
             await page.wait_for_timeout(2500)
+            assert await page.evaluate("document.activeElement.id!=='rscene'")
             sessions=[r['value'] for r in get(AGENT+'/_requests')[n:] if r['kind']=='session']
             assert sessions and sessions[-1]['profile']==profile,sessions
             assert await page.evaluate("document.activeElement.id!=='control-profile'")
+            # Editing cannot drive, and a key held while leaving an editor must be released first.
+            key='ArrowUp' if profile=='rosmaster_pick_place' else 'KeyW'
+            await page.locator('#rscene').focus();n=len(get(AGENT+'/_requests'))
+            await page.keyboard.down(key);await page.wait_for_timeout(150)
+            assert await page.locator('#keyboardhint').is_visible()
+            await page.evaluate("document.querySelector('button.go.big').click()")
+            await page.wait_for_timeout(200)
+            typed=[r['value'] for r in get(AGENT+'/_requests')[n:] if r['kind']=='command']
+            assert typed and all(not any(p['drive']+p['arm']) for p in typed)
+            await page.keyboard.up(key)
             # Inputs for the inactive component are ignored, not sent to end the session.
             start=len(get(AGENT+'/_requests'))
             key='KeyW' if profile=='rosmaster_pick_place' else 'ArrowUp'
@@ -85,8 +97,10 @@ async def scenario():
             await page.get_by_label('Что управляем').select_option('rosmaster_manual')
             await page.wait_for_timeout(400)
             await page.select_option('#rprof',profile)
-            await page.get_by_role('button',name='● Начать запись').click()
+            await page.evaluate("$('rscene').focus();document.querySelector('#recstart button').click()")
             await page.wait_for_function("document.getElementById('rstate').textContent.includes('Запись идёт')",timeout=90000)
+            assert await page.evaluate("document.activeElement.id!=='rscene'")
+            assert await page.locator('#rscene').is_disabled()
             assert await page.input_value('#control-profile')==profile
             assert await page.locator('#control-profile').is_disabled()
             n=len(get(AGENT+'/_requests'))
@@ -127,7 +141,8 @@ async def scenario():
                 'stop_reenable_cycles':3,'half_open_recovery_without_resume':True,'http_stop':True,
                 'stop_cancels_pending_acquire_enable':True,'wrong_profile_inputs_ignored':True,
                 'intended_inputs_received':True,'held_key_not_replayed_after_stop':True,
-                'recording_preparation_and_saved_states':True,'recording_arm_base_profile_switches':True,'errors':errors}
+                'recording_preparation_and_saved_states':True,'recording_arm_base_profile_switches':True,
+                'enable_and_record_release_editor_focus':True,'editor_held_key_not_replayed':True,'errors':errors}
 def main():
     OUT.mkdir(exist_ok=True);data=Path(tempfile.mkdtemp(prefix='explorer3-profile-check-'));(data/'configs').mkdir()
     (data/'configs/workflow.json').write_text(json.dumps({'stage':'B','allowed_robots':['rosmaster']}))

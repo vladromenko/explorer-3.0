@@ -8,6 +8,16 @@ from .profiles import profile
 from . import catalog
 from .timing import validate_timing
 
+
+def prepare_runtime():
+    """Import the dataset stack before accepting control sessions; no hardware or training.
+
+    Native imports can hold the GIL for seconds even in a writer thread, starving
+    browser heartbeat processing during the first recording of a fresh UI process.
+    """
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+    return LeRobotDataset
+
 def code_version():
     import subprocess
     from .paths import ROOT
