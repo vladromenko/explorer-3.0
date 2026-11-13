@@ -15,7 +15,7 @@ from cubebot.mirror import load as mirror_config
 from cubebot.scan_matching import scan_to_base, build_scan
 from rosmaster.link import Link
 from leased_core import LeasedCore
-from control_adapter import NativeControls
+from control_adapter import NativeControls, ManualCartesianModel
 
 
 class NativeIO(BaseIO):
@@ -133,7 +133,7 @@ class Runtime:
                 mirror_config(self.root/'config/mirror-original.json'),self.log)
             self.load_mirror_overrides()
             relaxed=RelaxedArm(self.model,lambda:self.io.arm_command())
-            self.io.arm=relaxed;self.controls.jog.arm=relaxed;self.controls.mirror.arm=relaxed
+            self.io.arm=relaxed;self.controls.jog.arm=ManualCartesianModel(relaxed);self.controls.mirror.arm=relaxed
             self.transport_thread=threading.Thread(target=self.transport_loop,daemon=True)
             self.transport_thread.start()
             self.thread=threading.Thread(target=self.run,daemon=True)
@@ -143,7 +143,19 @@ class Runtime:
             raise
 
     def voltage(self,max_age=2.):
-        return self.battery_value if time.monotonic()-self.battery_at<max_age else None
+        value=self.battery_value
+        return value if value is not None and math.isfinite(value) and value>0 and time.monotonic()-self.battery_at<max_age else None
+
+    def wait_ready(self,timeout=4.):
+        """Observe initial telemetry before acquire returns; never enable motors."""
+        end=time.monotonic()+timeout
+        while not self.done.is_set():
+            if self.error:raise RuntimeError(self.error)
+            if self.core.ready() and self.voltage() is not None:return
+            if time.monotonic()>=end:break
+            self.done.wait(.02)
+        if self.voltage() is None:raise RuntimeError('Не пришло свежее измерение батареи от контроллера; управление не включено')
+        raise RuntimeError('Контроллер ещё не готов; управление не включено')
 
     # Native firmware can freeze/omit ADC battery reports while the base streams (see
     # CubeBot battery.py); a fresh value is required to enable, the last one is kept while armed.
@@ -367,7 +379,9 @@ class Runtime:
             if profile not in {'rosmaster_dock','rosmaster_pick_place','rosmaster_manual','prepare'}:raise ValueError('Unknown profile')
             if arm_mode not in {'cartesian','joint'}:raise ValueError('Unknown arm mode')
             volts=self.voltage()
-            if volts is None or volts<self.cfg['mission']['min_battery_v']:raise ValueError('Нет свежего допустимого напряжения батареи')
+            if volts is None:raise ValueError('Нет свежего измерения батареи от контроллера; управление не включено')
+            if volts<self.cfg['mission']['min_battery_v']:
+                raise ValueError(f"Низкое напряжение батареи: {volts:.2f} В; порог {self.cfg['mission']['min_battery_v']:.2f} В")
             if profile!='rosmaster_dock':
                 measured=self.io.measured_arm()
                 if measured is None:raise ValueError('Нужны свежие измерения всех шести приводов')

@@ -19,6 +19,13 @@ async def scenario():
         page.on('pageerror',lambda e:errors.append(str(e)))
         await page.goto(UI+'/rosmaster/control');await page.wait_for_timeout(1500)
         assert not any(r['kind'] in ('acquire','session') for r in get(AGENT+'/_requests'))
+        await page.request.post(AGENT+'/_test/acquire-delay',data={'seconds':1.5})
+        await page.get_by_role('button',name='▶ Я рядом — включить').click()
+        await page.wait_for_timeout(250);await page.locator('button.stop.big').click()
+        await page.wait_for_timeout(2000)
+        assert not get(AGENT+'/health')['armed']
+        assert not any(r['kind']=='session' for r in get(AGENT+'/_requests'))
+        await page.request.post(AGENT+'/_test/acquire-delay',data={'seconds':0})
         checked=[]
         for profile in ('rosmaster_pick_place','rosmaster_dock'):
             await page.get_by_label('Что управляем').select_option(profile)
@@ -51,7 +58,8 @@ async def scenario():
         assert not errors
         await browser.close()
         return {'domain':'fixture','physical_robot_access':False,'cold_open_no_acquire':True,'profiles':checked,
-                'stop_reenable_cycles':3,'half_open_recovery_without_resume':True,'http_stop':True,'errors':errors}
+                'stop_reenable_cycles':3,'half_open_recovery_without_resume':True,'http_stop':True,
+                'stop_cancels_pending_acquire_enable':True,'errors':errors}
 def main():
     OUT.mkdir(exist_ok=True);data=Path(tempfile.mkdtemp(prefix='explorer3-profile-check-'));(data/'configs').mkdir()
     (data/'configs/workflow.json').write_text(json.dumps({'stage':'B','allowed_robots':['rosmaster']}))

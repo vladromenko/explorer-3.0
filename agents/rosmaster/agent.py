@@ -127,8 +127,11 @@ def acquire():
         try:
             handoff.enter()
             candidate=Runtime(ROOT)
-            try:candidate.start()
+            try:
+                candidate.start()
+                candidate.wait_ready()
             except Exception:
+                candidate.close()
                 handoff.restore()
                 raise
             runtime=candidate

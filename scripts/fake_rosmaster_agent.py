@@ -36,7 +36,13 @@ def requests():
 
 @app.post('/acquire')
 def acquire():
+    time.sleep(S.get('acquire_delay',0))
     log('acquire'); S['acquired'] = True; return {'acquired': True}
+
+
+@app.post('/_test/acquire-delay')
+def acquire_delay(value:dict=Body(...)):
+    S['acquire_delay']=float(value['seconds']);return {}
 
 
 @app.post('/session')

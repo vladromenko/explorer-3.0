@@ -94,9 +94,33 @@ def ready_runtime(tmp_path):
     (tmp_path/'config').mkdir()
     (tmp_path/'config/controller-calibration.json').write_text(json.dumps(calibration()))
     board=FakeBoard();runtime=Runtime(tmp_path,board.slave_path)
-    runtime.start();end=time.monotonic()+5
-    while time.monotonic()<end and not (runtime.core.ready() and runtime.voltage()):time.sleep(.03)
+    runtime.start();runtime.wait_ready(timeout=5)
     return board,runtime
+
+
+def test_initial_telemetry_wait_is_inert_and_retains_manual_xyz_adapter(tmp_path):
+    from control_adapter import ManualCartesianModel
+    board,runtime=ready_runtime(tmp_path)
+    try:
+        assert runtime.voltage() is not None and not runtime.armed
+        assert runtime.core.motion_commands_sent==0 and not board.arm_targets
+        assert isinstance(runtime.controls.jog.arm,ManualCartesianModel)
+        assert runtime.controls.jog.WORKSPACE[2][1]==float('inf')
+    finally:runtime.close();board.close()
+
+
+def test_missing_battery_and_low_battery_have_distinct_causes():
+    import threading
+    from types import SimpleNamespace
+    r=Runtime.__new__(Runtime)
+    r.battery_value=None;r.battery_at=0.;r.done=threading.Event();r.error=None
+    r.core=SimpleNamespace(ready=lambda:True,permitted=False)
+    with pytest.raises(RuntimeError,match='Не пришло свежее'):r.wait_ready(timeout=.01)
+    r.battery_value=float('nan');r.battery_at=time.monotonic()
+    assert r.voltage() is None
+    r.battery_value=10.;r.lock=threading.RLock();r.cfg={'mission':{'min_battery_v':10.9}}
+    with pytest.raises(ValueError,match='10.00 В; порог 10.90 В'):
+        r.enable('rosmaster_dock',observing=True)
 
 
 @pytest.mark.parametrize('profile',['rosmaster_manual','rosmaster_dock'])

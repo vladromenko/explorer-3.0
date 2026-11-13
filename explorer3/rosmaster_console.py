@@ -147,6 +147,7 @@ async def websocket(socket:WebSocket):
                 await asyncio.to_thread(request,'/preset',{'lease':operator.lease,'name':'up'})
                 state['notice']='Рука выпрямляется'
             elif action in ('enable','prepare'):
+                generation=operator.generation
                 profile='prepare' if action=='prepare' else value.get('profile','rosmaster_manual')
                 if profile not in {'prepare','rosmaster_manual','rosmaster_dock','rosmaster_pick_place'}:raise ValueError('Неизвестный режим управления')
                 # Connect automatically: start the inert agent and take serial/camera if needed.
@@ -154,6 +155,7 @@ async def websocket(socket:WebSocket):
                 if not health.get('hardware_open'):
                     state['notice']='Подключение ROSMASTER…'
                     await asyncio.to_thread(request,'/acquire',{},45)
+                if generation!=operator.generation:raise RuntimeError('Включение отменено кнопкой STOP; нажмите «Включить» заново')
                 result=await asyncio.to_thread(operator.enable,owner,profile,state['mode'],value.get('observing') is True)
                 state['notice']='Управление уже включено: двигайте клавишами (окно должно быть в фокусе)' if result=='already' else ''
             elif action in ('record_start','trial_start'):
