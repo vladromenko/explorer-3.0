@@ -42,7 +42,7 @@
       "m/s",
       "rad/s"
     ],
-    "schema_status": "inspected_driver_pending_physical_acceptance",
+    "schema_status": "native_driver_manual_control_accepted_recording_pending",
     "recording_status": "not_verified",
     "training_status": "not_verified",
     "physical_skill_status": "not_verified",
@@ -54,7 +54,10 @@
       400,
       640,
       3
-    ]
+    ],
+    "manual_control_status": "operator_verified",
+    "state_provenance": "previous transmitted velocity command; wheel feedback unavailable",
+    "action_provenance": "accepted native controller velocity after factory limits; UART write verified, MCU acknowledgement unavailable"
   },
   "rosmaster_dock": {
     "robot": "rosmaster",

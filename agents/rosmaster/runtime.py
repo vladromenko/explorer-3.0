@@ -412,7 +412,10 @@ class Runtime:
                 self.controls.set_input(intent if not self.preparing else {**intent,'arm':[0,0,0],'pitch':0,'roll':0,'grip':0},time.monotonic())
                 if self.profile=='rosmaster_manual':self.io.guard_off=bool(intent.get('free',False))
                 if leader is not None and not self.controls.leader(leader,time.monotonic()):raise ValueError('Invalid Leader frame')
-                if mirror and self.controls.mode!='mirror':self.controls.enable_mirror(time.monotonic())
+                if mirror and self.controls.mode!='mirror':
+                    # Retried with every packet; a momentary gap in arm/Leader data must not end the session.
+                    try:self.controls.enable_mirror(time.monotonic());self.controls.mirror.blocked=None
+                    except ValueError as exc:self.controls.mirror.blocked='ждём данных руки и Leader: '+str(exc)
                 elif not mirror and self.controls.mode=='mirror':
                     measured=self.io.measured_arm()
                     self.controls.mode='manual';self.io.stop_base()

@@ -2,6 +2,7 @@
 import threading
 import time
 import uuid
+from contextlib import nullcontext
 from . import catalog
 from .hardware import HardwareSource
 from .tank import TankSource
@@ -76,7 +77,8 @@ class Session:
         writer=None
         provenance={}
         provider=None
-        lease=ResourceLease('compute')
+        # Manual control uses no GPU; it must not block the other robot's session.
+        lease=ResourceLease('compute') if self.record_requested or self.trial_plan else nullcontext()
         try:
             # A rollout/recording and trainer cannot own compute concurrently.
             lease.__enter__()
@@ -86,6 +88,11 @@ class Session:
                 from .trials import require_physical,ReplayActions,PolicyActions
                 require_physical(self.trial_plan)
                 provider=(ReplayActions if self.trial_plan['kind']=='replay' else PolicyActions)(self.trial_plan)
+            if name=='tank_dock':
+                if self.control.expired():raise InterruptedError('STOP before Tank handoff')
+                from .tank_handoff import invoke
+                invoke('enter')
+                if self.control.expired():raise InterruptedError('STOP during Tank handoff')
             source=HardwareSource(teleoperate=not bool(provider)) if name=='so101_pick_place' else TankSource(self.control)
             provenance=source.start(explicit_user_start=True,stop=self.control.expired)
             source.begin_episode()
@@ -94,14 +101,19 @@ class Session:
             trial_start=deadline
             if provider and self.trial_plan['kind']=='policy':
                 # Warm-up is discarded; observe again and reset chunks before any policy command.
-                provider.next(source.observe());provider.reset()
+                observation=source.observe()
+                if name=='tank_dock':source.plan_action(provider,observation)
+                else:provider.next(observation)
+                provider.reset()
                 deadline=time.monotonic();trial_start=deadline
             while not self.control.expired():
                 if provider:
                     if time.monotonic()-trial_start>self.trial_plan['max_duration_s']:
                         self.control.stop('Лимит времени испытания');break
                     observation=source.observe()
-                    try:requested=provider.next(observation)
+                    try:
+                        requested=(source.plan_action(provider,observation)
+                                   if name=='tank_dock' and self.trial_plan['kind']=='policy' else provider.next(observation))
                     except StopIteration:
                         self.control.stop('Повтор завершён без отметки исхода; запись сохранится как aborted');break
                     if self.control.expired():raise InterruptedError('STOP before trial command')

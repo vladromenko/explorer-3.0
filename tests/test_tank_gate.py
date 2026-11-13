@@ -65,7 +65,7 @@ class TankGateTests(unittest.TestCase):
             control.base_key('other','up',True)
             self.assertEqual(control.base_action(),[0.,0.])
             control.base_key('operator','up',True)
-            self.assertEqual(control.base_action(),[.1,0.])
+            self.assertEqual(control.base_action(),[.2,0.])
             control.base_key('operator','up',False)
             self.assertEqual(control.base_action(),[0.,0.])
             control.base_key('operator','left',True)
@@ -75,6 +75,22 @@ class TankGateTests(unittest.TestCase):
             control.select('tank');control.acquire('operator')
             control.base_key('operator','up',True);control.expires=time.monotonic()-.1
             self.assertEqual(control.base_action(),[0.,0.])
+
+    def test_diagonals_and_keyboard_use_same_arcs_and_release_independently(self):
+        from explorer3.control import Control
+        with patch('explorer3.control.catalog.event'),patch.object(Control,'authorized',return_value=True):
+            c=Control();c.select('tank');c.acquire('browser')
+            for key,expected in [('up_left',[.2,.5]),('up_right',[.2,-.5]),
+                                 ('down_left',[-.2,-.5]),('down_right',[-.2,.5])]:
+                c.base_key('browser',key,True,'pointer:1');self.assertEqual(c.base_action(),expected)
+                c.base_key('browser',key,False,'pointer:1');self.assertEqual(c.base_action(),[0.,0.])
+            c.base_key('browser','down',True,'key:KeyS')
+            c.base_key('browser','left',True,'key:KeyA')
+            self.assertEqual(c.base_action(),[-.2,-.5])
+            c.base_key('browser','down',True,'pointer:1')
+            c.base_key('browser','down',False,'pointer:1')
+            self.assertEqual(c.base_action(),[-.2,-.5])
+            c.stop();self.assertFalse(c.base_inputs);self.assertEqual(c.base_action(),[0.,0.])
 
     def test_incident_blocks_start_before_native_process(self):
         import tempfile

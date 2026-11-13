@@ -1,0 +1,12 @@
+{
+  "date": "2026-11-13",
+  "operator_confirmed_stop": true,
+  "operator_confirmed_release_stop": true,
+  "operator_confirmed_motion": true,
+  "operator_report": "Проверил, гусеницы крутятся, при отпускании останавливаются, STOP работает.",
+  "scope": "manual_control_accepted",
+  "browser_loss_physical": "not_checked",
+  "autonomous_skill_verified": false,
+  "recording_verified": false,
+  "return_to_factory_verified": false
+}

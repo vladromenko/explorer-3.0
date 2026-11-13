@@ -32,7 +32,8 @@ def prepare(kind, ident):
         plan.update(dataset=str(root),dataset_sha256=fingerprint(root),frames=len(records),
                     initial_state=records[0]['observation.state'],initial_target=records[0]['action'],
                     max_duration_s=len(records)/cfg['fps'],
-                    initial_pose_requirement='Measured pose must match first recorded target before replay; no automatic move to it')
+                    initial_pose_requirement=('Measured pose must match first recorded target before replay; no automatic move to it'
+                        if row['profile'].endswith('pick_place') else 'Operator must restore the starting area and scene; previous velocity commands are not a measured starting pose'))
     else:
         if row['status']!='completed' or not row['checkpoint']:
             raise ValueError('Нужен завершённый trainer с checkpoint')
@@ -67,9 +68,15 @@ def authorize(ident, hours=3.):
 
 
 def require_physical(plan):
-    local_work.require_hardware_mode()
-    if plan['profile'] not in {'so101_pick_place','rosmaster_dock','rosmaster_pick_place'}:
+    local_work.require_hardware_mode(profile(plan['profile'])['robot'])
+    if plan['profile'] not in {'so101_pick_place','tank_dock','rosmaster_dock','rosmaster_pick_place'}:
         raise PermissionError('Исполнитель этого профиля ещё не принят; план сохранён без движения')
+    if plan['profile']=='tank_dock':
+        acceptance=DATA/'validation/tank-manual-control-pass.json'
+        if (DATA/'validation/tank-motion-incident.json').exists() or not acceptance.exists():
+            raise PermissionError('Сначала принять ручное управление и STOP Tank')
+        if not json.loads(acceptance.read_text()).get('operator_confirmed_stop'):
+            raise PermissionError('STOP Tank ещё не подтверждён оператором')
     approval=DATA/'configs'/('trial-'+plan['id']+'-authorized.json')
     if not approval.exists():
         raise PermissionError('Нужен отдельный физический блок для этого плана испытания')
@@ -83,11 +90,12 @@ class ReplayActions:
         if fingerprint(plan['dataset'])!=plan['dataset_sha256']:raise ValueError('Replay dataset changed')
         self.rows=[json.loads(line) for line in (Path(plan['dataset'])/'research.jsonl').read_text().splitlines()]
         self.index=0
+        self.check_pose=plan.get('profile','so101_pick_place').endswith('pick_place')
 
     def next(self,observation):
         if self.index>=len(self.rows):raise StopIteration
         action=self.rows[self.index]['action']
-        if self.index==0 and any(abs(a-b)>(3. if i==5 else 2.) for i,(a,b) in enumerate(zip(action,observation['observation.state']))):
+        if self.check_pose and self.index==0 and any(abs(a-b)>(3. if i==5 else 2.) for i,(a,b) in enumerate(zip(action,observation['observation.state']))):
             raise ValueError('Начальная поза отличается от записи. Автоматический переход не выполняется')
         self.index+=1
         return list(action)
@@ -114,6 +122,10 @@ class PolicyActions:
         self.decision_info={}
         self.policy.reset()
 
+    def needs_inference(self):
+        queue=getattr(self.policy,'_action_queue',getattr(self.policy,'_queues',{}).get('action'))
+        return queue is None or len(queue)==0
+
     def next(self,observation):
         import torch
         import numpy as np
@@ -121,8 +133,7 @@ class PolicyActions:
         for name,image in observation['images'].items():
             rgb=np.array(image['image'],copy=True)
             batch['observation.images.'+name]=torch.from_numpy(rgb).permute(2,0,1).float().unsqueeze(0)/255.
-        queue=getattr(self.policy,'_action_queue',getattr(self.policy,'_queues',{}).get('action'))
-        replanned=queue is None or len(queue)==0
+        replanned=self.needs_inference()
         start=time.monotonic_ns()
         with torch.inference_mode():
             action=self.post(self.policy.select_action(self.pre(batch))).cpu().numpy()[0].tolist()

@@ -82,6 +82,16 @@ def telemetry(health,mode,notice):
         'log':(s.get('logs',[])+([operator.error] if operator.error else [])+([notice] if notice else []))[-14:]}
 
 
+def log_action(owner,action,value,error):
+    """Every panel action and its result, so failures seen only in a browser are diagnosable."""
+    try:
+        path=DATA/'logs/rosmaster-panel-actions.jsonl';path.parent.mkdir(parents=True,exist_ok=True)
+        record={'at':time.time(),'tab':owner[:8],'action':action,'error':f'{type(error).__name__}: {error}' if error else None,
+                'value':{k:v for k,v in value.items() if k in ('profile','mode','on','joint','which','outcome','plan','study')}}
+        with path.open('a') as output:output.write(json.dumps(record,ensure_ascii=False)+'\n')
+    except OSError:pass
+
+
 @app.websocket('/api/rosmaster/console/ws')
 async def websocket(socket:WebSocket):
     await socket.accept()
@@ -206,7 +216,10 @@ async def websocket(socket:WebSocket):
                         await asyncio.to_thread(request,'/preset',{'lease':operator.lease,'name':value.get('name')})
                         state['notice']='Переход в выбранную позу'
                     else:raise ValueError('Эта функция ещё не перенесена в Explorer')
-                except Exception as exc:state['notice']=str(exc)
+                except Exception as exc:
+                    state['notice']=str(exc)
+                    log_action(owner,action,value,exc)
+                else:log_action(owner,action,value,None)
     except (WebSocketDisconnect,WebSocketDisconnected):pass
     finally:
         task.cancel()
