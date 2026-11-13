@@ -15,6 +15,10 @@ def ingest(root,review=None):
     meta=json.loads((root/'manifest.json').read_text())
     if meta['domain']!='sim' or meta['frames']<1:
         raise ValueError('Empty or invalid simulation capture')
+    if meta.get('segment_role')=='fleet_correction':
+        from explorer3.fleet_corrections import validate as validate_fleet
+        if review is None:raise ValueError('Fleet correction requires explicit review')
+        validate_fleet(root,review);meta.update(training_eligible=True,review=review)
     if meta.get('segment_role')=='bounded_correction':
         from explorer3.branch_corrections import validate_review
         validate_review(root,review or {})
@@ -22,7 +26,7 @@ def ingest(root,review=None):
     if (root/'imported.json').exists():
         return json.loads((root/'imported.json').read_text())
     writer=EpisodeWriter(meta['profile'],meta['session'],meta['scene'],
-                         category='correction' if meta.get('segment_role')=='bounded_correction' else 'demonstration',domain='sim')
+                         category='correction' if meta.get('segment_role') in {'bounded_correction','fleet_correction'} else 'demonstration',domain='sim')
     for line in (root/'samples.jsonl').read_text().splitlines():
         sample=json.loads(line)
         filename=(root/sample.pop('image_path')).resolve()

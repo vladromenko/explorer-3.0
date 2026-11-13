@@ -60,6 +60,10 @@ def run_job(path: Path):
     cfg = json.loads(path.read_text())
     work = DATA/'jobs'/path.stem
     work.mkdir(exist_ok=True)
+    if cfg.get('kind')=='fleet_execution':
+        subprocess.run([str(ROOT/'.venv-sim/bin/python'),'-m','explorer3.sim.fleet_run',str(path),str(work)],
+                       check=True,env={**offline_environment(),'MUJOCO_GL':'egl'})
+        return
     if cfg.get('kind')=='sim_correction_import':
         from .sim.import_episode import ingest
         result=ingest(cfg['spool'],review=cfg['review'])

@@ -50,3 +50,16 @@ def test_rohe_paper_definition_and_separate_wall_cost():
     assert result['rohe']==1
     assert result['tasks_per_supervision_minute']==4
     assert not result['measured_human_cost']
+
+
+def test_td_running_history_is_restored_not_only_assignments():
+    allocator=FleetAllocator(3,'fleet_thrifty',seed=91,min_steps=1)
+    for _ in range(7):allocator.allocate([.1,.9,.6],[.3,.9,.5])
+    saved=allocator.snapshot()
+    expected=[allocator.allocate([.9,.1,.4],[.4,.8,.2]) for _ in range(5)]
+    restored=FleetAllocator(3,'fleet_thrifty',seed=91,min_steps=1);restored.restore(saved)
+    actual=[restored.allocate([.9,.1,.4],[.4,.8,.2]) for _ in range(5)]
+    assert actual==expected
+    assert restored.allocation.risk_data==allocator.allocation.risk_data
+    restored.allocate([1,0,0],[1,0,0],eligible=[False,False,False])
+    assert restored.current is None

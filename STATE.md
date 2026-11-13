@@ -668,3 +668,15 @@ Fine-tune same-profile/same-model соединяет старые/новые д�
 - Измеренные параметры для симуляции с источником: `docs/handoffs/rosmaster_measured_params.json`; fovy камеры в sim 53.06°.
 - Fake-agent + браузер (6 сценариев PASS, эпизод 42 кадра) и цепочка проверка → неизменяемый план → checkpoint → план испытания (inference на записанном кадре, без команд) PASS: `docs/handoffs/rosmaster-flow-report.json`.
 - Осталось только физическое (с подтверждением пользователя): приёмка базы/руки/STOP/потери связи, по 3 показа на задачу, журналы движения для идентификации sim, возврат старой системы.
+
+### 2026-11-13 — совместное исполнение политик и online support monitor
+
+`/sim/fleet/policies`: конечные jobs без обучения/аппаратуры, отдельные frozen policies ACT/SmolVLA/Diffusion в одном MuJoCo мире. Исправлены native control boundaries (SO30/Tank20Hz), разрешение Tank camera640×400 и полное сохранение накопленной TD истории. AutoIntervene-adapted теперь включён в цикл: proposals → удержание/запрос → один слот помощи → возврат с очисткой chunk; память/пороги закреплены за checkpoint. Фиктивная калибровка не допускается для реальных весов.
+
+Полный snapshot включает policy queues/RNG, окна monitor, allocator, эксперта, команды и учёт затрат. Два существующих ACT checkpoint исполнились совместно: 9/6 команд за0.3с, повтор8границ с qpos error0 и совпадением policy state. Это explicit old-model software probe, не навык и не calibrated learned monitor. Новых обучений не было.
+
+Экспертные segments сохраняются отдельно, с pre-step snapshot/lineage/common-world model hash. Только успешный сегмент из frozen-policy прогона после просмотра оператором может идти в официальный LeRobot importer; fixture/censored/tampered отклоняются. ROHE, ожидание и время симуляционного эксперта в отчёте отдельно от человека. Причинный G явно unavailable, не подменён support-distance.
+
+16 native/contract/lineage tests PASS; Chromium local-only: запуск, два запроса помощи, отдельные сегменты/запрет fixture-импорта, скачивание/история/STOP PASS, ошибок и внешних запросов0. Подробности `docs/FLEET_EXECUTION.md`, runtime validation/corrective-a. Остаток A: общий переносимый G и его связка с ветвями/подготовкой данных, итоговая матрица; обучающие раунды отложены по запрету пользователя.
+
+Пользователь сообщил готовность базовой части ROSMASTER. Уточнено: Tank входит в A только программой/симуляцией на Homebrain; физический ROSMASTER B, Tank C. Соседние ROSMASTER изменения сохранены, аппаратные допуски и старый :8020 не менялись.

@@ -25,7 +25,7 @@ class FleetAllocator(Assignment):
         self.blocked_envs=[False]*robots;self.rng=np.random.RandomState(seed)
         self.t=0;self.switches=0;self.assigned_steps=0;self.idle_robot_steps=0
 
-    def allocate(self, risk, novelty, blocked=None):
+    def allocate(self, risk, novelty, blocked=None, eligible=None):
         n=self.exp_cfg.num_envs
         risk=np.asarray(risk,dtype=float);novelty=np.asarray(novelty,dtype=float)
         if risk.shape!=(n,) or novelty.shape!=(n,) or not np.isfinite(np.r_[risk,novelty]).all():
@@ -40,6 +40,12 @@ class FleetAllocator(Assignment):
         previous=np.random.get_state();np.random.set_state(self.rng.get_state())
         try:priorities=self.allocation.allocate(metrics)
         finally:self.rng.set_state(np.random.get_state());np.random.set_state(previous)
+        if eligible is not None:
+            if len(eligible)!=n:raise ValueError('Eligible robot count mismatch')
+            priorities=[i for i in priorities if eligible[i]]
+            for i,allowed in enumerate(eligible):
+                if not allowed and self.assignments[i].sum():
+                    self.assignments[i,:]=0;self.human_timers[0]=0
         old=self.current
         self.assign_humans(priorities)
         if old is not None and self.current is not None and old!=self.current:self.switches+=1
@@ -48,16 +54,21 @@ class FleetAllocator(Assignment):
         self.t+=1
         return self.current
 
+    def config_snapshot(self):
+        return {**vars(self.exp_cfg),'allocation_cfg':vars(self.exp_cfg.allocation_cfg).copy()}
+
     def snapshot(self):
-        return {'method':type(self.allocation).__name__,'config':copy.deepcopy(vars(self.exp_cfg)),
+        return {'method':type(self.allocation).__name__,'config':self.config_snapshot(),
+                'allocation_history':{k:copy.deepcopy(getattr(self.allocation,k)) for k in ('risk_data','novelty_data') if hasattr(self.allocation,k)},
                 'rng':self.rng.get_state(),**{k:copy.deepcopy(getattr(self,k)) for k in
                 ('assignments','human_timers','blocked_envs','t','switches','assigned_steps','idle_robot_steps')}}
 
     def restore(self,state):
-        if state['method']!=type(self.allocation).__name__ or state['config']!=vars(self.exp_cfg):
+        if state['method']!=type(self.allocation).__name__ or state['config']!=self.config_snapshot():
             raise ValueError('Allocator snapshot configuration mismatch')
         if np.asarray(state['assignments']).shape!=self.assignments.shape or np.sum(state['assignments'])>1:
             raise ValueError('Invalid single-operator assignment')
+        for key,value in state.get('allocation_history',{}).items():setattr(self.allocation,key,copy.deepcopy(value))
         self.rng.set_state(state['rng'])
         for key in ('assignments','human_timers','blocked_envs','t','switches','assigned_steps','idle_robot_steps'):
             setattr(self,key,copy.deepcopy(state[key]))

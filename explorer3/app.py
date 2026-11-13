@@ -114,6 +114,8 @@ from . import branching_pages
 branching_pages.install(CSS,jobs)
 from . import training_pages
 training_pages.install(CSS,jobs)
+from . import fleet_policy_pages
+fleet_policy_pages.install(CSS,jobs)
 
 @ui.page('/')
 def index():

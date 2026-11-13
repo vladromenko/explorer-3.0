@@ -98,7 +98,7 @@ class FleetWorld:
         self.model,self.manifest=build();self.data=mujoco.MjData(self.model)
         self.views={name:TaskView(name,make(profile),self.model,self.data) for name,profile in PROFILES.items()}
         self.manifest['tasks']={name:v.env.manifest for name,v in self.views.items()}
-        self.renderer=None;self.operator=None;self.operator_switches=0
+        self.renderer=None;self.agent_renderers={};self.operator=None;self.operator_switches=0
         self.controllers={};self.last_actions={};self.lease_state={};self.scheduler_state={}
         self.reset(seed)
 
@@ -129,7 +129,7 @@ class FleetWorld:
             env.filtered=hold.copy();env.pending=hold.copy();view.target=None
         self.last_actions.clear()
 
-    def step(self,actions=None,duration=.05):
+    def step(self,actions=None,duration=.05,*,stop_at_control_boundary=False):
         if not 0<duration<=1:raise ValueError('Finite step duration in (0,1] required')
         actions=actions or {}
         for name,action in actions.items():
@@ -146,9 +146,11 @@ class FleetWorld:
                     v.target=e.prepare_action(action);self.last_actions[name]=np.asarray(action).copy()
                 e.physics_control(self.model.opt.timestep);self.data.ctrl[v.u]=e.data.ctrl
             mujoco.mj_step(self.model,self.data)
+            completed_boundary=False
             for v in self.views.values():
                 e=v.env
                 if not v.done and self.data.time-v.epoch>=(e.steps+1)*e.dt-1e-10:
+                    completed_boundary=True
                     v.read(forward=True);v.result=e.complete_step(v.target);v.target=None
                     v.done=bool(v.result[2] or v.result[3])
                     if v.done:
@@ -156,6 +158,7 @@ class FleetWorld:
                         hold=np.zeros(e.action_space.shape) if isinstance(e,MobileDock) else e.data.qpos[:6].copy()
                         e.pending=hold.copy();e.filtered=hold.copy()
             if not np.isfinite(self.data.qpos).all():raise RuntimeError('Non-finite fleet physics')
+            if stop_at_control_boundary and completed_boundary:break
         for v in self.views.values():v.read(forward=True)
         return self.info()
 
@@ -169,11 +172,29 @@ class FleetWorld:
                 'limits':[v.env.action_space.low.tolist(),v.env.action_space.high.tolist()]}
                 for name,v in self.views.items()}}
 
+    def agent_manifest(self,agent):
+        source=self.views[agent].env.manifest
+        identity={'world':self.manifest['xml_sha256'],'agent':agent,'camera':self.views[agent].env.camera_name}
+        return {**copy.deepcopy(source),'source_model_sha256':source['xml_sha256'],
+            'xml_sha256':hashlib.sha256(json.dumps(identity,sort_keys=True).encode()).hexdigest(),
+            'shared_world_sha256':self.manifest['xml_sha256'],'physics':'shared nominal world','solver':OPTIONS}
+
+    def hold_agent(self,name):
+        view=self.views[name];env=view.env
+        target=np.zeros(env.action_space.shape) if isinstance(env,MobileDock) else env.data.qpos[:6].copy()
+        env.pending=target.copy();env.filtered=target.copy()
+        if view.target is not None:view.target=target.copy()
+
     def render(self,agent=None):
-        if self.renderer is None:self.renderer=mujoco.Renderer(self.model,height=480,width=640)
-        camera='overview' if agent is None else agent+'/'+self.views[agent].env.camera_name
-        self.renderer.update_scene(self.data,camera=camera)
-        return self.renderer.render().copy()
+        if agent is None:
+            if self.renderer is None:self.renderer=mujoco.Renderer(self.model,height=480,width=640)
+            renderer=self.renderer;camera='overview'
+        else:
+            if agent not in self.agent_renderers:
+                self.agent_renderers[agent]=mujoco.Renderer(self.model,height=getattr(self.views[agent].env,'height',480),width=640)
+            renderer=self.agent_renderers[agent];camera=agent+'/'+self.views[agent].env.camera_name
+        renderer.update_scene(self.data,camera=camera)
+        return renderer.render().copy()
 
     def snapshot(self):
         spec=mujoco.mjtState.mjSTATE_INTEGRATION
@@ -204,4 +225,6 @@ class FleetWorld:
 
     def close(self):
         if self.renderer is not None:self.renderer.close();self.renderer=None
+        for renderer in self.agent_renderers.values():renderer.close()
+        self.agent_renderers.clear()
         for view in self.views.values():view.env.close()

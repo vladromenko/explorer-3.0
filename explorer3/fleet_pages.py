@@ -63,6 +63,7 @@ def install(stop_real,css):
         with ui.row().classes('w-full justify-between items-center'):
             ui.link('← Отдельные задачи','/sim')
             ui.link('Зрение · YOLOE / SAM 3','/sim/vision')
+            ui.link('Совместное исполнение политик →','/sim/fleet/policies')
             ui.label('СИМУЛЯЦИЯ · без подключения роботов').classes('sim-badge')
         with ui.element('div').classes('sim-layout'):
             with ui.column().classes('sim-panel'):

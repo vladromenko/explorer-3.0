@@ -50,6 +50,11 @@ class Jobs:
             cfg.update(steps=recipe['steps'],batch_size=recipe['batch_size'],device=recipe['device'],seed=recipe['seed'])
         return self._insert(name,policy,cfg)
 
+    def fleet_execute(self,selected,**options):
+        from .fleet_runs import prepare
+        config=prepare(selected,**options)
+        return self._insert('fleet_lab_sim','frozen_fleet',config)
+
     def start_prepared_training(self,draft_id):
         from .training_drafts import load
         draft=load(draft_id)
@@ -106,6 +111,23 @@ class Jobs:
             cfg.update(source_job=source_job,checkpoint=source['checkpoint'],expected_model_hash=model_hash)
             policy=source['policy']
         return self._insert(name,policy,cfg)
+
+    def accept_fleet_correction(self,source_job,index,reviewed=False):
+        if reviewed is not True:raise ValueError('Сначала проверьте сегмент и исход задачи')
+        from .fleet_corrections import validate
+        from .branch_corrections import source_hash
+        source=self.get(source_job)
+        if source['status']!='completed' or json.loads(source['config']).get('kind')!='fleet_execution':
+            raise ValueError('Нужен завершённый общий прогон')
+        result=json.loads((DATA/'jobs'/source_job/'result.json').read_text())
+        entries=result.get('correction_segments',[])
+        if type(index) is not int or not 0<=index<len(entries):raise ValueError('Нет такого сегмента')
+        root=Path(entries[index]['spool']);meta=validate(root)
+        if meta['lineage']!=result['lineage']:raise ValueError('Сегмент из другого прогона')
+        review={'decision':'accept_fleet_sim_correction','source_sha256':source_hash(root),'lineage':meta['lineage'],
+            'source_job':source_job,'recorded_wall_unix_s':time.time(),'source':'scripted_expert','human_demonstration':False}
+        return self._insert(meta['profile'],'dataset',{'kind':'sim_correction_import','profile':meta['profile'],
+            'spool':str(root),'review':review,'device':'cpu'})
 
     def accept_sim_correction(self,source_job,reviewed=False):
         if reviewed is not True:raise ValueError('Сначала проверьте кадры и результат исправления')
