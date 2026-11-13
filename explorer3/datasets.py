@@ -68,24 +68,27 @@ def select_simulation_revision(episodes, expected=None):
     return selected, next(iter(revisions),expected)
 
 
-def freeze(name, smoke, seed=1000, sim_model_hash=None, *, selected_ids=None, min_sim_episodes=None):
+def freeze(name, smoke, seed=1000, sim_model_hash=None, *, selected_ids=None, min_sim_episodes=None,min_real_episodes=None):
     domain=profile(name).get('domain','real')
     episodes = eligible(name)
     if selected_ids is not None:
-        if domain!='sim':raise ValueError('Explicit simulation selection only')
         ids=set(selected_ids)
         if not ids or not ids.issubset({e['id'] for e in episodes}):raise ValueError('Выбранный показ отсутствует или не допущен')
         episodes=[e for e in episodes if e['id'] in ids]
     if min_sim_episodes is not None and (domain!='sim' or type(min_sim_episodes) is not int or min_sim_episodes<3):
         raise ValueError('At least 3 simulation episodes required')
+    if min_real_episodes is not None and (domain!='real' or type(min_real_episodes) is not int or min_real_episodes<3 or smoke):
+        raise ValueError('Real pilot requires at least 3 episodes and independent splits')
     if domain=='sim':episodes,sim_model_hash=select_simulation_revision(episodes,sim_model_hash)
     elif sim_model_hash is not None:raise ValueError('Версия симулятора не относится к физическим данным')
-    minimum=min_sim_episodes if min_sim_episodes is not None else 3 if smoke else 50
+    minimum=min_real_episodes if min_real_episodes is not None else min_sim_episodes if min_sim_episodes is not None else 3 if smoke else 50
     if len(episodes) < minimum:
         raise ValueError(f'Нужно минимум {minimum} пригодных показов одной версии модели; для оценки нужны 3 независимые группы')
     for episode in episodes:
         root = Path(episode['dataset'])
         provenance = json.loads((root / 'provenance.json').read_text())
+        if provenance.get('hardware',{}).get('pipeline_check') or provenance.get('hardware',{}).get('training_eligible') is False:
+            raise ValueError('Диагностическая или не принятая запись не является обучающим показом')
         if provenance.get('domain','real')!=domain or provenance.get('synthetic') is not (domain!='real'):
             raise ValueError('Синтетические данные запрещены в физическом наборе')
         validation = DATA / 'validation' / f"episode-{episode['id']}.json"
@@ -105,6 +108,7 @@ def freeze(name, smoke, seed=1000, sim_model_hash=None, *, selected_ids=None, mi
             'seed': seed, 'statistics': 'train_only', 'splits': splits,'sim_model_hash':sim_model_hash,
             'limitation': 'Smoke использует все показы; это не независимая оценка качества' if smoke else
                           'Split заморожен; test не используется для выбора модели'}
+    if min_real_episodes is not None:plan.update(pilot=True,minimum_episodes=min_real_episodes)
     blob = json.dumps(plan, sort_keys=True, ensure_ascii=False, indent=2)
     ident = hashlib.sha256(blob.encode()).hexdigest()
     directory = DATA / 'plans'

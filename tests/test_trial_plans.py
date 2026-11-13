@@ -29,3 +29,31 @@ def test_recording_rejects_source_switch_before_writing_frame():
     sample={'images':{'wrist':{}},'command_source':'human'}
     with pytest.raises(ValueError,match='segment'):
         writer.add(sample)
+
+
+def test_policy_bundle_includes_normalization_and_config(tmp_path):
+    (tmp_path/'config.json').write_text('{}');(tmp_path/'model.safetensors').write_bytes(b'fixture')
+    (tmp_path/'normalizer.json').write_text('{"mean":0}')
+    plan={'checkpoint':str(tmp_path),'checkpoint_bundle_sha256':trials.checkpoint_hash(tmp_path)}
+    trials.verify_policy_artifacts(plan)
+    (tmp_path/'normalizer.json').write_text('{"mean":100}')
+    with pytest.raises(ValueError,match='нормировка'):trials.verify_policy_artifacts(plan)
+    with pytest.raises(ValueError,match='Старый план'):trials.verify_policy_artifacts({'checkpoint':str(tmp_path)})
+
+
+def test_changed_trial_plan_invalidates_explicit_permission(tmp_path,monkeypatch):
+    monkeypatch.setattr(trials,'DATA',tmp_path);monkeypatch.setattr(trials.local_work,'require_hardware_mode',lambda *_:None)
+    (tmp_path/'trials').mkdir();(tmp_path/'configs').mkdir()
+    plan={'id':'a'*32,'kind':'replay','profile':'rosmaster_dock','max_duration_s':1.}
+    (tmp_path/'trials'/(plan['id']+'.json')).write_text(json.dumps(plan))
+    trials.authorize(plan['id']);trials.require_physical(plan)
+    with pytest.raises(PermissionError,match='План изменился'):trials.require_physical({**plan,'max_duration_s':60.})
+
+
+def test_replay_refuses_incomplete_initial_measurement(tmp_path,monkeypatch):
+    (tmp_path/'research.jsonl').write_text(json.dumps({'action':[90]*6})+'\n')
+    monkeypatch.setattr(trials,'fingerprint',lambda _:'saved')
+    replay=trials.ReplayActions({'dataset':str(tmp_path),'dataset_sha256':'saved'})
+    for state in ([90]*5,[90]*5+[float('nan')]):
+        with pytest.raises(ValueError,match='шести'):replay.next({'observation.state':state})
+    assert replay.index==0

@@ -60,6 +60,15 @@ def run_job(path: Path):
     cfg = json.loads(path.read_text())
     work = DATA/'jobs'/path.stem
     work.mkdir(exist_ok=True)
+    if cfg.get('kind')=='rosmaster_identification':
+        from .rosmaster_preparation import load_identification
+        from .sim.rosmaster_sysid import identify,simulator_values
+        plan=load_identification(cfg['plan_id'])
+        result=identify(plan['entries'],plan['profile'],holdout_fraction=plan['holdout_fraction'])
+        result.update(plan_id=cfg['plan_id'],simulator_values=simulator_values(result),training_started=False,
+            physical_robot_access=False,applied_to_simulator=False)
+        (work/'result.json').write_text(json.dumps(result,indent=2))
+        return
     if cfg.get('kind')=='branch_gain_train':
         from .gain_model import fit_plan
         fit_plan(cfg['plan_id'],work)

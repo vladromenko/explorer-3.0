@@ -58,3 +58,13 @@ def test_finetune_checkpoint_is_pinned_and_changed_weights_rejected(tmp_path,mon
 @pytest.mark.parametrize('args',[(49,1,0,'cpu'),(100,0,0,'cpu'),(100,1,-1,'cpu'),(100,1,0,'auto')])
 def test_invalid_budgets(args):
     with pytest.raises(ValueError):drafts.validate_budget(*args)
+
+
+def test_finetune_accepts_documentation_changes_but_not_channel_units():
+    import copy
+    old=plan([episode('a')],[episode('b')],[episode('c')]);new=plan([episode('d')],[episode('e')],[episode('f')])
+    old['profile_contract']={'fps':20,'channels':['vx'],'units':['m/s'],'model_status':'old wording'}
+    new['profile_contract']={**old['profile_contract'],'model_status':'corrected description'}
+    drafts.merge_plans(old,new)
+    new['profile_contract']['units']=['cm/s']
+    with pytest.raises(ValueError,match='версию модели'):drafts.merge_plans(old,new)

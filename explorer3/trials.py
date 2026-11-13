@@ -9,6 +9,18 @@ from . import catalog, local_work
 from .paths import DATA
 from .profiles import profile
 from .datasets import fingerprint, load_plan
+from .training_drafts import checkpoint_hash
+
+
+def plan_hash(plan):
+    return hashlib.sha256(json.dumps(plan,sort_keys=True,allow_nan=False).encode()).hexdigest()
+
+
+def verify_policy_artifacts(plan):
+    expected=plan.get('checkpoint_bundle_sha256')
+    if not expected:raise ValueError('Старый план не фиксирует нормировку и конфигурацию: подготовьте новый план испытания')
+    if checkpoint_hash(plan['checkpoint'])!=expected:
+        raise ValueError('Изменились веса, нормировка или конфигурация политики после подготовки')
 
 
 def prepare(kind, ident):
@@ -46,6 +58,7 @@ def prepare(kind, ident):
         if train_info['features']['action']['names']!=cfg['channels']:
             raise ValueError('Checkpoint channel order differs from selected task')
         plan.update(checkpoint=str(root),checkpoint_sha256=hashlib.sha256(weights.read_bytes()).hexdigest(),
+                    checkpoint_bundle_sha256=checkpoint_hash(root),
                     smoke_checkpoint=bool(job.get('smoke',True)),max_duration_s=60.,
                     limitation='Smoke checkpoint is not a learned physical skill')
     directory=DATA/'trials';directory.mkdir(exist_ok=True)
@@ -63,6 +76,7 @@ def authorize(ident, hours=3.):
     plan=load(ident)
     path=DATA/'configs'/('trial-'+plan['id']+'-authorized.json')
     path.write_text(json.dumps({'trial_id':plan['id'],'profile':plan['profile'],'authorized_at':time.time(),
+                                'plan_sha256':plan_hash(plan),
                                 'expires_at':time.time()+hours*3600,'by':'operator in Explorer UI'}))
     return path
 
@@ -83,6 +97,9 @@ def require_physical(plan):
     value=json.loads(approval.read_text())
     if value.get('trial_id')!=plan['id'] or value.get('expires_at',0)<=time.time():
         raise PermissionError('Разрешение на испытание отсутствует или истекло')
+    if value.get('plan_sha256')!=plan_hash(plan):
+        raise PermissionError('План изменился или разрешение старого формата; требуется подтверждение точного плана')
+    if plan['kind']=='policy':verify_policy_artifacts(plan)
 
 
 class ReplayActions:
@@ -95,8 +112,13 @@ class ReplayActions:
     def next(self,observation):
         if self.index>=len(self.rows):raise StopIteration
         action=self.rows[self.index]['action']
-        if self.check_pose and self.index==0 and any(abs(a-b)>(3. if i==5 else 2.) for i,(a,b) in enumerate(zip(action,observation['observation.state']))):
-            raise ValueError('Начальная поза отличается от записи. Автоматический переход не выполняется')
+        if not action or not all(isinstance(v,(int,float)) and math.isfinite(v) for v in action):raise ValueError('Недопустимое действие в записи')
+        if self.check_pose and self.index==0:
+            state=observation['observation.state']
+            if len(action)!=len(state) or len(action)!=6 or not all(isinstance(v,(int,float)) and math.isfinite(v) for v in state):
+                raise ValueError('Нужны конечные измерения всех шести суставов')
+            if any(abs(a-b)>(3. if i==5 else 2.) for i,(a,b) in enumerate(zip(action,state))):
+                raise ValueError('Начальная поза отличается от записи. Автоматический переход не выполняется')
         self.index+=1
         return list(action)
 
@@ -106,6 +128,7 @@ class ReplayActions:
 
 class PolicyActions:
     def __init__(self,plan):
+        verify_policy_artifacts(plan)
         import torch
         from lerobot.configs.policies import PreTrainedConfig
         from lerobot.policies.factory import get_policy_class,make_pre_post_processors

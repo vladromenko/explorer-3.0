@@ -119,6 +119,8 @@ from . import fleet_policy_pages
 fleet_policy_pages.install(CSS,jobs)
 from . import gain_pages
 gain_pages.install(CSS,jobs)
+from . import rosmaster_preparation_pages
+rosmaster_preparation_pages.install(CSS,jobs)
 
 @ui.page('/')
 def index():
@@ -174,9 +176,10 @@ def index():
                 label='USB обнаружены · требуется приёмка' if ident=='so101' and all(v['present'] for v in inventory().values()) else 'Подключение ещё не проверено'
                 fleet_labels[ident]=ui.badge(label,color='grey-8')
                 with ui.element('div').classes('preview'):
-                    ui.label('Камера не открыта' if ident=='so101' else 'Подключение на этапе '+('C' if ident=='tank' else 'D'))
+                    ui.label('Физическая проверка на этапе '+{'so101':'D','tank':'C','rosmaster':'B'}[ident])
                 ui.button('Выбрать '+name,on_click=lambda robot=ident:select(robot)).props('outline')
                 if ident=='rosmaster':
+                    ui.link('Подготовка без робота', '/rosmaster/preparation')
                     ui.link('Открыть управление', '/rosmaster/control')
                     ui.link('Камера и диагностика', '/rosmaster')
     with ui.element('div').classes('workspace'):

@@ -26,6 +26,7 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
 <header><h1>ROSMASTER</h1><span class="pill" id="mode">остановлено</span><span class="pill" id="link">нет связи</span>
 <span class="grow"></span><span id="bat" class="pill">батарея …</span><button onclick="send({action:'use8090'});setTimeout(()=>window.open('http://192.168.0.177:8090','_blank'),8000)" title="Отдать робот старой консоли CubeBot">Консоль 8090 ↗</button><a href="/" style="color:var(--acc);font-size:13px">Explorer</a></header>
 <nav class="bar1">
+ <a href="/rosmaster/preparation" style="color:var(--acc)">Подготовка без робота</a>
  <label class="help">Управлять <select id="control-profile" aria-label="Что управляем" onchange="send({action:'stop'})"><option value="rosmaster_manual">рукой и шасси</option><option value="rosmaster_pick_place">только рукой</option><option value="rosmaster_dock">только шасси</option></select></label>
  <button class="go big" onclick="send({action:'enable',profile:$('control-profile').value,observing:true})" title="Нажимая, вы подтверждаете, что вы рядом и место свободно. Сложенная рука сначала поднимается автоматически.">▶ Я рядом — включить</button>
  <button class="stop big" onclick="send({action:'stop'})">■ STOP <small>(пробел)</small></button>
@@ -106,6 +107,7 @@ function connect(){ws=new WebSocket((location.protocol==='https:'?'wss://':'ws:/
  ws.onclose=()=>{clearControls();$('link').textContent='нет связи';$('link').style.background='#3a1f1f';setTimeout(connect,1000)};
  ws.onmessage=e=>render(JSON.parse(e.data));}
 function render(s){
+ $('link').textContent=s.offline?'локальная подготовка':'связь с Homebrain';$('link').style.background=s.offline?'#32313a':'#1f3a2c';
  $('armmode').textContent=s.arm_mode==='joint'?'Суставы':'Захват XYZ';$('armhelp').textContent=s.arm_mode==='joint'?'←/→ (J/L) — основание; ↑/↓ (I/K) — плечо; R/F — локоть; ,/. — кисть.':'↑/↓ (I/K) — вперёд/назад; ←/→ (J/L) — влево/вправо; R/F — вверх/вниз.';
  $('dry').style.display=s.dry_run?'block':'none';$('mode').textContent=s.enabled?'● управление включено':'остановлено';$('mode').style.background=s.enabled?'#1f3a2c':'#222a36';$('notice').textContent=s.notice||'';
  const b=s.battery;if(b.soc!=null){$('socbar').style.width=b.soc+'%';$('socbar').style.background=b.soc<20?'var(--bad)':b.soc<40?'var(--warn)':'var(--ok)';

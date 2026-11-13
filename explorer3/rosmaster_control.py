@@ -6,7 +6,7 @@ from pathlib import Path
 import threading
 import time
 import httpx
-from fastapi import Request
+from fastapi import Request,HTTPException
 from fastapi.responses import StreamingResponse
 from nicegui import app, ui
 from .paths import DATA
@@ -225,6 +225,12 @@ class Operator:
                 if self.arm_mode:packet['arm_mode']=self.arm_mode
             if not lease:
                 self.stats={};continue
+            from .local_work import hardware_allowed
+            if not hardware_allowed('rosmaster'):
+                # No new packet may use a previously cached connection after scope closes.
+                if client is not None:client.close();client=None
+                self.stop('Подключение ROSMASTER закрыто для локальной подготовки')
+                continue
             stats=self.stats
             if not stats:stats.update(started=last,last_ok=last,commands=0,timeouts=0,held=0,max_rtt=0.,max_browser_gap=0.)
             stats['max_browser_gap']=max(stats['max_browser_gap'],age)
@@ -294,11 +300,15 @@ def brighten(jpeg,level):
 
 @app.get('/api/rosmaster/camera.mjpg')
 async def camera(request_:Request,light:int=0):
+    from .local_work import hardware_allowed
+    if not hardware_allowed('rosmaster'):
+        raise HTTPException(503,'Локальная подготовка: камера робота не опрашивается')
     cfg=json.loads((DATA/'configs/rosmaster-agent.json').read_text())
     async def frames():
         async with httpx.AsyncClient(base_url=f"http://{cfg['host']}:{cfg['port']}",
                 headers={'X-Explorer-Token':cfg['token']},trust_env=False,timeout=1) as client:
             while not await request_.is_disconnected():
+                if not hardware_allowed('rosmaster'):return
                 start=time.monotonic()
                 try:
                     result=await client.get('/frame.jpg');result.raise_for_status()

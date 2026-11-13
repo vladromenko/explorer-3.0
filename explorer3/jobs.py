@@ -60,6 +60,11 @@ class Jobs:
         load(ident)
         return self._insert('intervention','branch_gain',{'kind':'branch_gain_train','plan_id':ident,'device':'cpu'})
 
+    def identify_rosmaster(self,ident):
+        from .rosmaster_preparation import load_identification
+        plan=load_identification(ident)
+        return self._insert(plan['profile'],'sysid',{'kind':'rosmaster_identification','plan_id':ident,'device':'cpu'})
+
     def start_prepared_training(self,draft_id):
         from .training_drafts import load
         draft=load(draft_id)

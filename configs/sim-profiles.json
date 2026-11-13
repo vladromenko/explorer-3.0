@@ -59,15 +59,15 @@
       3
     ],
     "manual_control_status": "operator_verified",
-    "state_provenance": "previous transmitted velocity command; wheel feedback unavailable",
-    "action_provenance": "accepted native controller velocity after factory limits; UART write verified, MCU acknowledgement unavailable",
+    "state_provenance": "simulator observable state in the real profile channel order; not physical sensor data",
+    "action_provenance": "submitted simulation control target; no hardware command or acknowledgement",
     "feature_scales": [
       0.2,
       0.5
     ],
     "domain": "sim",
     "real_profile": "tank_dock",
-    "model_status": "not_implemented"
+    "model_status": "native_geometry_planar_dynamics_uncalibrated"
   },
   "rosmaster_dock_sim": {
     "robot": "rosmaster",
@@ -98,7 +98,7 @@
       "previous_lateral_command",
       "previous_yaw_command"
     ],
-    "state_provenance": "controller wheel-encoder velocity (measured) + previous command sent to the controller",
+    "state_provenance": "simulator observable state in the real profile channel order; not physical sensor data",
     "camera_status": "orbbec_rgb_on_arm_480x640",
     "image_shape": [
       480,
@@ -113,7 +113,7 @@
       "m/s",
       "rad/s"
     ],
-    "action_provenance": "base command sent to the controller after native speed caps, lidar guard and shaping",
+    "action_provenance": "submitted simulation control target; no hardware command or acknowledgement",
     "arm_rule": "arm stays still (agent profile refuses arm input)",
     "feature_scales": [
       0.3,
@@ -122,7 +122,7 @@
     ],
     "domain": "sim",
     "real_profile": "rosmaster_dock",
-    "model_status": "not_implemented"
+    "model_status": "native_geometry_planar_dynamics_uncalibrated"
   },
   "rosmaster_pick_place_sim": {
     "robot": "rosmaster",
@@ -159,7 +159,7 @@
       "measured_wrist_roll",
       "measured_gripper"
     ],
-    "state_provenance": "servo position readback through the controller (all six joints, fresh <0.6 s)",
+    "state_provenance": "simulator observable state in the real profile channel order; not physical sensor data",
     "camera_status": "orbbec_rgb_on_arm_480x640",
     "image_shape": [
       480,
@@ -174,7 +174,7 @@
       "native_servo_degrees",
       "native_servo_degrees"
     ],
-    "action_provenance": "arm target in force at the controller (measured pose at enable, then each sent command)",
+    "action_provenance": "submitted simulation control target; no hardware command or acknowledgement",
     "base_rule": "base stays still (agent profile refuses drive input)",
     "feature_scales": [
       90.0,
@@ -186,6 +186,6 @@
     ],
     "domain": "sim",
     "real_profile": "rosmaster_pick_place",
-    "model_status": "not_implemented"
+    "model_status": "manufacturer_geometry_uncalibrated"
   }
 }

@@ -27,9 +27,14 @@ def checkpoint_hash(root):
     return value.hexdigest()
 
 
+def semantic_contract(value):
+    if value is None:return None
+    return {key:value.get(key) for key in ('robot','fps','task','camera','image_shape','channels','units','state_channels','state_units')}
+
+
 def merge_plans(old,new):
     """Keep prior hold-outs and prevent old training scenes leaking into new test."""
-    if old['domain']!='sim' or new['domain']!='sim' or old['profile']!=new['profile'] or old['sim_model_hash']!=new['sim_model_hash'] or old.get('profile_contract')!=new.get('profile_contract'):
+    if old['domain']!='sim' or new['domain']!='sim' or old['profile']!=new['profile'] or old['sim_model_hash']!=new['sim_model_hash'] or semantic_contract(old.get('profile_contract'))!=semantic_contract(new.get('profile_contract')):
         raise ValueError('Дообучение требует тот же профиль и версию модели; sim→real — отдельный протокол')
     anchored={e['id']:role for role,entries in old['splits'].items() for e in entries}
     roles={e['id']:role for role,entries in new['splits'].items() for e in entries}
@@ -100,6 +105,7 @@ def load(ident):
     if hashlib.sha256(raw.encode()).hexdigest()!=ident:raise ValueError('План запуска изменился')
     draft=json.loads(raw);validate_budget(draft['steps'],draft['batch_size'],draft['seed'],draft['device'])
     datasets.load_plan(draft['plan_id'])
+    if draft.get('source_plan_id'):datasets.load_plan(draft['source_plan_id'])
     if draft['initial_checkpoint'] and checkpoint_hash(draft['initial_checkpoint'])!=draft['initial_checkpoint_sha256']:
         raise ValueError('Исходные веса изменились после подготовки')
     return draft

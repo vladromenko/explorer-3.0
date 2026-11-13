@@ -50,7 +50,8 @@ def install(css,jobs):
         with ui.element('div').classes('sim-layout') as builder:
             with ui.column().classes('sim-panel'):
                 ui.label('Данные и исходная модель').classes('sim-title')
-                profile=ui.select({'so101_pick_place_sim':'SO-101 · кубик в коробку','tank_dock_sim':'Tank · подъезд к цели'},
+                profile=ui.select({'so101_pick_place_sim':'SO-101 · кубик в коробку','tank_dock_sim':'Tank · подъезд к цели',
+                    'rosmaster_pick_place_sim':'ROSMASTER · кубик в коробку','rosmaster_dock_sim':'ROSMASTER · подъезд к цели'},
                     value='so101_pick_place_sim',label='Задача',on_change=lambda:refresh()).classes('w-full')
                 policy=ui.select(POLICIES,value='act',label='Модель',on_change=lambda:refresh()).classes('w-full')
                 source=ui.select({},label='Начать заново или дообучить').classes('w-full')
@@ -69,7 +70,8 @@ def install(css,jobs):
                 prepare_button=ui.button('Подготовить план · не запускать',icon='description',on_click=prepare)
         def saved():
             directory=DATA/'training-drafts'
-            return {p.stem:p.stem[:8]+' · '+json.loads(p.read_text())['policy'].upper() for p in sorted(directory.glob('*.json'))} if directory.exists() else {}
+            return {p.stem:p.stem[:8]+' · '+json.loads(p.read_text())['policy'].upper() for p in sorted(directory.glob('*.json'))
+                if json.loads(p.read_text()).get('profile','').endswith('_sim')} if directory.exists() else {}
         async def open_saved():
             nonlocal draft_id
             if history.value:

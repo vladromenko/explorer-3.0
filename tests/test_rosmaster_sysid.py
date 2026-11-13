@@ -32,3 +32,21 @@ def test_arm_rate_limit_and_delay_recovered(tmp_path):
 def test_synthetic_refused_as_real(tmp_path):
     with pytest.raises(ValueError):
         sysid.identify(entries(tmp_path, 'rosmaster_dock', BASE, 2), 'rosmaster_dock')
+
+
+def test_separate_servo_ages_are_not_collapsed_to_slowest():
+    rows=[]
+    for i in range(12):
+        rows.append({'action_sent':[90]*5,'action_sent_agent_ns':int((i+.01)*1e9),
+            'measured_response':[90]*5,'measured_response_age_s':[.01,.02,.03,.04,.05,.2],
+            'agent_monotonic_ns':int(i*1e9),'controller_ready':True})
+    _,_,mt,_=sysid.series(rows,'rosmaster_pick_place')
+    assert mt[0].tolist()==pytest.approx([.99,.98,.97,.96,.95])
+    rows[0]['measured_response_age_s'][0]=-1
+    with pytest.raises(ValueError,match='age'):sysid.series(rows,'rosmaster_pick_place')
+
+
+def test_same_scene_cannot_be_both_fit_and_holdout(tmp_path):
+    data=entries(tmp_path,'rosmaster_dock',BASE,2)
+    for e in data:e.update(session=e['id'],scene='same-scene')
+    with pytest.raises(ValueError,match='независимые'):sysid.identify(data,'rosmaster_dock',allow_synthetic=True)

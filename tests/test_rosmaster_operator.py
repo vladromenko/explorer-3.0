@@ -21,6 +21,7 @@ class Agent:
 def op(monkeypatch,tmp_path):
     agent=Agent()
     monkeypatch.setattr(rc,'DATA',tmp_path)
+    monkeypatch.setattr('explorer3.local_work.hardware_allowed',lambda *_:True)
     monkeypatch.setattr(rc,'connection',lambda timeout=2:agent)
     def request(path,value=None,timeout=2):
         if path=='/stop':agent.stops+=1
@@ -68,3 +69,11 @@ def test_agent_reason_is_shown_not_masked(op):
     assert 'Battery telemetry stale' in op.error
     log=(rc.DATA/'logs/rosmaster-control.jsonl').read_text()
     assert 'agent' in log and 'Battery' in log
+
+
+def test_closed_scope_stops_using_cached_command_connection(op,monkeypatch):
+    start(op);feed(op,.15);before=len(op.agent.packets)
+    monkeypatch.setattr('explorer3.local_work.hardware_allowed',lambda *_:False)
+    time.sleep(.15)
+    assert op.lease is None and len(op.agent.packets)<=before+1
+    count=len(op.agent.packets);time.sleep(.1);assert len(op.agent.packets)==count

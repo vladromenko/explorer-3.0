@@ -6,9 +6,9 @@ What is fitted, per channel, against what the controller actually received and w
 The simulator itself uses the same first-order form without dead time / rate limit (mobile.py lag_s+slip, environment.py lag_s);
 fitting both forms shows whether that simpler structure is enough.
 
-Timing: command time = agent `*_sent_ns`; measurement time = next agent snapshot minus the reported sensor age. Frames are 20 Hz,
-so time constants below ~50 ms are poorly resolved. Episodes are split into fit / held-out by recording order; the candidate is
-judged ONLY on held-out episodes. The result is a candidate file, never applied automatically.
+Timing: command time = agent `*_sent_ns`; measurement time = next agent snapshot minus each channel's reported sensor age.
+Frames are 20 Hz, so time constants below ~50 ms are poorly resolved. Connected session/scene groups stay together;
+the most recent groups are held out. The candidate is judged ONLY on held-out episodes, never applied automatically.
 """
 import hashlib
 import json
@@ -38,14 +38,20 @@ def series(rows, profile):
         measured, age = row.get('measured_response'), row.get('measured_response_age_s')
         if measured is None or age is None:
             continue
-        age = max(age) if isinstance(age, list) else age
-        if not row.get('controller_ready', True) or age > .5:
+        ages=list(age[:k]) if isinstance(age,list) else [age]*k
+        if len(ages)!=k or any(v is None or not math.isfinite(v) or v<0 for v in ages):
+            raise ValueError('Invalid measured feedback age')
+        if not row.get('controller_ready', True) or max(ages) > .5:
             continue
-        mt.append(following['agent_monotonic_ns'] / 1e9 - age); mv.append([float(v) for v in measured[:k]])
+        if len(measured)<k:raise ValueError('Incomplete measured response')
+        mt.append([following['agent_monotonic_ns'] / 1e9 - a for a in ages]); mv.append([float(v) for v in measured[:k]])
     if len(ct) < 5 or len(mt) < 10:
         return None
     order = np.argsort(ct)
-    return np.array(ct)[order], np.array(cv)[order], np.array(mt), np.array(mv)
+    result=np.array(ct)[order],np.array(cv)[order],np.array(mt),np.array(mv)
+    if result[1].shape!=(len(ct),k) or not all(np.isfinite(x).all() for x in result):raise ValueError('Invalid command/response series')
+    if (np.diff(result[2],axis=0)<-1e-8).any():raise ValueError('Measured timestamps moved backwards')
+    return result
 
 
 def simulate(ct, cv, mt, y0, delays, taus, gains, vmax):
@@ -95,6 +101,7 @@ def fit_channel(train, profile, channel, simple=False):
         # y = decay(y0) + gain*G  (linear in gain): run with gain=1 from y0=0, the y0 term is the free response.
         parts = []
         for ct, cv, mt, mv in train:
+            mt=mt[:,channel] if mt.ndim==2 else mt
             ones = np.ones(len(delays))
             g = simulate(ct, cv[:, channel], mt, 0., delays, taus, ones, vmax)
             free = np.exp(-(mt - mt[0])[None, :] / taus[:, None]) * mv[0, channel]
@@ -107,6 +114,7 @@ def fit_channel(train, profile, channel, simple=False):
     else:
         gains = np.ones(len(delays))
         for ct, cv, mt, mv in train:
+            mt=mt[:,channel] if mt.ndim==2 else mt
             pred = simulate(ct, cv[:, channel], mt, mv[0, channel], delays, taus, gains, vmax)
             sse += ((mv[:, channel][None, :] - pred) ** 2).sum(1); n += len(mt)
     best = int(np.argmin(sse))
@@ -127,6 +135,7 @@ def rmse(episodes, profile, channel, params):
     vmax = np.inf if params.get('vmax_deg_s') is None else params['vmax_deg_s']
     total, n = 0., 0
     for ct, cv, mt, mv in episodes:
+        mt=mt[:,channel] if mt.ndim==2 else mt
         y0 = 0. if profile == 'rosmaster_dock' else mv[0, channel]
         pred = simulate(ct, cv[:, channel], mt, y0, np.array([params['delay_s']]), np.array([params['tau_s']]),
                         np.array([params.get('gain', 1.)]), np.array([vmax]))[0]
@@ -140,8 +149,10 @@ def identify(entries, profile, *, allow_synthetic=False, holdout_fraction=.3):
     """entries: [{'id','dataset'}] in recording order. Returns the candidate report."""
     if profile not in CHANNELS:
         raise ValueError('ROSMASTER profile required')
+    if not math.isfinite(holdout_fraction) or not 0<holdout_fraction<1:raise ValueError('Invalid holdout fraction')
     used, data = [], []
     for entry in entries:
+        if entry.get('excluded'):continue
         root = Path(entry['dataset'])
         provenance = json.loads((root / 'provenance.json').read_text())
         hardware = provenance.get('hardware', {})
@@ -154,11 +165,23 @@ def identify(entries, profile, *, allow_synthetic=False, holdout_fraction=.3):
         if s is None:
             continue
         digest = hashlib.sha256((root / 'research.jsonl').read_bytes()).hexdigest()
-        used.append({'id': entry['id'], 'research_jsonl_sha256': digest, 'synthetic': provenance.get('synthetic')}); data.append(s)
+        session=entry.get('session') or provenance.get('session_id')
+        scene=entry.get('scene') or provenance.get('scene_id')
+        if allow_synthetic:session=session or entry['id'];scene=scene or entry['id']
+        if not session or not scene:raise ValueError('Нет сессии/расстановки для независимой проверки отклика')
+        used.append({'id': entry['id'], 'session':session,'scene':scene,
+            'research_jsonl_sha256': digest, 'synthetic': provenance.get('synthetic')}); data.append(s)
     if len(data) < 2:
         raise ValueError('Нужно минимум 2 записи с движением (одна для подгонки, одна для проверки)')
-    held = max(1, int(round(len(data) * holdout_fraction)))
-    train, test = data[:-held], data[-held:]
+    from explorer3.datasets import connected_groups
+    groups=connected_groups(used)
+    if len(groups)<2:raise ValueError('Для проверки отклика нужны независимые сессии и расстановки')
+    order={e['id']:i for i,e in enumerate(used)}
+    groups.sort(key=lambda group:max(order[e['id']] for e in group))
+    held=min(len(groups)-1,max(1,int(round(len(groups)*holdout_fraction))))
+    held_ids={e['id'] for group in groups[-held:] for e in group}
+    train=[d for u,d in zip(used,data) if u['id'] not in held_ids]
+    test=[d for u,d in zip(used,data) if u['id'] in held_ids]
     channels = {}
     for index, name in enumerate(CHANNELS[profile]):
         if max(np.ptp(s[1][:, index]) for s in train) < 1e-6:
@@ -174,7 +197,8 @@ def identify(entries, profile, *, allow_synthetic=False, holdout_fraction=.3):
             'units': ('m/s' if index < 2 else 'rad/s') if profile == 'rosmaster_dock' else 'deg'}
     return {'version': 1, 'profile': profile, 'status': 'candidate_not_deployed', 'created': time.time(),
             'model_form': __doc__.split('\n')[2:5], 'nominal': NOMINAL[profile], 'channels': channels,
-            'fit_episodes': [u['id'] for u in used[:-held]], 'holdout_episodes': [u['id'] for u in used[-held:]], 'episodes': used,
+            'fit_episodes': [u['id'] for u in used if u['id'] not in held_ids], 'holdout_episodes': [u['id'] for u in used if u['id'] in held_ids], 'episodes': used,
+            'split_rule':'connected session/scene groups; most recent groups held out',
             'synthetic_input': any(u['synthetic'] is not False for u in used),
             'limitations': ['20 Hz frames: time constants below ~50 ms are poorly resolved',
                             'command time is the agent serial write, not MCU receipt; measurement time = snapshot minus sensor age',

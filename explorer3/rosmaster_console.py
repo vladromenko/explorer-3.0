@@ -103,21 +103,29 @@ async def websocket(socket:WebSocket):
     owner=uuid.uuid4().hex
     state={'mode':'cartesian','notice':'','grip':{}}
     async def push():
-        with connection(1) as client:
+        client=None
+        try:
             while True:
                 try:
-                    response=await asyncio.to_thread(client.get,'/health');response.raise_for_status()
-                    health=response.json()
-                    payload=telemetry(health,state['mode'],state['notice'])
+                    if not local_work.hardware_allowed('rosmaster'):
+                        if client is not None:client.close();client=None
+                        payload=telemetry({},state['mode'],'Локальная подготовка: робот не опрашивается. Откройте «Подготовка без робота».')
+                        payload['offline']=True
+                    else:
+                        if client is None:client=connection(1)
+                        response=await asyncio.to_thread(client.get,'/health');response.raise_for_status()
+                        health=response.json()
+                        payload=telemetry(health,state['mode'],state['notice'])
                 except Exception as exc:payload=telemetry({},state['mode'],'Нет связи: '+str(exc))
                 await socket.send_json(payload)
                 await asyncio.sleep(.1)
+        finally:
+            if client is not None:client.close()
     action_lock=asyncio.Lock();pending=[]
     async def act(action,value):
         try:
             if action in HARDWARE_ACTIONS and not local_work.hardware_allowed('rosmaster'):
-                raise PermissionError('Этап A: аппаратные сессии закрыты. Для ROSMASTER нужно отдельное согласованное исключение '
-                                      '(configs/rosmaster-hardware-enabled.json). STOP доступен всегда.')
+                raise PermissionError('Подключение робота сейчас закрыто: идёт локальная подготовка. Физическая проверка выполняется отдельно.')
             if action=='stop':
                 reason='Браузер: '+str(value.get('reason','кнопка STOP'))[:100]
                 await asyncio.to_thread(operator.stop,reason);state['notice']='Остановлено · '+reason
