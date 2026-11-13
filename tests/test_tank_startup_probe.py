@@ -47,12 +47,45 @@ def test_watcher_collects_once_and_distinguishes_missing_voltage(tmp_path,monkey
         calls.append(args)
         if args[-1]=='cat /proc/sys/kernel/random/boot_id':
             return SimpleNamespace(returncode=0,stdout='12345678-1234-1234-1234-123456789abc\n',stderr='')
+        if args[-1].startswith('python3 -c '):
+            return SimpleNamespace(returncode=0,stdout='',stderr='')
         payload={'kind':'power','data':{'observation':{'battery':{'valid_samples':samples}}}}
-        return SimpleNamespace(returncode=0,stdout=json.dumps(payload)+'\n',stderr='')
+        return SimpleNamespace(returncode=0,stdout=json.dumps(payload)+'\n'+json.dumps({'kind':'complete'})+'\n',stderr='')
     monkeypatch.setattr(m.subprocess,'run',ssh)
     m.main()
     state=json.loads((tmp_path/'validation/corrective-c/startup-watcher.json').read_text())
     assert state['phase']==('captured' if samples else 'captured_without_voltage')
     assert state['motion_commands_sent']==0 and state['read_only']
-    assert len(calls)==4
-    assert len(list(Path(state['folder']).glob('probe-*.jsonl')))==3
+    assert len(calls)==3
+    assert (Path(state['folder'])/'detached.jsonl').exists()
+    assert state['collection_complete']
+
+
+def test_detached_reader_survives_launcher_and_refuses_duplicate(tmp_path):
+    import subprocess,time,shlex
+    m=module('scripts/watch_tank_startup.py')
+    source="""import time
+class Clock:
+    def sleep(self,seconds):pass
+time=Clock()
+def observe_host(source,seconds):
+    print('{"kind":"power","data":{"observation":{"battery":{"valid_samples":1}}}}',flush=True)
+"""
+    path=tmp_path/'with space'/'probe.jsonl'
+    command=shlex.split(m.detached_command(source,str(path)))
+    subprocess.run(command,check=True,timeout=3)
+    deadline=time.monotonic()+3
+    while time.monotonic()<deadline:
+        data=path.read_text()
+        if m.scan_events(data)==(True,True):break
+        time.sleep(.02)
+    assert m.scan_events(data)==(True,True)
+    before=path.read_bytes()
+    retry=subprocess.run(command,capture_output=True,timeout=3)
+    assert retry.returncode!=0
+    assert path.read_bytes()==before
+
+
+def test_incomplete_capture_is_not_complete_or_healthy():
+    m=module('scripts/watch_tank_startup.py')
+    assert m.scan_events('partial output\n{}\n[]\n')==(False,False)
