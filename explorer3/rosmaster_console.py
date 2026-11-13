@@ -82,7 +82,7 @@ def telemetry(health,mode,notice):
         'mirror':{'on':s.get('mode')=='mirror','requested':bool(operator.mirror),'blocked':s.get('mirror_blocked') or operator.leader_error,'frames':operator.leader_count,
                   'leader':'ошибка' if operator.leader_error else 'подключён' if sample else 'не подключён',
                   'age':round(age,2) if age is not None else None,'target':s.get('mirror_target') or []},
-        'guard':s.get('guard'),'mission':'не запущена','mission_result':None,
+        'guard':s.get('guard'),'lidar_manual_override':s.get('lidar_manual_override',False),'mission':'не запущена','mission_result':None,
         'mirror_check':mirror_check(s),'recording':recorder.status(),'plans':plans(),'studies':_plans.get('studies',[]),'session_profile':s.get('profile'),
         'log':(s.get('logs',[])+([operator.error] if operator.error else [])+([notice] if notice else []))[-14:]}
 

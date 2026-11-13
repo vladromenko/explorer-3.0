@@ -99,6 +99,25 @@ def ready_runtime(tmp_path):
     return board,runtime
 
 
+@pytest.mark.parametrize('profile',['rosmaster_manual','rosmaster_dock'])
+def test_manual_lidar_override_does_not_leak_into_policy_or_stop(tmp_path,profile):
+    board,runtime=ready_runtime(tmp_path)
+    try:
+        session=runtime.enable(profile,observing=True)
+        assert runtime.io.guard_off
+        runtime.command(session['lease'],0,{'drive':[0,0,0],'free':False})
+        assert runtime.io.guard_off
+        runtime.stop('Operator STOP')
+        assert not runtime.io.guard_off and not runtime.armed
+        session=runtime.enable('rosmaster_dock',observing=True,source='policy')
+        runtime.command(session['lease'],0,{'drive':[0,0,0],'free':True})
+        assert not runtime.io.guard_off
+        runtime.switch_source('human')
+        runtime.command(session['lease'],1,{'drive':[0,0,0],'free':True})
+        assert not runtime.io.guard_off
+    finally:runtime.close();board.close()
+
+
 def test_late_duplicate_command_is_dropped_and_first_stop_reason_kept(tmp_path):
     board,runtime=ready_runtime(tmp_path)
     try:

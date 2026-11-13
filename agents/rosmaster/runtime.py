@@ -387,6 +387,9 @@ class Runtime:
                     raise ValueError('Policy/replay commands need a single-task profile')
                 self.direct_source=source if source=='policy' else None;self.direct=None
                 self.policy_session=source=='policy'
+                # Operator-requested manual driving without lidar intervention.
+                # Policy/replay sessions (including human corrections) keep their guard.
+                self.io.guard_off=not self.policy_session and profile in {'rosmaster_manual','rosmaster_dock'}
                 if self.preparing:
                     self.begin_pose([90]*6,measured,time.monotonic())
                 else:
@@ -432,7 +435,7 @@ class Runtime:
             if self.controls.armed:
                 # Keep operator input fresh during a preset too; it is applied only after the pose.
                 self.controls.set_input(intent if not self.preparing else {**intent,'arm':[0,0,0],'pitch':0,'roll':0,'grip':0},time.monotonic())
-                if self.profile=='rosmaster_manual':self.io.guard_off=bool(intent.get('free',False))
+                self.io.guard_off=not self.policy_session and self.profile in {'rosmaster_manual','rosmaster_dock'}
                 if leader is not None and not self.controls.leader(leader,time.monotonic()):raise ValueError('Invalid Leader frame')
                 if mirror and self.controls.mode!='mirror' and not self.mirror_align:
                     measured=self.io.measured_arm()
@@ -617,6 +620,7 @@ class Runtime:
                 self.core.disarm(reason)
         with self.lock:
             # Keep the first cause: a later operator STOP must not hide why the session ended.
+            if self.io is not None:self.io.guard_off=False
             session,self.session=self.session,None
             if session is not None or self.lease is not None or self.reason is None:
                 self.reason=reason
@@ -653,7 +657,7 @@ class Runtime:
                 'arm_command':self.last_arm_command,'arm_blocked':self.controls.jog.blocked,
                 'arm_mode':self.controls.arm_mode,
                 'tcp':[round(float(v),3) for v in self.model.tcp_position(self.io.arm_command())],
-                'guard':self.io.guard.last_block,
+                'guard':self.io.guard.last_block,'lidar_manual_override':bool(self.io.guard_off),
                 'mirror_target':[round(float(v),1) for v in self.controls.mirror.target],
                 'mirror_blocked':self.controls.mirror.blocked,'mode':self.controls.mode,
                 'mirror_sign':list(self.controls.mirror.m['sign']),'mirror_gripper_map':self.controls.gripper_map,

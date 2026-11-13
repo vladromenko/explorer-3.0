@@ -85,7 +85,7 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
    <div class="row" style="margin-top:8px"><button onclick="act('preset','near')">Поза: ближний</button><button onclick="act('preset','carry')">Поза: переноска</button></div>
    <div class="kv" style="margin-top:6px"><span>Кисть x,y,z</span><span id="tcp">—</span></div>
    <div class="row" style="margin-top:8px"><span class="help">Яркость показа:</span><button onclick="light(0)">как есть</button><button onclick="light(2)">ярче</button><b id="lightv" class="help">Как есть</b></div>
-   <label class="help"><input type="checkbox" id="freec"> без защиты от препятствий (лидар)</label>
+   <span class="help">В ручном управлении расстояние до препятствий контролирует оператор.</span>
    <div class="help">Джойстик: левый стик — езда, LB/RB — поворот, правый стик — рука, крестовина — высота/наклон, LT/RT — клешня, B — стоп.</div></details>
   <details class="card"><summary>Журнал</summary><div id="log"></div></details>
   <span hidden><i id="socbar"></i><span id="soc"></span><span id="volts"></span><span id="left"></span><span id="batnote"></span><span id="mstate"></span><span id="mres"></span></span>
@@ -117,7 +117,7 @@ function render(s){
  $('batnote').textContent=s.battery_stale?'Показание напряжения не обновляется (особенность прошивки при движении)':'';
  $('arm').innerHTML=(s.arm||[]).map(v=>'<span>'+(typeof v==='number'?v.toFixed(1):v)+'</span>').join('');$('tcp').textContent=fmt(s.tcp,3,7);$('blocked').textContent=s.jog_blocked||'—';
  const mi=s.mirror;$('mir').textContent=(mi.on?'включено':'выкл')+' · Leader '+(mi.leader||'—')+(mi.blocked?' · '+mi.blocked:'')+(mi.age!=null?' · данные '+mi.age+' с назад':'');$('mirn').textContent=mi.frames;$('mirt').textContent=fmt(mi.target,0,6);$('mirm').textContent=s.arm_measured?fmt(s.arm_measured,1,6):'нет обратной связи';
- $('gmsg').textContent=s.guard?(s.guard[0]==='translate'?'⚠ препятствие впереди/сбоку — езда ограничена':'⚠ препятствие мешает повороту'):'';
+ $('gmsg').textContent=s.lidar_manual_override?'Ручное управление · лидар не ограничивает движение':s.guard?(s.guard[0]==='translate'?'⚠ препятствие впереди/сбоку — езда ограничена':'⚠ препятствие мешает повороту'):'';
  $('mstate').textContent=s.mission;$('mres').textContent=s.mission_result||'—';
  const MC=s.mirror_check;if(MC){$('pairstate').textContent=MC.aligning?'Сейчас: рука встаёт в позу Leader…':'';const N=['основание','плечо','локоть','кисть','поворот кисти'];
   $('mcheck').innerHTML='<tr><th style="text-align:left">сустав</th><th>Leader Δ°</th><th>робот Δ°</th><th>знак</th><th></th></tr>'+MC.rows.map((r,i)=>{return '<tr><td>'+N[i]+'</td><td style="text-align:center">'+(r.leader??'—')+'</td><td style="text-align:center">'+(r.robot??'—')+'</td><td style="text-align:center">'+(MC.sign?(MC.sign[i]>0?'+':'−'):'?')+'</td><td><button onclick="send({action:\'mirror_flip\',joint:'+i+'})">⇄</button>'+'</td></tr>'}).join('');
