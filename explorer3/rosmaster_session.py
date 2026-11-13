@@ -171,6 +171,7 @@ class RosmasterSession:
         decision = None
         session_id = collection or f'{time.strftime("%Y%m%d")}-{owner[:8]}'
         provenance = {}
+        timing = {'sample_ms_max': 0., 'write_ms_max': 0., 'lag_ms_max': 0., 'late_steps': 0}
         try:
             lease.__enter__()
             clock = ClockMap(http)
@@ -204,7 +205,11 @@ class RosmasterSession:
                     self.outcome='failure'
                     provenance['termination_reason']='task_deadline'
                     break
+                sample_started = time.monotonic()
                 sample = self.sample(http, clock)
+                sample_ms = (time.monotonic()-sample_started)*1000
+                timing['sample_ms_max'] = max(timing['sample_ms_max'], sample_ms)
+                write_ms = 0.
                 if self.study and decision is None and now-started >= self.study['decision_after_s'] and history:
                     decision_ns = time.monotonic_ns()
                     online = research.features(history, decision_ns, cfg['feature_scales'])
@@ -258,7 +263,10 @@ class RosmasterSession:
                     frame['frame_id'] = segment['frames']
                     frame['trial_id'] = trial_id
                     frame['segment_index'] = len(segments)-1
+                    write_started = time.monotonic()
                     segment['writer'].add(frame)
+                    write_ms = (time.monotonic()-write_started)*1000
+                    timing['write_ms_max'] = max(timing['write_ms_max'], write_ms)
                     segment['frames'] += 1
                     history.append({**{k: frame[k] for k in ('observation_timestamp_ns', 'action_send_start_ns', 'action_send_end_ns',
                                                              'action', 'measured_response_kind', 'camera_ns_mapped',
@@ -274,8 +282,12 @@ class RosmasterSession:
                 previous = sample
                 deadline += period
                 lag = time.monotonic()-deadline
+                timing['lag_ms_max'] = max(timing['lag_ms_max'], lag*1000)
+                if lag > 0:
+                    timing['late_steps'] += 1
                 if lag > .5:
-                    raise RuntimeError('Запись не выдерживает частоту профиля')
+                    raise RuntimeError(f'Запись не выдерживает частоту профиля: задержка {lag*1000:.0f} мс '
+                                       f'(получение кадра {sample_ms:.0f} мс, запись {write_ms:.0f} мс)')
                 if lag > 0:
                     deadline = time.monotonic()
                 self.stop_event.wait(max(0., deadline-time.monotonic()))
@@ -294,6 +306,7 @@ class RosmasterSession:
                 self.state['error'] = f'{type(exc).__name__}: {exc}'
             catalog.event('error', 'ROSMASTER запись: '+self.state['error'])
         finally:
+            provenance['recording_timing'] = timing
             if provider is not None:
                 self.operator.set_direct(None)
                 self.operator.set_source(None)
