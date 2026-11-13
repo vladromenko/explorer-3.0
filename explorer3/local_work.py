@@ -13,7 +13,14 @@ def enabled():
     return path.exists() and json.loads(path.read_text()).get('enabled') is True
 
 
+def robot_exception(robot):
+    """Operator-agreed hardware exception for exactly one robot while the global stage keeps others closed."""
+    path=DATA/'configs'/f'{robot}-hardware-enabled.json'
+    return robot=='rosmaster' and path.exists() and json.loads(path.read_text()).get('enabled') is True
+
+
 def hardware_allowed(robot=None):
+    if robot_exception(robot):return True
     if homebrain_only():return False
     if not enabled():return True
     if robot=='tank':

@@ -11,6 +11,10 @@ from nicegui import app
 from .rosmaster_control import operator, request, connection, ensure_agent
 from .rosmaster_session import RosmasterSession, PROFILES
 from .paths import DATA
+from . import local_work
+
+# Actions that open the robot (serial/camera/motors). STOP and status reads are never gated.
+HARDWARE_ACTIONS={'acquire','enable','prepare','mirror_on','mirror_toggle','leader','record_start','trial_start','preset','pair_capture'}
 
 recorder=RosmasterSession(operator)
 _plans={'at':0,'items':[]}
@@ -111,6 +115,9 @@ async def websocket(socket:WebSocket):
     action_lock=asyncio.Lock();pending=[]
     async def act(action,value):
         try:
+            if action in HARDWARE_ACTIONS and not local_work.hardware_allowed('rosmaster'):
+                raise PermissionError('Этап A: аппаратные сессии закрыты. Для ROSMASTER нужно отдельное согласованное исключение '
+                                      '(configs/rosmaster-hardware-enabled.json). STOP доступен всегда.')
             if action=='stop':
                 reason='Браузер: '+str(value.get('reason','кнопка STOP'))[:100]
                 await asyncio.to_thread(operator.stop,reason);state['notice']='Остановлено · '+reason
