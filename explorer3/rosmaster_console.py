@@ -186,6 +186,11 @@ async def websocket(socket:WebSocket):
                     if not operator.lease:raise RuntimeError('Сначала «▶ Включить»')
                     await asyncio.to_thread(request,'/mirror_config',{'sign':sign,'gripper_map':grip,'ref_pair':pair})
                     state['notice']='Зеркало: настройка сохранена на роботе'
+            elif action=='use8090':
+                if operator.lease:await asyncio.to_thread(operator.stop,'Переход в консоль 8090')
+                await asyncio.to_thread(operator.stop_leader)
+                await asyncio.to_thread(request,'/console8090',{},60)
+                state['notice']='Консоль 8090 запущена: http://192.168.0.177:8090 (возврат — «▶ Я рядом — включить» здесь)'
             elif action=='correction_done':
                 recorder.end_correction();state['notice']='Коррекция завершена, управление у политики'
             elif action=='emergency':

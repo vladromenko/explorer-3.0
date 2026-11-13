@@ -1,0 +1,15 @@
+{
+  "date": "2026-11-13",
+  "files": {
+    "agent.py": "db1cc45c99b321adb96f3e1c6758f3260b3df2559604a8bb50b7c333d5e2a468",
+    "native_client.py": "10c9c6e3b43960884e8672fa1cb2d1c1858e5e51171af056dd2ef8d705e4adb4",
+    "native_driver.py": "578de486b372732891eea18938fa11fefbbddfb4c0cd4fb5579d33e074ccbe50"
+  },
+  "deployed": true,
+  "homebrain_tests": "56 passed, 2 subtests passed",
+  "native_verification": "STOP no hardware PASS; serial replaced by capture before constructor",
+  "session_start_blocked": true,
+  "hardware_open": false,
+  "nonzero_commands_sent_to_hardware": false,
+  "physical_usb_failure_resolved": false
+}

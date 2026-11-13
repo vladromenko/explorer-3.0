@@ -172,6 +172,22 @@ def restore():
         except Exception as exc:raise HTTPException(409,str(exc)) from exc
 
 
+@app.post('/console8090')
+def console8090():
+    """Hand the robot back to the original stack and start CubeBot Console 8090 (no motion)."""
+    global runtime
+    import subprocess
+    from handoff import Handoff
+    with lock:
+        try:
+            if runtime is not None:runtime.close();runtime=None
+            restored=Handoff(ROOT).restore()
+            started=subprocess.run(['systemctl','--user','start','rosmaster-console.service'],capture_output=True,text=True,timeout=40)
+            if started.returncode:raise RuntimeError(started.stderr.strip() or 'console start failed')
+            return {'restored':restored,'console':'started'}
+        except Exception as exc:raise HTTPException(409,str(exc)) from exc
+
+
 @app.get('/ownership')
 def ownership():
     from handoff import Handoff

@@ -9,6 +9,22 @@ from agents.tank.agent import Hardware
 from agents.tank.serial_guard import CheckedSerial
 
 class TankGateTests(unittest.TestCase):
+    def test_neutral_diagnostic_never_grants_movement_even_without_incident(self):
+        from agents.tank.motion_permission import limited_command,require_motion_permission
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            permit={'scope':'zero_commands_only','boot_id':Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+                    'created_at':time.time()-1,'expires_at':time.time()+60}
+            (root/'neutral-diagnostic.json').write_text(json.dumps(permit))
+            require_motion_permission(root)
+            self.assertEqual(limited_command(root,0.,0.),(0.,0.))
+            for action in ([.01,0.],[0.,-.01]):
+                with self.assertRaises(PermissionError):limited_command(root,*action)
+            (root/'incident-block.json').write_text('{}')
+            self.assertEqual(limited_command(root,0.,0.),(0.,0.))
+            with patch('agents.tank.motion_permission.time.time',return_value=permit['expires_at']+1):
+                with self.assertRaises(PermissionError):limited_command(root,0.,0.)
+
     def test_serial_loss_latches_incident_and_never_claims_a_neutral_write(self):
         class BrokenBoard:
             process=None
