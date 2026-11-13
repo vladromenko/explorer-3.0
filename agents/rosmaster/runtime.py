@@ -41,6 +41,16 @@ class NativeIO(BaseIO):
             # Match the original ArmJoints ROS message conversion used by Console 8090.
             values.append(float(round(v)))
         return values
+    # The controller cancels the arm when a target leads the measured joint by ~0.1 rad (~6 deg):
+    # every recorded cancel had a 5-9 deg lead. Keep each sent target within this of the measurement.
+    MAX_LEAD_DEG=4.
+
+    def move_arm(self,servo,duration_ms=None,wait=True,check=True):
+        measured=self.runtime.core.measured_arm(.3)
+        if measured is not None:
+            servo=[m+max(-self.MAX_LEAD_DEG,min(self.MAX_LEAD_DEG,s-m)) for s,m in zip(servo,measured)]
+        return super().move_arm(servo,duration_ms=duration_ms,wait=wait,check=check)
+
     def battery(self):return self.runtime.voltage()
     def _publish_twist(self,*values):
         with self.runtime.core_lock:self.runtime.core.on_cmd_vel(*values)
@@ -106,7 +116,7 @@ class Runtime:
     # trajectory resent every tick; the controller cancelled those during preparation.
     POSE_DEG_S=20.
     POSE_STEP_MS=160
-    POSE_MAX_LEAD_DEG=10.
+    POSE_MAX_LEAD_DEG=4.
     # Controller-side arm cancellation (stale servo feedback / expired arm lease) is recoverable
     # a few times per session; the base is held and arm targets restart from measured angles.
     # Like the native bridge, a controller arm cancellation is recovered transparently; only a

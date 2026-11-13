@@ -178,7 +178,7 @@ def test_prepare_streams_short_steps_and_never_runs_far_ahead(tmp_path):
         clock[0]+=.05;runtime.prepare_step(clock[0],.05)
     commands=[c for c,ms in runtime.core.sent]
     assert all(runtime.POSE_STEP_MS<=ms<=600 for c,ms in runtime.core.sent)  # short steps, scaled by distance
-    assert commands[0][1]==147. and abs(commands[-1][1]-148.)==10.  # held at the 10 degree lead
+    assert commands[0][1]==147. and abs(commands[-1][1]-148.)<=5.  # held near the 4 degree lead
     runtime.core.measured=[90.]*6
     clock[0]+=.05;runtime.prepare_step(clock[0],.05)
     assert runtime.lease is None and 'Поза достигнута' in runtime.reason
@@ -321,3 +321,23 @@ def test_folded_arm_starts_from_nearest_commandable_pose_with_long_enough_move(t
     command,ms=runtime.core.sent[-1]
     assert command[2]==0. and command[5]==30.     # nearest commandable values, not -49 / 27
     assert ms>=2400                                # 49 degrees at 20 deg/s, not a 160 ms jump
+
+
+def test_arm_targets_never_lead_the_measurement_by_more_than_the_cancel_margin():
+    from runtime import NativeIO
+    from cubebot import config
+    from cubebot.arm_model import ArmModel
+    cfg=config.load()
+    class R:
+        log=staticmethod(lambda m:None)
+        def __init__(self):
+            self.core=type('C',(),{'measured_arm':lambda s,a=.25:[90.,100.,90.,90.,90.,60.]})()
+            self.sent=[]
+    rt=R()
+    io=NativeIO.__new__(NativeIO);io.runtime=rt
+    from cubebot.robot_io import BaseIO
+    BaseIO.__init__(io,cfg,ArmModel(cfg['arm']['tcp_offset_m']),lambda m:None)
+    io._arm_cmd=[90.,100.,90.,90.,90.,60.]
+    io._publish_arm=lambda servo,ms:rt.sent.append(list(servo))
+    io.move_arm([90,80,90,90,90,90],duration_ms=160,wait=False,check=False)
+    assert rt.sent[-1]==[90,96,90,90,90,64]

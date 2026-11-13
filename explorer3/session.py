@@ -8,6 +8,8 @@ from .tank import TankSource
 from .profiles import profile
 from .recording import EpisodeWriter
 from .resources import ResourceLease
+from agents.tank.motion_permission import bench_authorized
+from .paths import DATA
 
 class Session:
     def __init__(self, control):
@@ -25,6 +27,8 @@ class Session:
         self.category="demonstration"
 
     def start(self, owner: str, name: str, scene: str, record=True, collection_id=None, category="demonstration"):
+        if name=='tank_dock' and record and bench_authorized(DATA/'configs'):
+            raise PermissionError('Проверка на подставке: запись показов пока запрещена')
         if name not in {'so101_pick_place','tank_dock'}:
             raise RuntimeError('Драйвер профиля ещё не принят')
         if profile(name)['robot']!=self.control.robot:

@@ -16,6 +16,7 @@ from .preview import LivePreview
 from . import handoff, tank_handoff, tank
 from .network import LocalNetworkOnly
 from . import viewer, local_work, local_pages, research, rosmaster_monitor, rosmaster_control, rosmaster_console, trials as trial_plans
+from agents.tank.motion_permission import bench_authorized
 from .paths import DATA, ROOT, prepare
 from .profiles import PROFILES
 from .resources import owners
@@ -160,6 +161,8 @@ def index():
         task=ui.select({k:k for k,v in PROFILES.items() if v['robot']==control.robot},value=next(k for k,v in PROFILES.items() if v['robot']==control.robot),label='Задача').style('min-width:320px')
         with ui.column().style('width:100%') as tank_controls:
             tank_status=ui.label('Tank: связь проверяется, приводы закрыты').classes('muted')
+            tank_help=ui.label('').classes('notice')
+            ui.html('<img src="/api/live/camera.mjpg?robot=tank" alt="Камера Tank появится после включения проверки" style="width:100%;max-width:640px;aspect-ratio:8/5;object-fit:contain;background:#10161f">')
             ui.label('Удерживайте стрелку или W/A/S/D. Отпускание — остановка; пробел — STOP.')
             ui.html('''<div id="tank-drive-pad" style="display:flex;gap:12px;touch-action:none;user-select:none">'''+''.join(
                 f'''<button class="q-btn bg-primary text-white" style="min-width:64px;min-height:48px;touch-action:none"
@@ -181,7 +184,8 @@ def index():
                     ui.button('Наблюдение',on_click=lambda:control.stop('Наблюдение'))
                     async def transfer(restore=False):
                         try:
-                            local_work.require_hardware_mode()
+                            if not restore and not (control.robot=='tank' and bench_authorized(DATA/'configs')):
+                                local_work.require_hardware_mode()
                             with control.lock:
                                 if control.maintenance or (session.thread and session.thread.is_alive()):
                                     raise RuntimeError('Сначала STOP и дождитесь закрытия сессии')
@@ -373,13 +377,16 @@ def index():
             options={k:k for k,v in PROFILES.items() if v['robot']==control.robot}
             task.set_options(options,value=next(iter(options)))
         authorized=control.authorized()
+        tank_bench=control.robot=='tank' and bench_authorized(DATA/'configs')
         trial_start_button.set_enabled(authorized and not local_work.enabled() and bool(prepared_trial[0]))
         supported=control.robot in {'so101','tank'}
         idle=not control.maintenance and not (session.thread and session.thread.is_alive())
-        start_button.set_enabled(authorized and supported and idle)
+        start_button.set_enabled(authorized and supported and idle and not tank_bench)
         take_button.set_enabled(authorized and supported and idle)
         teleop_button.set_enabled(authorized and supported and idle)
-        old_button.set_enabled(authorized and supported and idle)
+        old_button.set_enabled(supported and idle)
+        teleop_button.set_text('Включить проверку на подставке' if tank_bench else 'Проверить телеперацию')
+        tank_help.set_text('Только на подставке. Нажмите «Включить проверку на подставке» ниже, дождитесь «Управление готово», затем кратко удержите ↑ и отпустите. Большой STOP сверху завершает проверку. Непрерывное движение ограничено 0,7 секунды.' if tank_bench else 'Сначала включите телеперацию во вкладке «Управление», затем используйте стрелки.')
         tank_controls.set_visibility(control.robot=='tank')
         rosmaster_panel.set_visibility(control.robot=='rosmaster')
         for button in (take_button,teleop_button,old_button):button.set_visibility(control.robot!='rosmaster')
@@ -400,7 +407,9 @@ def index():
                 ('Не опрашивается · локальный режим' if local_work.enabled() else ('Выбран' if ident==control.robot else 'Не выбран')))
         act_pass=(DATA/'validation/act-pass.json').exists()
         ready.set_text('Программный smoke: ACT '+('PASS' if act_pass else 'не проверен')+' · SmolVLA '+('PASS' if smol_pass else 'не проверен')+' · физические навыки не проверены')
-        if local_work.enabled():
+        if tank_bench:
+            stage_label.set_text('Tank · проверка на подставке · 0,03 м/с · движение на полу и запись показов заблокированы')
+        elif local_work.enabled():
             stage_label.set_text('Сбор и испытания остаются в локальном режиме. Ручное управление ROSMASTER доступно по отдельной ссылке в его карточке.' if rosmaster_control.enabled() else 'Локальный режим · роботы не опрашиваются. Датасеты, обучение и анализ доступны без включения устройств.')
         elif control.robot=='tank' and (DATA/'validation/tank-motion-incident.json').exists():
             stage_label.set_text('Tank: движение заблокировано после отказа STOP. Диагностика; физическая приёмка не пройдена.')
@@ -421,7 +430,7 @@ def index():
         episode_table.rows=catalog.rows('episodes');episode_table.update()
         job_table.rows=catalog.rows('jobs');job_table.update()
         event_table.rows=catalog.rows('events')[:20];event_table.update()
-        mode_label.set_text(control.mode+' · '+phase_text)
+        mode_label.set_text(control.mode+' · '+(session.error or phase_text))
     def refresh_preview():
         with session.lock:
             sample=session.latest
@@ -435,7 +444,7 @@ def index():
             chart.update()
             last_frame[0]=sample['frame_id']
     async def refresh_tank():
-        if local_work.enabled():
+        if local_work.enabled() and not (control.robot=='tank' and bench_authorized(DATA/'configs')):
             tank_status.set_text('Tank выключен по сообщению оператора; сетевой опрос отключён')
         elif control.robot=='tank':
             def probe():

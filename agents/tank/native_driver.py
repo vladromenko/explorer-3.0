@@ -13,10 +13,12 @@ import struct
 import sys
 import threading
 import time
+from contextlib import asynccontextmanager
 
 ROOT=Path(__file__).resolve().parent
 sys.path.insert(0,str(ROOT/'native'))
 from serial_guard import CheckedSerial,WriteJournal
+from motion_permission import require_motion_permission, limited_command, bench_authorized, BENCH_PULSE_S
 
 
 class CaptureSerial:
@@ -74,6 +76,7 @@ def build(verification=False):
             self.expected=None
             self.sequence=0
             self.expires=None
+            self.bench_motion_started=None
             self.latched=False
             self.reason=None
             self.done=threading.Event()
@@ -105,6 +108,9 @@ def build(verification=False):
                     finally:self.condition.notify_all()
                     raise
                 self.sequence+=1
+                if any(v[1] for v in values):
+                    if self.bench_motion_started is None:self.bench_motion_started=time.monotonic()
+                else:self.bench_motion_started=None
                 self.last_write={'sequence':self.sequence,'motor_targets_rps':values,'send_start_ns':started,'send_end_ns':time.monotonic_ns(),'motor_acknowledged':False}
                 self.expires=time.monotonic()+.35
                 self.expected=None
@@ -118,7 +124,10 @@ def build(verification=False):
                         elif self.board.receive_error:reason='Serial receiver failed: '+self.board.receive_error
                         elif time.monotonic()>self.expires:reason='Native motor command timeout'
                         elif not verification:
-                            if self.board.battery_time is None or time.monotonic_ns()-self.board.battery_time>2_000_000_000:reason='Battery stale'
+                            bench=bench_authorized(ROOT)
+                            if (ROOT/'incident-block.json').exists() and not bench:reason='Bench permission expired'
+                            elif bench and self.bench_motion_started is not None and time.monotonic()-self.bench_motion_started>=BENCH_PULSE_S:reason='Bench pulse limit; explicit new start required'
+                            elif self.board.battery_time is None or time.monotonic_ns()-self.board.battery_time>2_000_000_000:reason='Battery stale'
                             elif self.board.battery<6.9:reason='Low battery'
                     if reason:
                         try:self.neutral(reason)
@@ -149,6 +158,7 @@ def build(verification=False):
     dispatch=threading.Lock()
 
     class Driver:
+        closed=False
         def status(self):
             return {'battery_voltage':board.board.battery,'battery_received_ns':board.board.battery_time,
                     'imu':board.board.imu,'imu_received_ns':board.board.imu_time,'latched':board.latched,
@@ -157,6 +167,7 @@ def build(verification=False):
         def command(self,v,w):
             with dispatch:
                 if not all(math.isfinite(x) for x in (v,w)):raise ValueError('Nonfinite command')
+                if not verification:v,w=limited_command(ROOT,v,w)
                 with board.condition:
                     if board.latched:raise PermissionError('Driver latched: '+str(board.reason))
                     if not verification and (board.board.battery_time is None or time.monotonic_ns()-board.board.battery_time>2_000_000_000 or board.board.battery<6.9):
@@ -181,26 +192,38 @@ def build(verification=False):
             msg=Twist();msg.linear.x=.1
             chassis.app_cmd_vel_callback(msg)
         def close(self):
+            if self.closed:return
+            self.closed=True
             try:board.neutral('Native driver closing')
             finally:
+                errors=[]
                 board.done.set();board.running=False
                 board.guard.join(timeout=1)
-                if not board.publisher_stopped.wait(1):raise RuntimeError('Native telemetry publisher did not stop')
-                executor.shutdown(timeout_sec=1)
-                thread.join(timeout=1)
-                if thread.is_alive():raise RuntimeError('Native ROS executor did not stop')
-                board.board.closing=True
-                board.board.port.close()
-                chassis.destroy_node();board.destroy_node()
-                if rclpy.ok():rclpy.shutdown()
-                journal.close()
+                if not board.publisher_stopped.wait(1):errors.append('Native telemetry publisher did not stop')
+                try:
+                    executor.shutdown(timeout_sec=1)
+                    thread.join(timeout=1)
+                    if thread.is_alive():errors.append('Native ROS executor did not stop')
+                finally:
+                    board.board.closing=True
+                    try:board.board.port.close()
+                    finally:journal.close()
+                if not errors:
+                    chassis.destroy_node();board.destroy_node()
+                    if rclpy.ok():rclpy.shutdown()
+                if errors:raise RuntimeError('; '.join(errors))
     return Driver()
 
 
-def make_app(driver):
+def make_app(driver,close_on_shutdown=False):
     from fastapi import FastAPI,HTTPException
     from pydantic import BaseModel
-    app=FastAPI()
+    @asynccontextmanager
+    async def lifespan(app):
+        try:yield
+        finally:
+            if close_on_shutdown:driver.close()
+    app=FastAPI(lifespan=lifespan)
     class Command(BaseModel):v:float;w:float
     @app.get('/health')
     def health():return driver.status()
@@ -221,7 +244,7 @@ def main():
     sys.argv=[sys.argv[0],*ros_args]
     os.environ['MACHINE_TYPE']='MentorPi_Tank'
     if not args.verify_no_hardware:
-        if (ROOT/'incident-block.json').exists():raise PermissionError('Physical motion blocked after incident')
+        require_motion_permission(ROOT)
         marker=json.loads((ROOT/'handoff-active.json').read_text())
         if marker['boot_id']!=Path('/proc/sys/kernel/random/boot_id').read_text().strip():raise PermissionError('Current-boot handoff required')
         if not (ROOT/'physical-block-authorized.json').exists():raise PermissionError('Explicit physical authorization required')
@@ -251,7 +274,9 @@ def main():
         finally:driver.close()
     else:
         import uvicorn
-        try:uvicorn.run(make_app(driver),uds=str(ROOT/'native.sock'),access_log=False,timeout_graceful_shutdown=1)
+        # Uvicorn re-raises SIGTERM after lifespan shutdown; a Python finally alone
+        # is not sufficient to stop the ROS executor and flush the serial journal.
+        try:uvicorn.run(make_app(driver,close_on_shutdown=True),uds=str(ROOT/'native.sock'),access_log=False,timeout_graceful_shutdown=1)
         finally:driver.close()
 
 if __name__=='__main__':main()

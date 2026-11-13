@@ -1,10 +1,32 @@
 import math
 import time
 import unittest
+import json
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 from agents.tank.agent import Hardware
 from agents.tank.serial_guard import CheckedSerial
 
 class TankGateTests(unittest.TestCase):
+    def test_bench_permission_expires_and_keeps_incident_block(self):
+        from agents.tank.motion_permission import bench_authorized,limited_command
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);(root/'incident-block.json').write_text('{}')
+            with self.assertRaises(PermissionError):limited_command(root,.1,.3)
+            permit={'scope':'suspended_tracks_only','operator_confirmed':True,
+                    'boot_id':Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
+                    'created_at':time.time()-1,'expires_at':time.time()+60}
+            (root/'bench-authorized.json').write_text(json.dumps(permit))
+            self.assertTrue(bench_authorized(root))
+            self.assertEqual(limited_command(root,.1,-.3),(.03,-.12))
+            with patch('agents.tank.motion_permission.time.time',return_value=permit['expires_at']+1):
+                with self.assertRaises(PermissionError):limited_command(root,.1,0.)
+            permit['boot_id']='previous-boot'
+            (root/'bench-authorized.json').write_text(json.dumps(permit))
+            self.assertFalse(bench_authorized(root))
+            self.assertTrue((root/'incident-block.json').exists())
+
     def test_partial_serial_write_is_rejected(self):
         class Journal:
             records=[]

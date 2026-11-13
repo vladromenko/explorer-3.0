@@ -5,6 +5,7 @@ import uuid
 from . import catalog
 from .paths import DATA
 from . import local_work
+from agents.tank.motion_permission import bench_authorized, BENCH_V, BENCH_W
 
 class Control:
     def __init__(self):
@@ -23,6 +24,8 @@ class Control:
         self.maintenance=False
 
     def authorized(self):
+        if self.robot=='tank' and bench_authorized(DATA/'configs'):
+            return True
         if local_work.enabled():
             return False
         if self.robot=='so101' and (DATA/'configs/so101-external-owner.json').exists():
@@ -84,6 +87,8 @@ class Control:
         catalog.event('info',reason)
 
     def watchdog(self):
+        if self.owner is not None and self.robot=='tank' and not self.authorized():
+            self.stop('Разрешение проверки Tank истекло')
         if self.owner is not None and self.expired():
             self.stop('Lease истёк: связь с оператором потеряна')
 
@@ -99,5 +104,6 @@ class Control:
         with self.lock:
             if self.robot!='tank' or self.expired():return [0.,0.]
             # Begin at the existing controller's lower joystick speed; hard bounds stay on Tank.
-            return [.1*(int('up' in self.base_keys)-int('down' in self.base_keys)),
-                    .3*(int('left' in self.base_keys)-int('right' in self.base_keys))]
+            bench=bench_authorized(DATA/'configs')
+            return [(BENCH_V if bench else .1)*(int('up' in self.base_keys)-int('down' in self.base_keys)),
+                    (BENCH_W if bench else .3)*(int('left' in self.base_keys)-int('right' in self.base_keys))]

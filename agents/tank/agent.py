@@ -18,8 +18,10 @@ from pydantic import BaseModel
 
 if __package__:
     from .native_client import NativeDriver
+    from .motion_permission import require_motion_permission, limited_command, bench_authorized
 else:
     from native_client import NativeDriver
+    from motion_permission import require_motion_permission, limited_command, bench_authorized
 
 ROOT=Path(__file__).resolve().parent
 CONFIG=json.loads((ROOT/'config.json').read_text()) if (ROOT/'config.json').exists() else {}
@@ -56,6 +58,7 @@ class Hardware:
     def status(self):
         with self.lock:
             return {'robot':'tank','armed':self.armed,'hardware_open':self.board is not None,
+                    'bench_mode':bench_authorized(ROOT),
                     'reason':self.reason,'action':self.last_action,'motor_acknowledged':False,
                     'physical_stop_confirmed':False,'wheel_feedback':'unavailable','odometry':'not_used_command_integral_is_not_measurement',
                     'monotonic_ns':time.monotonic_ns(),'camera':self.image_info,
@@ -154,8 +157,7 @@ class Hardware:
             self.lifecycle.release()
 
     def _start(self):
-        if (ROOT/'incident-block.json').exists():
-            raise PermissionError('Motion blocked after physical STOP failure; engineering investigation required')
+        require_motion_permission(ROOT)
         if not (ROOT/'physical-block-authorized.json').exists():
             raise PermissionError('Tank physical block has not been authorized')
         marker=ROOT/'handoff-active.json'
@@ -205,6 +207,7 @@ class Hardware:
                 raise ValueError('Stale command sequence')
             if not all(math.isfinite(value) for value in (v,w)):
                 raise ValueError('Nonfinite command')
+            v,w=limited_command(ROOT,v,w)
             sent=self.board.command(v,w)
             self.last_action=sent['action'];self.last_sequence=sequence;self.expires=now+.35
             return {**sent,'sequence':sequence,'accepted_by_agent':True,'motor_acknowledged':False}

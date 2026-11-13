@@ -11,6 +11,7 @@ REPO = Path(__file__).resolve().parents[1]
 TANK_FILES = (
     'agent.py', 'native_client.py', 'native_driver.py', 'serial_guard.py',
     'handoff.py', 'stop_agent.py', 'emergency_stop.py', 'start-agent.sh', 'start-native.sh',
+    'motion_permission.py',
 )
 
 
