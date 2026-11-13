@@ -56,6 +56,12 @@ def session(value: dict = Body(default={})):
 @app.post('/command')
 def command(value: dict = Body(...)):
     if not S['armed'] or value.get('lease') != S['lease']: raise HTTPException(409, 'Сессия остановлена')
+    intent=value.get('intent') or {}
+    wrong_arm=S['profile']=='rosmaster_dock' and any([*intent.get('arm',[]),intent.get('pitch',0),intent.get('roll',0),intent.get('grip',0)])
+    wrong_base=S['profile']=='rosmaster_pick_place' and any(intent.get('drive',[]))
+    if wrong_arm or wrong_base:
+        log('profile_rejection',intent);S.update(armed=False,lease=None,reason='Command does not match profile')
+        raise HTTPException(409,S['reason'])
     S['seq'] = value['sequence']; S['last_intent'] = value.get('intent')
     S['source'] = value.get('source') or S['source']; S['direct'] = value.get('direct')  # like the agent: no 'source' = no switch
     log('command', value.get('intent')); log('packet', {'source': S['source'], 'direct': S['direct']})

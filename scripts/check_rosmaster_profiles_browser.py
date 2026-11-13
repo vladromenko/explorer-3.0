@@ -81,6 +81,29 @@ async def scenario():
         assert get(AGENT+'/health')['armed']
         await page.locator('button.stop.big').click();await page.wait_for_timeout(500)
         # Render lifecycle states synchronously, without touching a real robot or creating a job.
+        for profile in ('rosmaster_dock','rosmaster_pick_place'):
+            await page.get_by_label('Что управляем').select_option('rosmaster_manual')
+            await page.wait_for_timeout(400)
+            await page.select_option('#rprof',profile)
+            await page.get_by_role('button',name='● Начать запись').click()
+            await page.wait_for_function("document.getElementById('rstate').textContent.includes('Запись идёт')",timeout=90000)
+            assert await page.input_value('#control-profile')==profile
+            assert await page.locator('#control-profile').is_disabled()
+            n=len(get(AGENT+'/_requests'))
+            for key in ('KeyW','ArrowUp','KeyN'):
+                await page.keyboard.down(key);await page.wait_for_timeout(250);await page.keyboard.up(key)
+            packets=[r['value'] for r in get(AGENT+'/_requests')[n:] if r['kind']=='command']
+            assert packets and get(AGENT+'/health')['armed']
+            if profile=='rosmaster_dock':
+                assert all(not any(p['arm']) and not p['grip'] for p in packets)
+                assert any(p['drive'][0]>0 for p in packets)
+            else:
+                assert all(not any(p['drive']) for p in packets)
+                assert any(p['arm'][0]>0 for p in packets) and any(p['grip'] for p in packets)
+            await page.get_by_role('button',name='✓ Успех').click()
+            await page.wait_for_function("document.getElementById('rstate').textContent.startsWith('Сохранён показ')",timeout=90000)
+            await page.locator('button.stop.big').click();await page.wait_for_timeout(500)
+        assert not any(r['kind']=='profile_rejection' for r in get(AGENT+'/_requests'))
         states=await page.evaluate('''() => {
           const result=[];
           for(const recording of [{phase:'preparing',frames:0},{phase:'recording',frames:0},
@@ -104,7 +127,7 @@ async def scenario():
                 'stop_reenable_cycles':3,'half_open_recovery_without_resume':True,'http_stop':True,
                 'stop_cancels_pending_acquire_enable':True,'wrong_profile_inputs_ignored':True,
                 'intended_inputs_received':True,'held_key_not_replayed_after_stop':True,
-                'recording_preparation_and_saved_states':True,'errors':errors}
+                'recording_preparation_and_saved_states':True,'recording_arm_base_profile_switches':True,'errors':errors}
 def main():
     OUT.mkdir(exist_ok=True);data=Path(tempfile.mkdtemp(prefix='explorer3-profile-check-'));(data/'configs').mkdir()
     (data/'configs/workflow.json').write_text(json.dumps({'stage':'B','allowed_robots':['rosmaster']}))

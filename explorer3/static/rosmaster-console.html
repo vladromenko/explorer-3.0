@@ -73,7 +73,8 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
   <div class="card"><h2>Запись показа</h2>
    <div class="row"><select id="rprof"><option value="rosmaster_pick_place">Кубик → коробка (рука)</option><option value="rosmaster_dock">Подъезд к цели (база)</option></select>
     <input id="rscene" value="scene-01" size="8" title="Расстановка: меняйте при новой расстановке предметов"></div>
-   <div class="row" style="margin-top:8px" id="recstart"><button class="go" onclick="send({action:'record_start',profile:$('rprof').value,category:$('rcat').value,scene:$('rscene').value,observing:true})">● Начать запись</button></div>
+   <div class="help">Задача записи определяет управление: рука или шасси.</div>
+   <div class="row" style="margin-top:8px" id="recstart"><button class="go" onclick="startRecording()">● Начать запись</button></div>
    <div class="row" style="margin-top:8px;display:none" id="recout"><button class="go" onclick="send({action:'record_finish',outcome:'success'})">✓ Успех</button><button onclick="send({action:'record_finish',outcome:'failure'})">✗ Неуспех</button><button onclick="send({action:'record_finish',outcome:'aborted'})">Прервать</button></div>
    <div class="help" id="rstate" style="margin-top:6px">—</div></div>
   <details class="card"><summary>Испытания и исследование</summary>
@@ -92,12 +93,20 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
   <span hidden><i id="socbar"></i><span id="soc"></span><span id="volts"></span><span id="left"></span><span id="batnote"></span><span id="mstate"></span><span id="mres"></span></span>
 </aside></main>
 <script>
-const $=id=>document.getElementById(id);let ws,keys={},lockedKeys=new Set(),padBlocked=true,viewActive=true,lastReply=0,reconnectTimer=null,stopPending=false;
+const $=id=>document.getElementById(id);let ws,keys={},lockedKeys=new Set(),padBlocked=true,viewActive=true,lastReply=0,reconnectTimer=null,stopPending=false,activeProfile=null;
 function clearControls(){for(const k in keys)lockedKeys.add(k);keys={};padBlocked=true;}
 function profileChanged(){
  send({action:'stop'});$('control-profile').blur();
+ if($('control-profile').value!=='rosmaster_manual')$('rprof').value=$('control-profile').value;
  try{localStorage.setItem('explorerManualProfile',$('control-profile').value)}catch(e){}
  profileControls();
+}
+function startRecording(){
+ clearControls();
+ const profile=$('rprof').value;
+ $('control-profile').value=profile;profileControls();
+ try{localStorage.setItem('explorerManualProfile',profile)}catch(e){}
+ send({action:'record_start',profile,category:$('rcat').value,scene:$('rscene').value,observing:true});
 }
 function profileControls(){
  const p=$('control-profile').value;
@@ -142,6 +151,7 @@ function connect(){lastReply=Date.now();const current=new WebSocket((location.pr
  current.onmessage=e=>{if(ws!==current)return;lastReply=Date.now();render(JSON.parse(e.data));};}
 setInterval(()=>{if(!document.hidden&&Date.now()-lastReply>2000&&!reconnectTimer){stopHttp();reconnect();}},500);
 function render(s){
+ activeProfile=s.enabled?s.session_profile:null;
  $('link').textContent=s.offline?'локальная подготовка':'связь с Homebrain';$('link').style.background=s.offline?'#32313a':'#1f3a2c';
  $('armmode').textContent=s.arm_mode==='joint'?'Суставы':'Захват XYZ';$('armhelp').textContent=s.arm_mode==='joint'?'←/→ (J/L) — основание; ↑/↓ (I/K) — плечо; R/F — локоть; ,/. — кисть.':'↑/↓ (I/K) — вперёд/назад; ←/→ (J/L) — влево/вправо; R/F — вверх/вниз.';
  $('dry').style.display=s.dry_run?'block':'none';$('mode').textContent=s.enabled?'● управление включено':'остановлено';$('mode').style.background=s.enabled?'#1f3a2c':'#222a36';$('notice').textContent=s.notice||'';
@@ -158,6 +168,7 @@ function render(s){
   $('mcheck').innerHTML='<tr><th style="text-align:left">сустав</th><th>Leader Δ°</th><th>робот Δ°</th><th>знак</th><th></th></tr>'+MC.rows.map((r,i)=>{return '<tr><td>'+N[i]+'</td><td style="text-align:center">'+(r.leader??'—')+'</td><td style="text-align:center">'+(r.robot??'—')+'</td><td style="text-align:center">'+(MC.sign?(MC.sign[i]>0?'+':'−'):'?')+'</td><td><button onclick="send({action:\'mirror_flip\',joint:'+i+'})">⇄</button>'+'</td></tr>'}).join('');
   $('gstate').textContent='Leader '+(MC.leader_gripper??'—')+(MC.gripper_map?' · соответствие '+MC.gripper_map.map(v=>(+v).toFixed(0)).join(' → ')+' (открыт → закрыт)':' · относительный (прежний)');}
  const R=s.recording||{};const P=R.pilot||{};const rec=R.phase&&R.phase!=='idle';
+ $('control-profile').disabled=!!rec;$('rprof').disabled=!!rec;
  $('recstart').style.display=rec?'none':'flex';$('recout').style.display=rec?'flex':'none';
  const canFinish=R.phase==='recording'&&R.frames>0;
  $('recout').querySelectorAll('button').forEach((b,i)=>{b.disabled=R.phase==='saving'||(i<2&&!canFinish);});
@@ -196,9 +207,9 @@ function collect(){if(document.hidden||!viewActive||!ws||ws.readyState!==1)retur
   grip+=(p.buttons[7].value||0)-(p.buttons[6].value||0);
   const edge=(i,fn)=>{const on=p.buttons[i].pressed;if(on&&!prevBtn[i])fn();prevBtn[i]=on};
   edge(0,()=>act('preset','look'));edge(2,()=>act('preset','carry'));edge(1,()=>send({action:'stop',reason:'кнопка B джойстика'}));if(padBlocked)return {drive:[0,0,0],arm:[0,0,0],pitch:0,roll:0,grip:0,slow:false};}
- const profile=$('control-profile').value;
- if(profile==='rosmaster_pick_place')d.fill(0);
- if(profile==='rosmaster_dock'){a.fill(0);pitch=roll=grip=0;}
+ const profiles=[activeProfile,$('control-profile').value];
+ if(profiles.includes('rosmaster_pick_place'))d.fill(0);
+ if(profiles.includes('rosmaster_dock')){a.fill(0);pitch=roll=grip=0;}
  const c=v=>Math.max(-1,Math.min(1,v));return{drive:d.map(c),arm:a.map(c),pitch:c(pitch),roll:c(roll),grip:c(grip),slow:!!(keys['shift'])||($('slowc')&&$('slowc').checked)}}
 document.querySelectorAll('button.hold').forEach(b=>{const k=b.dataset.k,on=e=>{e.preventDefault();if(!lockedKeys.has(k))keys[k]=true},off=()=>{delete keys[k];lockedKeys.delete(k)};
  b.addEventListener('pointerdown',on);['pointerup','pointerleave','pointercancel'].forEach(t=>b.addEventListener(t,off))});
