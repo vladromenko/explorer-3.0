@@ -1,0 +1,14 @@
+{
+  "actual_browser": true,
+  "prepare_and_reopen": "PASS",
+  "steps": 1234,
+  "split_counts": {
+    "test": 1,
+    "train": 1,
+    "validation": 1
+  },
+  "no_jobs_created": true,
+  "training_started": false,
+  "errors": [],
+  "external": []
+}

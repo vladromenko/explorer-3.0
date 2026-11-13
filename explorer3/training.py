@@ -117,6 +117,11 @@ def run_job(path: Path):
                                                    'physical_skill_verified': False}))
         return
     profile(cfg['profile'])
+    if cfg.get('draft_id'):
+        from .training_drafts import load
+        reviewed=load(cfg['draft_id'])
+        for key in ('profile','policy','plan_id','steps','batch_size','seed','device','initial_checkpoint','initial_checkpoint_sha256'):
+            if cfg.get(key)!=reviewed.get(key):raise ValueError('Job differs from the reviewed training draft: '+key)
     if cfg.get('plan_id'):
         plan = load_plan(cfg['plan_id'])
         splits = plan['splits']
@@ -133,7 +138,7 @@ def run_job(path: Path):
     if cfg.get('steps') is not None:
         steps=int(cfg['steps'])
     resume = cfg.get('resume_checkpoint')
-    if resume and cfg.get('initial_checkpoint'):
+    if resume and cfg.get('initial_checkpoint') and cfg.get('resume_of_existing_job')!=path.stem:
         raise ValueError('Fine-tuning and optimizer resume are different jobs')
     if resume:
         saved = json.loads((Path(resume)/'train_config.json').read_text())
@@ -162,7 +167,9 @@ def run_job(path: Path):
                 (work/'result.json').write_text(json.dumps({'checkpoint': str(checkpoint), 'effective_batch': batch,
                     'seed': cfg['seed'], 'smoke': cfg['smoke'], 'steps': steps, 'plan_id': cfg.get('plan_id'),
                     'physical_skill_verified': False, 'test_used': False,'domain':profile(cfg['profile']).get('domain','real'),
-                    'initial_checkpoint':cfg.get('initial_checkpoint'),'resume_checkpoint':resume}))
+                    'initial_checkpoint':cfg.get('initial_checkpoint'),'resume_checkpoint':resume,
+                    'draft_id':cfg.get('draft_id'),'mixture':cfg.get('mixture'),
+                    'normalization':cfg.get('normalization','train_only'),'training_started':True}))
             elif resume or 'out of memory' not in log_path.read_text().lower() or batch == 1:
                 raise RuntimeError(f'Trainer failed: {log_path}')
     if not done:raise RuntimeError('Обучение не завершилось в разрешённом размере batch; см. журнал задания')

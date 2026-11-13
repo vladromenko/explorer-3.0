@@ -7,6 +7,10 @@ from . import sim_service,catalog
 from .sim.drive import command as drive_command
 
 STYLE='''
+/* Explicit utilities: this offline UI runs with Tailwind disabled. */
+.w-full {width:100%}
+.sim-panel .q-field {width:100%;min-width:0}
+.sim-panel {box-sizing:border-box}
 .sim-layout { display:grid;grid-template-columns:minmax(0,2fr) minmax(300px,1fr);gap:18px;width:100%;align-items:start }
 .sim-panel {background:#192331;border:1px solid #344253;border-radius:14px;padding:20px;width:100%;gap:14px;box-shadow:none}
 .sim-panel .q-img {width:100%;border-radius:10px}
@@ -207,6 +211,7 @@ def install(stop_real,css,jobs):
         </script>""")
         with ui.column().classes('sim-panel'):
             ui.label('Обучение и результаты').classes('sim-title')
+            ui.link('Подготовить свой бюджет или дообучение →','/sim/training')
             ui.label('ACT и Diffusion используют камеру и состояние; SmolVLA также получает текст задачи. PPO использует полное состояние симуляции. Обучение запускается только вашей кнопкой.').classes('muted')
             from .policy_catalog import POLICIES
             policy_select=ui.select(POLICIES,value='act',label='Модель управления').classes('w-full')

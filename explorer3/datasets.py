@@ -68,13 +68,21 @@ def select_simulation_revision(episodes, expected=None):
     return selected, next(iter(revisions),expected)
 
 
-def freeze(name, smoke, seed=1000, sim_model_hash=None):
+def freeze(name, smoke, seed=1000, sim_model_hash=None, *, selected_ids=None, min_sim_episodes=None):
     domain=profile(name).get('domain','real')
     episodes = eligible(name)
+    if selected_ids is not None:
+        if domain!='sim':raise ValueError('Explicit simulation selection only')
+        ids=set(selected_ids)
+        if not ids or not ids.issubset({e['id'] for e in episodes}):raise ValueError('Выбранный показ отсутствует или не допущен')
+        episodes=[e for e in episodes if e['id'] in ids]
+    if min_sim_episodes is not None and (domain!='sim' or type(min_sim_episodes) is not int or min_sim_episodes<3):
+        raise ValueError('At least 3 simulation episodes required')
     if domain=='sim':episodes,sim_model_hash=select_simulation_revision(episodes,sim_model_hash)
     elif sim_model_hash is not None:raise ValueError('Версия симулятора не относится к физическим данным')
-    if len(episodes) < (3 if smoke else 50):
-        raise ValueError('Нужно минимум 3 показа для проверки или 50 для обучения, для одной версии модели')
+    minimum=min_sim_episodes if min_sim_episodes is not None else 3 if smoke else 50
+    if len(episodes) < minimum:
+        raise ValueError(f'Нужно минимум {minimum} пригодных показов одной версии модели; для оценки нужны 3 независимые группы')
     for episode in episodes:
         root = Path(episode['dataset'])
         provenance = json.loads((root / 'provenance.json').read_text())

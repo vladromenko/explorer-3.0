@@ -50,6 +50,13 @@ class Jobs:
             cfg.update(steps=recipe['steps'],batch_size=recipe['batch_size'],device=recipe['device'],seed=recipe['seed'])
         return self._insert(name,policy,cfg)
 
+    def start_prepared_training(self,draft_id):
+        from .training_drafts import load
+        draft=load(draft_id)
+        config={**draft,'draft_id':draft_id,'preparation_only':False,'training_requested':True}
+        config.pop('training_started',None)
+        return self._insert(draft['profile'],draft['policy'],config)
+
     def sim_ppo(self, name, sim_model_hash=None,variation='nominal'):
         if name not in {'so101_pick_place_sim','rosmaster_pick_place_sim','rosmaster_dock_sim','tank_dock_sim'}:
             raise ValueError('Среда ещё не принята')
@@ -190,6 +197,7 @@ class Jobs:
             if cfg.get('kind', 'train') != 'train':
                 raise ValueError('Для диагностики создайте новое задание')
             cfg['resume_checkpoint'] = str(resumable_checkpoint(ident))
+            cfg['resume_of_existing_job']=ident
             with catalog.connect() as db:
                 db.execute("UPDATE jobs SET config=?,status='queued',error=NULL WHERE id=?", (json.dumps(cfg), ident))
 

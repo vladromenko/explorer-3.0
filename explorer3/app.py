@@ -112,6 +112,8 @@ from . import vision_pages
 vision_pages.install(CSS,jobs)
 from . import branching_pages
 branching_pages.install(CSS,jobs)
+from . import training_pages
+training_pages.install(CSS,jobs)
 
 @ui.page('/')
 def index():

@@ -649,3 +649,11 @@ ACT support preparation использует официальный dataset read
 Diffusion: обнаружена отсутствовавшая зависимость, установлен официальный diffusers0.38.0 (+ importlib_metadata/lazy-importer/zipp), main pip check PASS, lock обновлён. Компактный upstream Diffusion со случайными весами: save/new-process reload/10 actions через границу chunk/snapshot+RNG restore точное совпадение, cold CPU0.123с. Optimizer/backward не выполнялись. Проверка не подтверждает полный training recipe или навык.
 
 Новые native/lineage/review тесты 5 PASS; затронутые основные contracts/workflows/recipe tests12 PASS; браузерные vision и branches без внешней сети/page errors. Подробности `docs/VISION_AND_BRANCHES.md`. A остаётся открытым: learned fleet + online R3, полный ручной fine-tune workflow и остаток fault-матрицы; новые обученные политики появятся только после разрешённого пользователем запуска.
+
+### 2026-11-13 — подготовка ручного обучения и дообучения без запуска
+
+`/sim/training`: отдельный immutable draft для выбранных успешных sim-записей, policy ACT/SmolVLA/Diffusion, steps/batch/seed/device. Создание/загрузка плана не создаёт jobs. Явный последующий запуск проверяет файлы и план повторно; budget/batch фиксированы. Симуляционный малый эксперимент требует ≥3 независимых групп вместо безусловных50 эпизодов; физический маршрут не ослаблен.
+
+Fine-tune same-profile/same-model соединяет старые/новые данные, сохраняет роли прежних connected groups, отвергает мост между прежним train и hold-out; фиксирует хеш исходного checkpoint, смесь кадров и train-only normalization. LeRobot0.6.1 действительно обновляет processor stats на non-resume по train. Resume fine-tune допускается как продолжение того же job ID, без нового optimizer. Sim→real protocol ещё не готов.
+
+14 tests PASS. Browser isolated: ACT1234-update draft подготовлен/скачан/повторно открыт, по1 группе train/validation/test, jobs до/после идентичны, обучение не запущено. Две дополнительные записи scripted Tank seeds15/16 (137/130 кадров) только для приёмки, в изолированном DATA. В sim UI восстановлена явная ширина полей при отключённом Tailwind; форма нового плана отделена от просмотра готового.
