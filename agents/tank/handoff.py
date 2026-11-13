@@ -88,10 +88,16 @@ def enter():
     if STATE.exists():
         previous=json.loads(STATE.read_text())
         if not previous['restored']:
-            if previous['boot_id']!=BOOT:raise RuntimeError('Unrestored handoff from another boot; restore first')
-            if owners():raise RuntimeError('Hardware still owned after previous handoff; restore first')
-            marker(True)
-            return previous
+            if previous['boot_id']!=BOOT:
+                # Reboot may have restarted the factory services. Preserve the old
+                # record and inspect the actual owners/services in this boot below.
+                archive=ROOT/('handoff-previous-'+previous['boot_id']+'.json')
+                if archive.exists():raise RuntimeError('Previous-boot handoff archive already exists; inspect ownership')
+                STATE.rename(archive)
+            else:
+                if owners():raise RuntimeError('Hardware still owned after previous handoff; restore first')
+                marker(True)
+                return previous
     launches=factory_launches()
     if len(launches)>1:raise RuntimeError('Multiple factory launches; ownership ambiguous')
     state={'boot_id':BOOT,'services':{s:active(s) for s in SERVICES},'restored':False,'phase':'releasing','created_at':time.time()}

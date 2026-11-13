@@ -99,6 +99,7 @@ class Runtime:
         self.error=None;self.reason='Explicit enable required';self.logs=[]
         self.last_arm_command=None;self.last_arm_at=None
         self.steps=0;self.direct=None;self.direct_source=None;self.policy_session=False
+        self.mirror_align=False
         self.battery_value=None;self.battery_at=0.;self.odom=None;self.odom_at=0.
         self.scans={};self.controller_started=False
         self.session=None
@@ -251,21 +252,25 @@ class Runtime:
         path=self.root/self.MIRROR_OVERRIDES
         if path.exists():
             value=json.loads(path.read_text())
-            self.controls.configure_mirror(value['sign'],value.get('gripper_map'))
+            self.controls.configure_mirror(value['sign'],value.get('gripper_map'),value.get('ref_pair'))
 
-    def set_mirror_config(self,sign,gripper_map=None):
+    def set_mirror_config(self,sign,gripper_map=None,ref_pair=None):
         if type(sign) is not list or len(sign)!=5 or any(v not in (1,-1) for v in sign):raise ValueError('Пять знаков ±1')
         if gripper_map is not None:
             if type(gripper_map) is not list or len(gripper_map)!=2 or not all(isinstance(v,(int,float)) and math.isfinite(v) for v in gripper_map):
                 raise ValueError('Две точки захвата Leader')
             if abs(gripper_map[1]-gripper_map[0])<10:raise ValueError('Откройте и закройте захват Leader полностью перед снятием точек')
+        if ref_pair is not None:
+            if not isinstance(ref_pair,dict) or any(type(ref_pair.get(k)) is not list or len(ref_pair[k])!=5 or
+                    not all(isinstance(v,(int,float)) and math.isfinite(v) for v in ref_pair[k]) for k in ('leader','servo')):
+                raise ValueError('Пара поз: 5 углов Leader и 5 углов руки')
         with self.lock:
-            self.controls.configure_mirror(sign,gripper_map)
+            self.controls.configure_mirror(sign,gripper_map,ref_pair)
             path=self.root/self.MIRROR_OVERRIDES;path.parent.mkdir(parents=True,exist_ok=True)
-            path.write_text(json.dumps({'sign':sign,'gripper_map':gripper_map,'saved_at':time.time(),
+            path.write_text(json.dumps({'sign':sign,'gripper_map':gripper_map,'ref_pair':ref_pair,'saved_at':time.time(),
                                         'original':'config/mirror-original.json'},indent=2))
             self.log('Зеркало: знаки '+str(sign)+(' · захват '+str([round(v,1) for v in gripper_map]) if gripper_map else ''))
-        return {'sign':sign,'gripper_map':gripper_map}
+        return {'sign':sign,'gripper_map':gripper_map,'ref_pair':ref_pair}
 
     def arm_cancel_only(self):
         core=self.core
@@ -412,10 +417,27 @@ class Runtime:
                 self.controls.set_input(intent if not self.preparing else {**intent,'arm':[0,0,0],'pitch':0,'roll':0,'grip':0},time.monotonic())
                 if self.profile=='rosmaster_manual':self.io.guard_off=bool(intent.get('free',False))
                 if leader is not None and not self.controls.leader(leader,time.monotonic()):raise ValueError('Invalid Leader frame')
-                if mirror and self.controls.mode!='mirror':
-                    # Retried with every packet; a momentary gap in arm/Leader data must not end the session.
-                    try:self.controls.enable_mirror(time.monotonic());self.controls.mirror.blocked=None
-                    except ValueError as exc:self.controls.mirror.blocked='ждём данных руки и Leader: '+str(exc)
+                if mirror and self.controls.mode!='mirror' and not self.mirror_align:
+                    measured=self.io.measured_arm()
+                    target=self.controls.mapped_pose(measured) if measured is not None else None
+                    path_ok=target is not None and all(self.io.arm.collision_free(
+                        [m+(t-m)*f for m,t in zip(measured,target)],self.cfg['arm']['floor_margin_m']) for f in (.25,.5,.75,1.))
+                    if target is not None and not path_ok:
+                        self.controls.mirror.blocked='поза Leader недостижима без столкновения — измените позу Leader'
+                    elif target is not None and max(abs(a-b) for a,b in zip(target,measured))>4:
+                        # First bring the arm to the Leader's pose, then start following (see prepare_step).
+                        self.io.stop_base();self.begin_pose(target,measured,time.monotonic());self.mirror_align=True
+                        self.controls.mirror.blocked='рука встаёт в позу Leader — держите Leader неподвижно'
+                        self.log('Зеркало: рука встаёт в позу Leader')
+                    else:
+                        # Retried with every packet; a momentary gap in arm/Leader data must not end the session.
+                        try:self.controls.enable_mirror(time.monotonic());self.controls.mirror.blocked=None
+                        except ValueError as exc:self.controls.mirror.blocked='ждём данных руки и Leader: '+str(exc)
+                elif not mirror and self.mirror_align:
+                    self.mirror_align=False;self.preparing=False
+                    measured=self.io.measured_arm()
+                    if measured is not None:self.restart_arm_from(measured)
+                    self.controls.mirror.blocked=None
                 elif not mirror and self.controls.mode=='mirror':
                     measured=self.io.measured_arm()
                     self.controls.mode='manual';self.io.stop_base()
@@ -536,6 +558,13 @@ class Runtime:
         error=[abs(v-target) for v,target in zip(measured,self.pose_target)]
         if max(error[:5])<4 and error[5]<8:
             self.io._arm_cmd=list(measured);self.controls.jog.reset(measured)
+            if self.mirror_align:
+                self.mirror_align=False;self.preparing=False
+                try:
+                    self.controls.enable_mirror(now);self.controls.mirror.blocked=None
+                    self.log('Зеркало: поза совпала, следование включено')
+                except ValueError as exc:self.controls.mirror.blocked='ждём данных руки и Leader: '+str(exc)
+                return
             if self.profile=='prepare' or not self.controls.armed:
                 self.stop('Поза достигнута: подтверждено измерениями');return
             self.preparing=False;self.controls.last_input=now
@@ -582,6 +611,7 @@ class Runtime:
                         'motion_commands_sent':self.core.motion_commands_sent if self.core else None})
                     self.log('STOP: '+reason)
             self.preparing=False;self.lease=None;self.direct=None;self.direct_source=None;self.policy_session=False
+            self.mirror_align=False
             if self.core:
                 try:self.controls.stop_all()
                 finally:
@@ -603,6 +633,8 @@ class Runtime:
                 'mirror_target':[round(float(v),1) for v in self.controls.mirror.target],
                 'mirror_blocked':self.controls.mirror.blocked,'mode':self.controls.mode,
                 'mirror_sign':list(self.controls.mirror.m['sign']),'mirror_gripper_map':self.controls.gripper_map,
+                'mirror_ref_pair':{'leader':self.controls.ref_pair[0],'servo':self.controls.ref_pair[1]} if self.controls.ref_pair else None,
+                'mirror_aligning':self.mirror_align,
                 'battery_voltage':self.voltage(self.BATTERY_HOLD_S if self.armed else 2.),
                 'battery_age_s':round(now-self.battery_at,2) if self.battery_at else None,'measured_velocity':self.odom if now-self.odom_at<.5 else None,
                 'base_command':list(self.io.last_output),'lidar_available':self.io.scan is not None,

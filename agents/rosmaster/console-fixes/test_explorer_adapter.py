@@ -69,3 +69,15 @@ def test_absolute_gripper_reaches_full_close_and_joint_sign_override():
     assert abs(c.mirror.servo[5]-cfg['gripper_close'])<=1          # fully closed, not stuck short
     assert c.mirror.servo[2]<90                                       # elbow sign flipped: +10 Leader -> lower servo
     with pytest.raises(PermissionError):c.configure_mirror([1,-1,1,1,1],None)
+
+
+def test_pose_pair_makes_the_mirror_absolute_and_gives_the_alignment_pose():
+    io,c=create()
+    c.configure_mirror([1,-1,1,1,1],(20.,80.),{'leader':[0,0,0,0,0],'servo':[90,90,90,90,90]})
+    assert c.mirror.m['scale']==[1.0]*5
+    c.enable('rosmaster_pick_place',0.)
+    c.leader({'shoulder_pan':10.,'shoulder_lift':-20.,'elbow_flex':15.,'wrist_flex':0.,'wrist_roll':0.,'gripper':80.},0.)
+    pose=c.mapped_pose(io.feedback)
+    assert pose[:5]==[100.,110.,105.,90.,90.] and abs(pose[5]-config.load()['arm']['gripper_close'])<1e-6
+    c.configure_mirror([1,-1,1,1,1],None,None)
+    assert c.mirror.m['scale']==[.5]*5 and c.mapped_pose(io.feedback) is None

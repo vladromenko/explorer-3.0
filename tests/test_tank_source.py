@@ -88,3 +88,22 @@ def test_tank_trial_still_requires_plan_specific_permission(tmp_path,monkeypatch
     with pytest.raises(PermissionError,match='ручное управление'):trials.require_physical(plan)
     (tmp_path/'validation/tank-manual-control-pass.json').write_text('{"operator_confirmed_stop":true}')
     with pytest.raises(PermissionError,match='отдельный физический блок'):trials.require_physical(plan)
+
+
+def test_handoff_after_reboot_preserves_history_and_captures_current_services(tmp_path,monkeypatch):
+    from agents.tank import handoff
+    state=tmp_path/'handoff.json'
+    previous={'boot_id':'previous','restored':False,'services':{'start_node.service':True,'wifi.service':True}}
+    state.write_text(json.dumps(previous))
+    monkeypatch.setattr(handoff,'ROOT',tmp_path);monkeypatch.setattr(handoff,'STATE',state)
+    monkeypatch.setattr(handoff,'BOOT','current')
+    monkeypatch.setattr(handoff,'remote_json',lambda name:{'stage':'C'})
+    monkeypatch.setattr(handoff,'api',lambda path:{'hardware_open':False})
+    monkeypatch.setattr(handoff,'active',lambda service:False)
+    monkeypatch.setattr(handoff,'factory_launches',lambda:[])
+    monkeypatch.setattr(handoff,'owners',lambda:[])
+    markers=[];monkeypatch.setattr(handoff,'marker',markers.append)
+    result=handoff.enter()
+    assert result['boot_id']=='current' and not any(result['services'].values())
+    assert json.loads((tmp_path/'handoff-previous-previous.json').read_text())==previous
+    assert markers==[True]

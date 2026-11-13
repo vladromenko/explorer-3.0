@@ -51,7 +51,8 @@ def mirror_check(s):
         if measured and ref and ref[1]:robot=round(measured[i]-ref[1][i],1)
         rows.append({'leader':leader,'robot':robot})
     return {'rows':rows,'sign':s.get('mirror_sign'),'gripper_map':s.get('mirror_gripper_map'),
-            'leader_gripper':round(sample[1]['gripper'],1) if sample else None}
+            'leader_gripper':round(sample[1]['gripper'],1) if sample else None,
+            'pair':s.get('mirror_ref_pair'),'aligning':s.get('mirror_aligning')}
 
 
 REASONS={'Explicit enable required':'Управление выключено. Отметьте «Я рядом» и нажмите «▶ Включить»',
@@ -161,9 +162,10 @@ async def websocket(socket:WebSocket):
                         state['notice']=('Испытание' if plan else 'Запись')+' идёт: '+name+'. Затем «Успех», «Неуспех» или «Прервать»'
                     elif action=='record_finish':
                         recorder.finish(value.get('outcome'));state['notice']='Сохранение эпизода: '+str(value.get('outcome'))
-                    elif action in ('mirror_flip','grip_capture','grip_save','grip_reset'):
+                    elif action in ('mirror_flip','grip_capture','grip_save','grip_reset','pair_capture','pair_reset'):
                         current=(operator.status or {})
                         sign=list(current.get('mirror_sign') or [1,-1,1,1,1]);grip=current.get('mirror_gripper_map')
+                        pair=current.get('mirror_ref_pair')
                         if action=='grip_capture':
                             sample=operator.leader_sample
                             if not sample:raise RuntimeError('Сначала «Подключить Leader»')
@@ -173,12 +175,18 @@ async def websocket(socket:WebSocket):
                             if operator.mirror:raise RuntimeError('Сначала выключите зеркало')
                             if action=='mirror_flip':
                                 index=int(value.get('joint'));sign[index]=-sign[index]
+                            elif action=='pair_capture':
+                                sample=operator.leader_sample;measured=current.get('arm_measured')
+                                if not sample or time.monotonic()-sample[0]>.3:raise RuntimeError('Сначала подключите Leader (кнопка «Включить зеркало» или «Подключить Leader»)')
+                                if not measured:raise RuntimeError('Нет измерений руки ROSMASTER')
+                                pair={'leader':[round(sample[1][n],2) for n in JOINT_NAMES],'servo':[round(v,2) for v in measured[:5]]}
+                            elif action=='pair_reset':pair=None
                             elif action=='grip_save':
                                 if 'open' not in state['grip'] or 'closed' not in state['grip']:raise ValueError('Снимите обе точки: Leader открыт и закрыт')
                                 grip=[state['grip']['open'],state['grip']['closed']]
-                            else:grip=None
-                            if not operator.lease:raise RuntimeError('Сначала «Включить управление»')
-                            await asyncio.to_thread(request,'/mirror_config',{'sign':sign,'gripper_map':grip})
+                            elif action=='grip_reset':grip=None
+                            if not operator.lease:raise RuntimeError('Сначала «▶ Включить»')
+                            await asyncio.to_thread(request,'/mirror_config',{'sign':sign,'gripper_map':grip,'ref_pair':pair})
                             state['notice']='Зеркало: настройка сохранена на роботе'
                     elif action=='correction_done':
                         recorder.end_correction();state['notice']='Коррекция завершена, управление у политики'

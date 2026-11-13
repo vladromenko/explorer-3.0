@@ -150,7 +150,7 @@ def command(value:dict=Body(...)):
 @app.post('/mirror_config')
 def mirror_config(value:dict=Body(...)):
     if runtime is None:raise HTTPException(409,'Runtime not acquired')
-    try:return runtime.set_mirror_config(value.get('sign'),value.get('gripper_map'))
+    try:return runtime.set_mirror_config(value.get('sign'),value.get('gripper_map'),value.get('ref_pair'))
     except (ValueError,PermissionError) as exc:raise HTTPException(409,str(exc)) from exc
 
 

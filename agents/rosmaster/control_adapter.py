@@ -15,6 +15,7 @@ class NativeControls:
         self.io, self.cfg, self.arm, self.log = io, cfg, arm_model, log
         self.jog = CartesianJog(arm_model, cfg, io.arm_command())
         self.mirror = MirrorMapper(arm_model, cfg['arm'], mirror_cfg, io.arm_command())
+        self.original_scale = list(mirror_cfg['scale'])
         self.input = dict(drive=[0,0,0], arm=[0,0,0], pitch=0, roll=0, grip=0, slow=False)
         self.last_input = -float('inf')
         self._arm_input_active = False
@@ -25,6 +26,8 @@ class NativeControls:
         self.armed = False
         self.stop_reason = None
         self.gripper_map = None
+        self.ref_pair = None        # (leader 5 joints deg, robot servo 5 joints) captured in the same physical pose
+        self.last_leader = None
 
     def enable(self, profile, now):
         if self.armed:raise ValueError('Stop the previous control session first')
@@ -56,7 +59,10 @@ class NativeControls:
         self.arm_mode=mode
         self.jog.reset(self.io.measured_arm(max_age=.25) or self.io.arm_command())
 
+    JOINTS = ('shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll')
+
     def leader(self, positions, now):
+        self.last_leader = dict(positions)
         # Absolute gripper: the operator's captured Leader open/closed values map to the native
         # gripper_open..gripper_close range (the copied relative mode cannot reach full close).
         if self.gripper_map is not None:
@@ -66,13 +72,30 @@ class NativeControls:
             positions={**positions,'gripper':min(100.,max(0.,(value-opened)/(closed-opened)*100.))}
         return self.mirror.update(positions,now)
 
-    def configure_mirror(self, sign, gripper_map):
-        """Operator-checked joint directions and gripper endpoints; only while the mirror is off."""
+    def configure_mirror(self, sign, gripper_map, ref_pair=None):
+        """Operator-checked joint directions, gripper endpoints and pose pair; only while the mirror is off."""
         if self.mode=='mirror':raise PermissionError('Сначала выключите зеркало')
+        self.ref_pair = (list(ref_pair['leader']), list(ref_pair['servo'])) if ref_pair else None
+        # With a captured pose pair the mirror is absolute and 1:1, so the arm can match the Leader's pose.
+        self.mirror.m['scale'] = [1.0]*5 if self.ref_pair else list(self.original_scale)
         self.mirror.m['sign']=list(sign)
         self.mirror.m['relative_gripper']=gripper_map is None
         self.gripper_map=tuple(gripper_map) if gripper_map is not None else None
         self.mirror.rebase()
+
+    def mapped_pose(self, measured):
+        """Robot servo pose that corresponds to the latest Leader frame (needs the pose pair)."""
+        from cubebot.arm_model import SERVO_LIMITS
+        if self.ref_pair is None or self.last_leader is None:return None
+        leader_ref,servo_ref=self.ref_pair;sign=self.mirror.m['sign']
+        pose=[servo_ref[i]+sign[i]*(float(self.last_leader[name])-leader_ref[i]) for i,name in enumerate(self.JOINTS)]
+        a=self.cfg['arm']
+        if self.gripper_map is not None:
+            opened,closed=self.gripper_map
+            g=min(1.,max(0.,(float(self.last_leader['gripper'])-opened)/(closed-opened)))
+            pose.append(a['gripper_open']+(a['gripper_close']-a['gripper_open'])*g)
+        else:pose.append(measured[5])
+        return [min(hi,max(lo,v)) for v,(lo,hi) in zip(pose,SERVO_LIMITS)]
 
     def enable_mirror(self, now):
         if not self.armed or self.profile not in {'rosmaster_pick_place','rosmaster_manual'}:raise PermissionError('Arm session required')
@@ -84,6 +107,10 @@ class NativeControls:
         self.mirror.rebase()
         self.io._arm_cmd=list(measured)
         self.mode='mirror'
+        if self.ref_pair is not None and self.last_leader is not None:
+            # Absolute mode: the stored pair is the reference instead of 'wherever both are now'.
+            leader_ref,servo_ref=self.ref_pair
+            self.mirror.ref=(list(leader_ref),np.array(servo_ref,float),float(self.last_leader['gripper']),float(measured[5]))
 
     # A late control loop (Python GC, camera/IK load) is not by itself a reason to end the
     # session: the native arm jog still blocks steps longer than 0.15 s, and the controller
