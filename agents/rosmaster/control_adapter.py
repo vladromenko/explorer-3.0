@@ -37,6 +37,10 @@ class NativeControls:
         from cubebot.mirror import MirrorMapper
         self.io, self.cfg, self.arm, self.log = io, cfg, arm_model, log
         self.jog = CartesianJog(ManualCartesianModel(arm_model), cfg, io.arm_command())
+        # The copied task box capped Z at .42 m, below the actual upright TCP
+        # (.544 m). It prevented returning upward after any downward jog.
+        # Native joint limits, reachability and floor/chassis geometry bound XYZ.
+        self.jog.WORKSPACE=((-math.inf,math.inf),)*3
         self.mirror = MirrorMapper(arm_model, cfg['arm'], mirror_cfg, io.arm_command())
         self.original_scale = list(mirror_cfg['scale'])
         self.input = dict(drive=[0,0,0], arm=[0,0,0], pitch=0, roll=0, grip=0, slow=False)

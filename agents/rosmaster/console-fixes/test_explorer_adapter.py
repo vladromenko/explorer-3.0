@@ -37,10 +37,13 @@ def test_constructor_inert_and_base_does_not_require_arm_feedback():
     with pytest.raises(PermissionError):c.set_input({'drive':[1,0,0]},.7)
 
 
-@pytest.mark.parametrize('axis,sign',[(0,-1),(0,1),(1,-1),(1,1),(2,-1)])
+@pytest.mark.parametrize('axis,sign',[(0,-1),(0,1),(1,-1),(1,1),(2,-1),(2,1)])
 def test_xyz_jog_does_not_drift_diagonally_from_operator_pose(axis,sign):
     import numpy as np
-    io,c=create();pose=[100,77,90,77,90,31];c.jog.reset(pose)
+    io,c=create()
+    # +Z needs a bent elbow: the reported pose is already at near-full reach.
+    pose=[90,70,60,80,90,31] if (axis,sign)==(2,1) else [100,77,90,77,90,31]
+    c.jog.reset(pose)
     start=c.arm.tcp_position(pose);move=[0,0,0];move[axis]=sign
     sent=None
     for _ in range(30):
