@@ -45,8 +45,13 @@ class NativeIO(BaseIO):
     # every recorded cancel had a 5-9 deg lead. Keep each sent target within this of the measurement.
     MAX_LEAD_DEG=None  # removed: cancels happen even at 0.5-2 deg lead, the cap only slowed the arm
 
+    # Arm targets stay this far inside each joint's range: holding a target exactly on a limit
+    # while the servo reads a hair beyond it preceded repeated controller cancels (2026-11-13).
+    LIMIT_INSET_DEG=1.
+
     def move_arm(self,servo,duration_ms=None,wait=True,check=True):
         from cubebot.arm_model import SERVO_LIMITS
+        servo=[min(hi-self.LIMIT_INSET_DEG,max(lo+self.LIMIT_INSET_DEG,float(v))) for v,(lo,hi) in zip(servo,SERVO_LIMITS)]
         measured=self.measured_arm(.3) if self.MAX_LEAD_DEG else None
         clamped=False
         if measured is not None:
@@ -558,8 +563,9 @@ class Runtime:
         # After power-off the arm can rest outside the commandable range (seen: elbow -49).
         # Start from the nearest commandable pose; prepare_step gives that first move enough time.
         from cubebot.arm_model import SERVO_LIMITS
-        self.pose_target=[float(v) for v in target]
-        self.pose_cmd=[float(min(hi,max(lo,v))) for v,(lo,hi) in zip(measured,SERVO_LIMITS)]
+        inset=NativeIO.LIMIT_INSET_DEG
+        self.pose_target=[float(min(hi-inset,max(lo+inset,v))) for v,(lo,hi) in zip(target,SERVO_LIMITS)]
+        self.pose_cmd=[float(min(hi-inset,max(lo+inset,v))) for v,(lo,hi) in zip(measured,SERVO_LIMITS)]
         distance=max(abs(a-b) for a,b in zip(self.pose_target,self.pose_cmd))
         self.prepare_started=now;self.pose_deadline=now+distance/self.POSE_DEG_S+4.
         self.preparing=True

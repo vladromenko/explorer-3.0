@@ -95,7 +95,7 @@ class NativeControls:
             g=min(1.,max(0.,(float(self.last_leader['gripper'])-opened)/(closed-opened)))
             pose.append(a['gripper_open']+(a['gripper_close']-a['gripper_open'])*g)
         else:pose.append(measured[5])
-        return [min(hi,max(lo,v)) for v,(lo,hi) in zip(pose,SERVO_LIMITS)]
+        return [min(hi-1.,max(lo+1.,v)) for v,(lo,hi) in zip(pose,SERVO_LIMITS)]  # 1 deg inside the limits
 
     def enable_mirror(self, now):
         if not self.armed or self.profile not in {'rosmaster_pick_place','rosmaster_manual'}:raise PermissionError('Arm session required')

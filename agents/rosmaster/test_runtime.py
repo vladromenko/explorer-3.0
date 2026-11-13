@@ -318,7 +318,7 @@ def test_folded_arm_starts_from_nearest_commandable_pose_with_long_enough_move(t
     runtime.begin_pose([90]*6,runtime.core.measured,clock[0])
     clock[0]+=.05;runtime.prepare_step(clock[0],.05)
     command,ms=runtime.core.sent[-1]
-    assert command[2]==0. and command[5]==30.     # nearest commandable values, not -49 / 27
+    assert command[2]==1. and command[5]==31.     # nearest commandable values 1 deg inside the limits, not -49 / 27
     assert ms>=49/runtime.POSE_DEG_S*1000-1          # 49 degrees at POSE_DEG_S, not a 160 ms jump
 
 
@@ -359,6 +359,19 @@ def test_enable_with_a_folded_arm_raises_it_automatically(tmp_path):
         orig=runtime.core.measured_arm
         runtime.core.measured_arm=lambda a=.25:[92.,135.,-49.,31.,90.,27.]
         session=runtime.enable('rosmaster_manual',observing=True)
-        assert runtime.armed and runtime.preparing and runtime.pose_target==[float(v) for v in runtime.cfg['arm']['safe_pose']]
+        assert runtime.armed and runtime.preparing and runtime.pose_target==[90.,90.,90.,90.,90.,31.]  # safe pose, gripper 1 deg inside
         runtime.core.measured_arm=orig
     finally:runtime.close();board.close()
+
+
+def test_arm_expired_rejection_is_transient_like_not_ready():
+    import struct
+    clock=[10.];link=Link()
+    c=LeasedCore(link,calibration()['joints'],lambda *a:None,clock=lambda:clock[0])
+    c.phase='ready';c.last_status=10.;c.state={'mode':1,'arm_enabled':True}
+    c.enable()
+    for result in ('NOT_READY','EXPIRED'):
+        c._handle(L.RESULT,struct.pack('<QQBBBB',0,1,L.ARM,L.RESULT_NAMES.index(result),1,0),clock[0])
+        assert c.permitted
+    c._handle(L.RESULT,struct.pack('<QQBBBB',0,2,L.ARM,L.RESULT_NAMES.index('RANGE'),1,0),clock[0])
+    assert not c.permitted and 'RANGE' in c.stop_reason

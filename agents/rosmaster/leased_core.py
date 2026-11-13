@@ -5,6 +5,7 @@ from rosmaster.core import BridgeCore
 from rosmaster import link as L
 
 NOT_READY=L.RESULT_NAMES.index('NOT_READY')
+EXPIRED=L.RESULT_NAMES.index('EXPIRED')
 
 
 class LeasedCore(BridgeCore):
@@ -137,7 +138,9 @@ class LeasedCore(BridgeCore):
             if result and op in (L.ARM,L.ARM_ENABLE,L.BASE) and self.permitted:
                 # NOT_READY for the arm is the controller's normal answer while it finishes an arm
                 # cancellation; the runtime bounds that state (time and count) and logs it.
-                if result==NOT_READY and op in (L.ARM,L.ARM_ENABLE):
+                # EXPIRED for ARM follows the same controller-side arm cancellation (seen 2026-11-13
+                # after 29 cancels at a joint limit); the runtime still bounds it in time and count.
+                if result in (NOT_READY,EXPIRED) and op in (L.ARM,L.ARM_ENABLE):
                     self.arm_not_ready+=1
                 else:
                     names={L.BASE:'BASE',L.ARM:'ARM',L.ARM_ENABLE:'ARM_ENABLE'}
