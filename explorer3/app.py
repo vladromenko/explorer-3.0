@@ -111,7 +111,7 @@ def index():
     def drive_key(event):
         value=event.args
         if session.phase=='following' and control.robot=='tank':
-            control.base_key(owner,value['key'],bool(value['pressed']))
+            control.base_key(owner,value['key'],bool(value['pressed']),value.get('source'))
     ui.on('tank_key',drive_key)
     ui.on('operator_stop',lambda:lost('клавиша STOP'))
     client.on_disconnect(lambda:lost('соединение закрыто'))
@@ -125,7 +125,7 @@ def index():
       if(event.code==='Space'){event.preventDefault();emitEvent('operator_stop');return}
       if(!pressed || !['INPUT','TEXTAREA'].includes(event.target.tagName)){
         const key=tankKeys[event.code];
-        if(key){event.preventDefault();if(!event.repeat)emitEvent('tank_key',{key,pressed})}
+        if(key){event.preventDefault();if(!event.repeat)emitEvent('tank_key',{key,pressed,source:'key:'+event.code})}
       }
     }
     window.addEventListener('keydown',e=>tankKey(e,true));
@@ -163,14 +163,18 @@ def index():
             tank_status=ui.label('Tank: связь проверяется, приводы закрыты').classes('muted')
             tank_help=ui.label('').classes('notice')
             ui.html('<img src="/api/live/camera.mjpg?robot=tank" alt="Камера Tank появится после включения проверки" style="width:100%;max-width:640px;aspect-ratio:8/5;object-fit:contain;background:#10161f">')
-            ui.label('Удерживайте стрелку или W/A/S/D. Отпускание — остановка; пробел — STOP.')
-            ui.html('''<div id="tank-drive-pad" style="display:flex;gap:12px;touch-action:none;user-select:none">'''+''.join(
+            ui.label('Стрелки или W/A/S/D; две клавиши вместе — движение по дуге. ↙ и ↘ — назад по дуге в выбранную сторону. Отпускание — остановка; пробел — STOP.')
+            ui.html('''<div id="tank-drive-pad" style="display:grid;grid-template-columns:repeat(3,72px);gap:8px;touch-action:none;user-select:none">'''+''.join(
                 f'''<button class="q-btn bg-primary text-white" style="min-width:64px;min-height:48px;touch-action:none"
-                onpointerdown="this.setPointerCapture(event.pointerId);emitEvent('tank_key',{{key:'{key}',pressed:true}})"
-                onpointerup="emitEvent('tank_key',{{key:'{key}',pressed:false}})"
-                onpointercancel="emitEvent('tank_key',{{key:'{key}',pressed:false}})"
-                onlostpointercapture="emitEvent('tank_key',{{key:'{key}',pressed:false}})">{label}</button>'''
-                for key,label in [('left','←'),('up','↑'),('down','↓'),('right','→')])+'</div>')
+                aria-label="{title}"
+                onpointerdown="this.setPointerCapture(event.pointerId);emitEvent('tank_key',{{key:'{key}',pressed:true,source:'pointer:'+event.pointerId}})"
+                onpointerup="emitEvent('tank_key',{{key:'{key}',pressed:false,source:'pointer:'+event.pointerId}})"
+                onpointercancel="emitEvent('tank_key',{{key:'{key}',pressed:false,source:'pointer:'+event.pointerId}})"
+                onlostpointercapture="emitEvent('tank_key',{{key:'{key}',pressed:false,source:'pointer:'+event.pointerId}})">{label}</button>'''
+                if key else '<button class="q-btn bg-negative text-white" onclick="emitEvent(\'operator_stop\')" aria-label="STOP">STOP</button>'
+                for key,label,title in [('up_left','↖','Вперёд влево'),('up','↑','Вперёд'),('up_right','↗','Вперёд вправо'),
+                                        ('left','←','Поворот влево'),(None,'STOP','STOP'),('right','→','Поворот вправо'),
+                                        ('down_left','↙','Назад влево'),('down','↓','Назад'),('down_right','↘','Назад вправо')])+'</div>')
         with ui.tabs() as tabs:
             management=ui.tab('Управление',icon='tune')
             record=ui.tab('Запись',icon='fiber_manual_record')
@@ -185,7 +189,7 @@ def index():
                     async def transfer(restore=False):
                         try:
                             if not restore and not (control.robot=='tank' and bench_authorized(DATA/'configs')):
-                                local_work.require_hardware_mode()
+                                local_work.require_hardware_mode(control.robot)
                             with control.lock:
                                 if control.maintenance or (session.thread and session.thread.is_alive()):
                                     raise RuntimeError('Сначала STOP и дождитесь закрытия сессии')
@@ -378,15 +382,15 @@ def index():
             task.set_options(options,value=next(iter(options)))
         authorized=control.authorized()
         tank_bench=control.robot=='tank' and bench_authorized(DATA/'configs')
-        trial_start_button.set_enabled(authorized and not local_work.enabled() and bool(prepared_trial[0]))
+        trial_start_button.set_enabled(authorized and local_work.hardware_allowed(control.robot) and bool(prepared_trial[0]))
         supported=control.robot in {'so101','tank'}
         idle=not control.maintenance and not (session.thread and session.thread.is_alive())
         start_button.set_enabled(authorized and supported and idle and not tank_bench)
         take_button.set_enabled(authorized and supported and idle)
         teleop_button.set_enabled(authorized and supported and idle)
         old_button.set_enabled(supported and idle)
-        teleop_button.set_text('Включить проверку на подставке' if tank_bench else 'Проверить телеперацию')
-        tank_help.set_text('Только на подставке. Нажмите «Включить проверку на подставке» ниже, дождитесь «Управление готово», затем удерживайте стрелку. Отпускание останавливает гусеницы; большой STOP сверху закрывает управление. Штатные скорости: 0,2 м/с и 0,5 рад/с.' if tank_bench else 'Сначала включите телеперацию во вкладке «Управление», затем используйте стрелки.')
+        teleop_button.set_text('Включить проверку на подставке' if tank_bench else ('Включить управление' if control.robot=='tank' else 'Проверить телеперацию'))
+        tank_help.set_text('Только на подставке. Нажмите «Включить проверку на подставке» ниже, дождитесь «Управление готово», затем удерживайте стрелку.' if tank_bench else '«Включить управление» → дождитесь «Управление готово» → удерживайте стрелки. Для показа: «Запись» → «Начать показ». STOP и отпускание проверены оператором; скорость 0,2 м/с, поворот 0,5 рад/с.')
         tank_controls.set_visibility(control.robot=='tank')
         rosmaster_panel.set_visibility(control.robot=='rosmaster')
         for button in (take_button,teleop_button,old_button):button.set_visibility(control.robot!='rosmaster')
@@ -404,12 +408,14 @@ def index():
         collection_info.set_text(local_pages.collection_status(task.value))
         for ident,badge in fleet_labels.items():
             badge.set_text('Отдельная страница управления' if ident=='rosmaster' and rosmaster_control.enabled() else
-                ('Не опрашивается · локальный режим' if local_work.enabled() else ('Выбран' if ident==control.robot else 'Не выбран')))
+                ('Не опрашивается · локальный режим' if not local_work.hardware_allowed(ident) else ('Выбран' if ident==control.robot else 'Не выбран')))
         act_pass=(DATA/'validation/act-pass.json').exists()
         ready.set_text('Программный smoke: ACT '+('PASS' if act_pass else 'не проверен')+' · SmolVLA '+('PASS' if smol_pass else 'не проверен')+' · физические навыки не проверены')
         if tank_bench:
             stage_label.set_text('Tank · проверка на подставке · штатная скорость · движение на полу и запись показов пока не приняты')
-        elif local_work.enabled():
+        elif control.robot=='tank' and authorized:
+            stage_label.set_text('Tank · ручное управление и запись доступны · отпускание и STOP подтверждены · автономный навык ещё не проверен')
+        elif not local_work.hardware_allowed(control.robot):
             stage_label.set_text('Сбор и испытания остаются в локальном режиме. Ручное управление ROSMASTER доступно по отдельной ссылке в его карточке.' if rosmaster_control.enabled() else 'Локальный режим · роботы не опрашиваются. Датасеты, обучение и анализ доступны без включения устройств.')
         elif control.robot=='tank' and (DATA/'validation/tank-motion-incident.json').exists():
             stage_label.set_text('Tank: движение заблокировано после отказа STOP. Диагностика; физическая приёмка не пройдена.')
@@ -444,8 +450,8 @@ def index():
             chart.update()
             last_frame[0]=sample['frame_id']
     async def refresh_tank():
-        if local_work.enabled() and not (control.robot=='tank' and bench_authorized(DATA/'configs')):
-            tank_status.set_text('Tank выключен по сообщению оператора; сетевой опрос отключён')
+        if not local_work.hardware_allowed('tank') and not (control.robot=='tank' and bench_authorized(DATA/'configs')):
+            tank_status.set_text('Сетевой опрос Tank отключён в локальном режиме')
         elif control.robot=='tank':
             def probe():
                 with tank.client() as http:

@@ -21,12 +21,13 @@ class Control:
         self.last_heartbeat=None
         self.heartbeat_count=0
         self.base_keys=set()
+        self.base_inputs={}
         self.maintenance=False
 
     def authorized(self):
         if self.robot=='tank' and bench_authorized(DATA/'configs'):
             return True
-        if local_work.enabled():
+        if not local_work.hardware_allowed(self.robot):
             return False
         if self.robot=='so101' and (DATA/'configs/so101-external-owner.json').exists():
             return False
@@ -55,6 +56,7 @@ class Control:
             if self.robot not in {'so101','tank'}:
                 raise RuntimeError('Драйвер этого робота ещё не проверен')
             self.base_keys.clear()
+            self.base_inputs.clear()
             self.last_stop_reason=None
             self.last_heartbeat=time.monotonic()
             self.heartbeat_count=0
@@ -80,6 +82,7 @@ class Control:
             if self.owner is not None or self.last_stop_reason is None:
                 self.last_stop_reason=reason
             self.base_keys.clear()
+            self.base_inputs.clear()
             self.stop_event.set()
             self.owner=None
             self.expires=0
@@ -92,18 +95,23 @@ class Control:
         if self.owner is not None and self.expired():
             self.stop('Lease истёк: связь с оператором потеряна')
 
-    def base_key(self,owner,key,pressed):
+    def base_key(self,owner,key,pressed,source=None):
         with self.lock:
-            if key not in {'up','down','left','right'}:
+            if key not in {'up','down','left','right','up_left','up_right','down_left','down_right'}:
                 raise ValueError('Unknown driving key')
+            source=source or key
+            if not isinstance(source,str) or len(source)>64:raise ValueError('Invalid input source')
             if self.robot=='tank' and self.owner==owner and not self.expired():
-                if pressed:self.base_keys.add(key)
-                else:self.base_keys.discard(key)
+                if pressed:self.base_inputs[source]=key
+                else:self.base_inputs.pop(source,None)
+                self.base_keys=set(self.base_inputs.values())
 
     def base_action(self):
         with self.lock:
             if self.robot!='tank' or self.expired():return [0.,0.]
-            # Begin at the existing controller's lower joystick speed; hard bounds stay on Tank.
-            bench=bench_authorized(DATA/'configs')
-            return [(BENCH_V if bench else .1)*(int('up' in self.base_keys)-int('down' in self.base_keys)),
-                    (BENCH_W if bench else .3)*(int('left' in self.base_keys)-int('right' in self.base_keys))]
+            keys={part for key in self.base_keys for part in key.split('_')}
+            forward=int('up' in keys)-int('down' in keys)
+            turn=int('left' in keys)-int('right' in keys)
+            # Reverse diagonals describe the path of the rear of the chassis:
+            # down-left backs into a left arc, using the same native v/omega channels.
+            return [BENCH_V*forward,BENCH_W*turn*(-1 if forward<0 else 1)]

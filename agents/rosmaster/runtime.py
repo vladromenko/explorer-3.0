@@ -46,10 +46,12 @@ class NativeIO(BaseIO):
     MAX_LEAD_DEG=4.
 
     def move_arm(self,servo,duration_ms=None,wait=True,check=True):
-        measured=self.runtime.core.measured_arm(.3)
+        from cubebot.arm_model import SERVO_LIMITS
+        measured=self.measured_arm(.3)   # already pulled onto the limits when a hair outside
         clamped=False
         if measured is not None:
-            limited=[m+max(-self.MAX_LEAD_DEG,min(self.MAX_LEAD_DEG,s-m)) for s,m in zip(servo,measured)]
+            limited=[min(hi,max(lo,m+max(-self.MAX_LEAD_DEG,min(self.MAX_LEAD_DEG,s-m))))
+                     for s,m,(lo,hi) in zip(servo,measured,SERVO_LIMITS)]
             clamped=max(abs(a-b) for a,b in zip(limited,servo))>.5
             servo=limited
         result=super().move_arm(servo,duration_ms=duration_ms,wait=wait,check=check)
@@ -66,6 +68,25 @@ class NativeIO(BaseIO):
     def _publish_arm(self,servo,duration_ms):
         with self.runtime.core_lock:self.runtime.core.on_arm(servo,duration_ms)
         self.runtime.last_arm_command=list(servo);self.runtime.last_arm_at=time.monotonic()
+
+
+class RelaxedArm:
+    """The copied arm model with one change for operator-supervised motion: when the current
+    pose is already flagged as colliding (a folded/low arm the model puts 'in the floor'), any
+    move that does not bring the arm lower is allowed, so the arm can always be raised out of it.
+    In free space the original floor/chassis check applies unchanged."""
+
+    def __init__(self, model, current):
+        self.model=model;self.current=current
+
+    def __getattr__(self, name):
+        return getattr(self.model,name)
+
+    def collision_free(self, servo, floor_margin=0.012, allow_inside_box=None):
+        if self.model.collision_free(servo,floor_margin):return True
+        start=self.current()
+        if start is None or self.model.collision_free(start,floor_margin):return False
+        return float(self.model.link_points(servo)[:,2].min())>=float(self.model.link_points(start)[:,2].min())-.002
 
 
 class Runtime:
@@ -105,6 +126,8 @@ class Runtime:
             self.controls=NativeControls(self.io,self.cfg,self.model,
                 mirror_config(self.root/'config/mirror-original.json'),self.log)
             self.load_mirror_overrides()
+            relaxed=RelaxedArm(self.model,lambda:self.io.arm_command())
+            self.io.arm=relaxed;self.controls.jog.arm=relaxed;self.controls.mirror.arm=relaxed
             self.transport_thread=threading.Thread(target=self.transport_loop,daemon=True)
             self.transport_thread.start()
             self.thread=threading.Thread(target=self.run,daemon=True)
@@ -130,7 +153,7 @@ class Runtime:
     # a few times per session; the base is held and arm targets restart from measured angles.
     # Like the native bridge, a controller arm cancellation is recovered transparently; only a
     # burst (more than ARM_CANCEL_MAX within ARM_CANCEL_WINDOW_S) ends the session.
-    ARM_CANCEL_MAX=5
+    ARM_CANCEL_MAX=30
     ARM_CANCEL_WINDOW_S=10.
     ARM_RECOVERY_S=1.5
 

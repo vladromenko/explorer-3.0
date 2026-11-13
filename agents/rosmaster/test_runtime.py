@@ -193,8 +193,8 @@ def test_controller_arm_cancel_recovers_from_measured_pose_a_bounded_number_of_t
     assert not runtime.arm_recovering(clock[0])
     assert runtime.io._arm_cmd==runtime.core.measured and runtime.lease=='L'
     for i in range(runtime.ARM_CANCEL_MAX):
-        clock[0]+=.1;runtime.core.state['arm_cancel_pending']=True;runtime.arm_recovering(clock[0])
-        clock[0]+=.1;runtime.core.state['arm_cancel_pending']=False;runtime.arm_recovering(clock[0])
+        clock[0]+=.01;runtime.core.state['arm_cancel_pending']=True;runtime.arm_recovering(clock[0])
+        clock[0]+=.01;runtime.core.state['arm_cancel_pending']=False;runtime.arm_recovering(clock[0])
     assert runtime.lease is None and 'отменил движение руки' in runtime.reason
     rows=[json.loads(l) for l in (tmp_path/'logs/control-sessions.jsonl').read_text().splitlines()]
     assert sum(r['event']=='arm_cancel' for r in rows)==runtime.ARM_CANCEL_MAX+1
@@ -352,3 +352,21 @@ def test_arm_mode_switches_inside_the_session_without_stopping(tmp_path):
         runtime.command(session['lease'],1,{'drive':[0,0,0]},arm_mode='cartesian');time.sleep(.1)
         assert runtime.armed and runtime.controls.arm_mode=='cartesian'
     finally:runtime.close();board.close()
+
+
+def test_folded_low_arm_can_always_be_raised_but_not_pushed_lower():
+    from runtime import RelaxedArm
+    from cubebot import config
+    from cubebot.arm_model import ArmModel
+    cfg=config.load();model=ArmModel(cfg['arm']['tcp_offset_m']);m=cfg['arm']['floor_margin_m']
+    low=[94.7,44.1,-0.2,39.3,90.4,29.9]
+    assert not model.collision_free(low,m)        # the copied model flags this real measured pose
+    arm=RelaxedArm(model,lambda:low)
+    up=[95,50,10,38,90,30]
+    assert model.link_points(up)[:,2].min()>=model.link_points(low)[:,2].min()-.002
+    assert arm.collision_free(up,m)
+    lower=[94.7,40,-0.2,39.3,90.4,29.9]
+    if model.link_points(lower)[:,2].min()<model.link_points(low)[:,2].min()-.002:
+        assert not arm.collision_free(lower,m)
+    free=RelaxedArm(model,lambda:[90]*6)          # in free space the original rule is unchanged
+    assert free.collision_free(low,m)==model.collision_free(low,m)
