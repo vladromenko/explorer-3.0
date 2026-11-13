@@ -83,9 +83,9 @@ def authorize(ident, hours=3.):
 
 def require_physical(plan):
     local_work.require_hardware_mode(profile(plan['profile'])['robot'])
-    if plan['profile'] not in {'so101_pick_place','tank_dock','rosmaster_dock','rosmaster_pick_place'}:
+    if plan['profile'] not in {'so101_pick_place','tank_dock','tank_dock_rgbd_lidar','rosmaster_dock','rosmaster_pick_place'}:
         raise PermissionError('Исполнитель этого профиля ещё не принят; план сохранён без движения')
-    if plan['profile']=='tank_dock':
+    if profile(plan['profile'])['robot']=='tank':
         acceptance=DATA/'validation/tank-manual-control-pass.json'
         if (DATA/'validation/tank-motion-incident.json').exists() or not acceptance.exists():
             raise PermissionError('Сначала принять ручное управление и STOP Tank')
@@ -138,6 +138,7 @@ class PolicyActions:
         cfg=PreTrainedConfig.from_pretrained(root);cfg.device='cuda'
         self.policy=get_policy_class(cfg.type).from_pretrained(root,config=cfg)
         self.policy.eval()
+        self.environment_shape=cfg.input_features.get('observation.environment_state')
         self.pre,self.post=make_pre_post_processors(cfg,pretrained_path=str(root),
             preprocessor_overrides={'device_processor':{'device':'cuda'}},
             postprocessor_overrides={'device_processor':{'device':'cpu'}})
@@ -153,6 +154,11 @@ class PolicyActions:
         import torch
         import numpy as np
         batch={'observation.state':torch.tensor([observation['observation.state']],dtype=torch.float32),'task':[self.task]}
+        if self.environment_shape:
+            environment=observation.get('observation.environment_state')
+            if environment is None or len(environment)!=self.environment_shape.shape[0] or not np.isfinite(environment).all():
+                raise ValueError('Policy requires valid environment observations')
+            batch['observation.environment_state']=torch.tensor([environment],dtype=torch.float32)
         for name,image in observation['images'].items():
             rgb=np.array(image['image'],copy=True)
             batch['observation.images.'+name]=torch.from_numpy(rgb).permute(2,0,1).float().unsqueeze(0)/255.

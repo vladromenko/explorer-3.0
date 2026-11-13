@@ -25,7 +25,7 @@ def require_response(response, operation):
     response.raise_for_status()
 
 class TankSource:
-    def __init__(self,control,mode='manual'):
+    def __init__(self,control,mode='manual',environment=False):
         self.control=control
         self.mode=mode
         self.http=client()
@@ -34,6 +34,8 @@ class TankSource:
         self.provenance={}
         self.sequence=0
         self.stop_requested=lambda:False
+        self.environment=environment
+        self.sensors=None
 
     def start(self,explicit_user_start=False,stop=lambda:False):
         if not explicit_user_start or stop():raise InterruptedError('Explicit live operator required')
@@ -47,7 +49,20 @@ class TankSource:
             'clock_mapping_kind':'midpoint_estimate_not_shared_clock','physical_skill_verified':False,
             'state_kind':'previous_transmitted_command_estimate','wheel_feedback':'unavailable',
             'motor_acknowledgement':False,'odometry_integral_excluded':True}
-        r=self.http.post('/session',json={'mode':self.mode},timeout=20);require_response(r,'запуск');self.lease=r.json()['lease']
+        request={'mode':self.mode}
+        if self.environment:request['environment']=True
+        r=self.http.post('/session',json=request,timeout=20);require_response(r,'запуск');self.lease=r.json()['lease']
+        if self.environment:
+            from .sensors import SensorFeed,stream_age,SCHEMA
+            self.sensors=SensorFeed(interval=.2,isolated=True);self.sensors.start()
+            deadline=time.monotonic()+8
+            while not stop() and time.monotonic()<deadline:
+                self.send([0.,0.])
+                packet=self.sensors.latest
+                if packet and all(stream_age(packet,k)<1. for k in ('scan','depth','imu')):break
+                time.sleep(.05)
+            else:raise RuntimeError('Нет свежих depth/lidar/IMU для выбранного профиля')
+            self.provenance['environment_schema']=SCHEMA
         if stop():raise InterruptedError('Operator stopped during preparation')
         return self.provenance
 
@@ -65,18 +80,29 @@ class TankSource:
         if bgr is None:raise RuntimeError('Invalid camera JPEG')
         rgb=cv2.cvtColor(bgr,cv2.COLOR_BGR2RGB)
         if (rgb.shape[1],rgb.shape[0])!=(640,400):raise RuntimeError('Unexpected Tank camera geometry')
+        sensor_packet=self.sensors.latest if self.sensors else None
         observation_time=time.monotonic_ns()
         reused=info['sequence']==self.previous_camera;self.previous_camera=info['sequence']
         image={'image':rgb,'sequence':info['sequence'],'timestamp_ns':received,'reused':reused,
                'source_timestamp_ns':info['source_timestamp_ns'],'source_clock':info['source_clock'],
                'agent_receive_timestamp_ns':info['received_ns'],'homebrain_receive_timestamp_ns':received,
                'timestamp_kind':'available_at_homebrain','age_at_agent_response_ns':status['monotonic_ns']-info['received_ns']}
-        return {'observation_timestamp_ns':observation_time,
+        result={'observation_timestamp_ns':observation_time,
                 'observation.state':status['action'],'images':{'front':image},
                 'measured_response_kind':'previous_command_estimate_no_wheel_feedback',
                 'battery_voltage':status['battery_voltage'],'battery_source':'RRC packet voltage_mV/1000',
                 'battery_agent_received_ns':status['battery_received_ns'],'imu_raw':status['imu'],
                 'imu_agent_received_ns':status['imu_received_ns'],'robot_clock':'tank_monotonic_ns'}
+        if self.environment:
+            from .sensors import environment_features,stream_age
+            packet=sensor_packet
+            if packet is None or packet['received_ns']>observation_time:
+                raise RuntimeError('Нет причинно допустимого пакета датчиков')
+            if any(stream_age(packet,k,observation_time)>2. for k in ('scan','depth','imu')):
+                raise RuntimeError('Depth/lidar/IMU устарели: профиль окружения остановлен')
+            result.update({'observation.environment_state':environment_features(packet,observation_time).tolist(),
+                           '_sensor_packet':packet})
+        return result
 
     def send(self,requested,observation=None):
         if self.stop_requested():raise InterruptedError('STOP before command')
@@ -137,5 +163,7 @@ class TankSource:
             marker.parent.mkdir(parents=True,exist_ok=True)
             marker.write_text(json.dumps({'blocked':True,'reason':reason,'created_at':time.time(),
                                           'physical_stop_confirmed':False},ensure_ascii=False,indent=2))
-        finally:self.http.close()
+        finally:
+            self.http.close()
+            if self.sensors:self.sensors.close()
         return errors

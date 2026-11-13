@@ -33,6 +33,8 @@ jobs=Jobs(control)
 session=Session(control)
 research.initialize()
 local_pages.install(jobs)
+from . import sensor_pages
+sensor_pages.install()
 live_preview=LivePreview(session,stop_requested=lambda:Server.instance.should_exit)
 ROBOT_NAMES={'so101':'SO-101','tank':'Tank','rosmaster':'ROSMASTER'}
 DEVICE_PATHS={'leader':'/dev/so101-leader','follower':'/dev/so101-follower',
@@ -165,6 +167,7 @@ def index():
             ui.label('Показы → обучение → проверяемые испытания').classes('muted')
         ui.button('STOP · всё управление Explorer',icon='stop_circle',color='negative',on_click=stop_all).props('size=lg')
     ui.link('Симуляция MuJoCo · Homebrain', '/sim')
+    ui.link('Tank · камеры, глубина и лидар', '/tank/sensors')
     ui.label('РЕАЛЬНЫЕ РОБОТЫ').classes('kicker')
     stage_label=ui.label('Этап A · программная подготовка. Движение не разрешено. Запись и физические испытания ещё не проверены.').classes('notice')
     ready=ui.label('').classes('muted')
@@ -185,7 +188,7 @@ def index():
     with ui.element('div').classes('workspace'):
         selected=ui.label('Выбран: '+ROBOT_NAMES[control.robot]).classes('selected')
         mode_label=ui.label('Наблюдение · приводы не включены').classes('muted')
-        task=ui.select({k:k for k,v in PROFILES.items() if v['robot']==control.robot},value=next(k for k,v in PROFILES.items() if v['robot']==control.robot),label='Задача').style('min-width:320px')
+        task=ui.select({k:v.get('label',k) for k,v in PROFILES.items() if v['robot']==control.robot},value=next(k for k,v in PROFILES.items() if v['robot']==control.robot),label='Задача').style('min-width:320px')
         def teleop_check():
             try:session.start(owner,task.value,'teleop-check',record=False)
             except Exception as exc:notify_error(exc)
@@ -426,12 +429,12 @@ def index():
         camera_view.set_content(f'<img src="/api/live/camera.mjpg?robot={robot}" alt="Камера выбранного робота появится при запуске" style="width:100%;max-width:640px;object-fit:contain;background:#10161f">')
         for series in chart.options['series']:series['data']=[]
         chart.update();last_frame[0]=None
-        options={k:k for k,v in PROFILES.items() if v['robot']==robot}
+        options={k:v.get('label',k) for k,v in PROFILES.items() if v['robot']==robot}
         task.set_options(options,value=next(iter(options)))
     last_frame=[None]
     def refresh():
         if PROFILES[task.value]['robot']!=control.robot:
-            options={k:k for k,v in PROFILES.items() if v['robot']==control.robot}
+            options={k:v.get('label',k) for k,v in PROFILES.items() if v['robot']==control.robot}
             task.set_options(options,value=next(iter(options)))
         authorized=control.authorized()
         tank_bench=control.robot=='tank' and bench_authorized(DATA/'configs')

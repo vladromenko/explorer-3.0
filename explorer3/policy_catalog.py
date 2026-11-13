@@ -21,6 +21,8 @@ def smolvla_paths():
 def validate_recipe(policy,name):
     if policy not in POLICIES:raise ValueError('Unknown policy')
     cfg=profile(name)
+    if cfg.get('environment_channels') and policy=='smolvla':
+        raise ValueError('Этот рецепт SmolVLA не использует environment_state; выберите ACT для depth/lidar')
     if policy!='act' and cfg.get('domain')!='sim' and name!='so101_pick_place':
         raise ValueError('Новая политика сначала проверяется в симуляции; аппаратный профиль пока закрыт')
     if policy=='smolvla':smolvla_paths()

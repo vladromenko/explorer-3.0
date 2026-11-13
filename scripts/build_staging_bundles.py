@@ -12,6 +12,7 @@ TANK_FILES = (
     'agent.py', 'native_client.py', 'native_driver.py', 'serial_guard.py',
     'handoff.py', 'stop_agent.py', 'emergency_stop.py', 'start-agent.sh', 'start-native.sh',
     'motion_permission.py',
+    'sensors.py', 'start-sensors.sh', 'stop_sensors.py', 'lidar.py', 'microphone.py', 'explorer3-tank-sensors@.service',
 )
 
 

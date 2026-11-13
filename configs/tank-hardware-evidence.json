@@ -109,5 +109,23 @@
       "native motor bridge",
       "local command expiry"
     ]
+  },
+  "sensor_runtime": {
+    "lidar_driver": "oradar_lidar/oradar_scan",
+    "lidar_device_model_parameter": "MS200",
+    "lidar_hardware_label": "not_physically_read",
+    "lidar_parameters_source": "installed peripherals/launch/include/ms200_scan.launch.py",
+    "depth_camera": "Aurora930 installed driver",
+    "depth_encoding": "mono16",
+    "depth_unit": "millimetres; manufacturer cloud conversion divides by 1000",
+    "sensor_observer_ports": [
+      8043,
+      8044
+    ],
+    "ros2": "Humble",
+    "rgb_transport": "JPEG quality 85",
+    "depth_ir_scan_imu_transport": "lossless NPZ",
+    "sensor_schema": "tank_environment_v1",
+    "environment_channels": 178
   }
 }

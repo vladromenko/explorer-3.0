@@ -30,9 +30,9 @@ class Session:
         self.study=None
 
     def start(self, owner: str, name: str, scene: str, record=True, collection_id=None, category="demonstration"):
-        if name=='tank_dock' and record and bench_authorized(DATA/'configs'):
+        if profile(name)['robot']=='tank' and record and bench_authorized(DATA/'configs'):
             raise PermissionError('Проверка на подставке: запись показов пока запрещена')
-        if name not in {'so101_pick_place','tank_dock'}:
+        if name not in {'so101_pick_place','tank_dock','tank_dock_rgbd_lidar'}:
             raise RuntimeError('Драйвер профиля ещё не принят')
         if profile(name)['robot']!=self.control.robot:
             raise ValueError('Профиль не соответствует выбранному роботу')
@@ -108,13 +108,14 @@ class Session:
                 from .trials import require_physical,ReplayActions,PolicyActions
                 require_physical(self.trial_plan)
                 provider=(ReplayActions if self.trial_plan['kind']=='replay' else PolicyActions)(self.trial_plan)
-            if name=='tank_dock':
+            if profile(name)['robot']=='tank':
                 if self.control.expired():raise InterruptedError('STOP before Tank handoff')
                 from .tank_handoff import invoke
                 invoke('enter')
                 if self.control.expired():raise InterruptedError('STOP during Tank handoff')
             source=(HardwareSource(teleoperate=not bool(provider)) if name=='so101_pick_place'
-                    else TankSource(self.control,mode=self.trial_plan['kind'] if self.trial_plan else 'manual'))
+                    else TankSource(self.control,mode=self.trial_plan['kind'] if self.trial_plan else 'manual',
+                                    environment=bool(profile(name).get('environment_channels'))))
             provenance=source.start(explicit_user_start=True,stop=self.control.expired)
             source.begin_episode()
             self.phase='aligning'
@@ -123,7 +124,7 @@ class Session:
             if provider and self.trial_plan['kind']=='policy':
                 # Warm-up is discarded; observe again and reset chunks before any policy command.
                 observation=source.observe()
-                if name=='tank_dock':source.plan_action(provider,observation)
+                if profile(name)['robot']=='tank':source.plan_action(provider,observation)
                 else:provider.next(observation)
                 provider.reset()
                 deadline=time.monotonic();trial_start=deadline
@@ -146,7 +147,7 @@ class Session:
                         elif command_source=='human':requested=self.control.base_action()
                         else:
                             requested=(source.plan_action(provider,observation)
-                                       if name=='tank_dock' and self.trial_plan['kind']=='policy' else provider.next(observation))
+                                       if profile(name)['robot']=='tank' and self.trial_plan['kind']=='policy' else provider.next(observation))
                     except StopIteration:
                         self.control.stop('Повтор завершён без отметки исхода; запись сохранится как aborted');break
                     if self.control.expired():raise InterruptedError('STOP before trial command')

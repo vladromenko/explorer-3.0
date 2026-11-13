@@ -29,7 +29,7 @@ def checkpoint_hash(root):
 
 def semantic_contract(value):
     if value is None:return None
-    return {key:value.get(key) for key in ('robot','fps','task','camera','image_shape','channels','units','state_channels','state_units')}
+    return {key:value.get(key) for key in ('robot','fps','task','camera','image_shape','channels','units','state_channels','state_units','environment_channels','sensor_schema')}
 
 
 def merge_plans(old,new):

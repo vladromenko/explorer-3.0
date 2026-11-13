@@ -36,6 +36,8 @@ class Hardware:
         self.cancel_start=threading.Event()
         self.board=None
         self.camera=None
+        self.lidar=None
+        self.environment=False
         self.node=None
         self.ros_thread=None
         self.ros_stop=threading.Event()
@@ -187,12 +189,13 @@ class Hardware:
         finally:
             log.close()
 
-    def start(self,mode='manual'):
+    def start(self,mode='manual',environment=False):
         if mode not in {'manual','policy','replay'}:raise ValueError('Unknown control mode')
         if not self.lifecycle.acquire(blocking=False):
             raise RuntimeError('Another lifecycle operation is in progress')
         try:
             self.cancel_start.clear()
+            self.environment=environment
             return self._start(mode)
         finally:
             self.lifecycle.release()
@@ -219,6 +222,10 @@ class Hardware:
             if self.cancel_start.is_set():raise RuntimeError('STOP during native startup')
             (ROOT/'hardware-active.json').write_text(json.dumps({'boot_id':Path('/proc/sys/kernel/random/boot_id').read_text().strip()}))
             self.start_camera()
+            if self.environment:
+                if __package__:from .lidar import Lidar
+                else:from lidar import Lidar
+                self.lidar=Lidar();self.lidar.start(ROOT)
             deadline=time.monotonic()+10
             ready=False
             while time.monotonic()<deadline and not ready and not self.cancel_start.is_set():
@@ -280,6 +287,9 @@ class Hardware:
 
     def _close(self,errors):
         self.ros_stop.set()
+        if self.lidar is not None:
+            try:self.lidar.close();self.lidar=None
+            except Exception as exc:errors.append('Lidar close: '+str(exc))
         if self.camera is not None:
             try:
                 self.camera.send_signal(signal.SIGINT)
@@ -337,6 +347,7 @@ class Command(BaseModel):
 
 class SessionStart(BaseModel):
     mode:Literal['manual','policy','replay']='manual'
+    environment:bool=False
 
 @app.get('/health')
 def health():return hardware.status()
@@ -347,7 +358,9 @@ def image():
         return Response(hardware.image,media_type='image/jpeg',headers={'X-Explorer-Camera':json.dumps(hardware.image_info),'X-Explorer-Observation':json.dumps(hardware.status()),'Cache-Control':'no-store'})
 @app.post('/session')
 def start(value:SessionStart|None=None):
-    try:return hardware.start(value.mode if value else 'manual')
+    try:
+        if value and value.environment:return hardware.start(value.mode,environment=True)
+        return hardware.start(value.mode if value else 'manual')
     except (PermissionError,RuntimeError) as exc:raise HTTPException(409,str(exc)) from exc
 @app.post('/command')
 def command(value:Command):

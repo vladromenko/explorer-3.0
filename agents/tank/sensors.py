@@ -129,19 +129,44 @@ def make_app(store,token):
         return await call_next(request)
     @app.get('/health')
     def health():return store.capture()[0]
+    @app.get('/microphone.wav')
+    def microphone():
+        if __package__:from .microphone import capture
+        else:from microphone import capture
+        try:return Response(capture(),media_type='audio/wav',headers={'Cache-Control':'no-store'})
+        except (RuntimeError,TimeoutError) as exc:raise HTTPException(503,str(exc)) from exc
     @app.get('/snapshot.npz')
     def snapshot():
         meta,arrays=store.capture()
         if not arrays:raise HTTPException(503,'Датчики ещё не передали данные')
-        output=io.BytesIO();np.savez_compressed(output,metadata=np.frombuffer(json.dumps(meta).encode(),dtype=np.uint8),**arrays)
+        # RGB is already a video modality; compress only colour for Wi-Fi.
+        # Depth/IR/scan/IMU remain lossless numeric arrays.
+        if 'rgb' in arrays:
+            import cv2
+            ok,encoded=cv2.imencode('.jpg',cv2.cvtColor(arrays.pop('rgb'),cv2.COLOR_RGB2BGR),[cv2.IMWRITE_JPEG_QUALITY,85])
+            if not ok:raise HTTPException(503,'RGB encoding failed')
+            arrays['rgb_jpeg']=encoded
+            meta['streams']['rgb']['transport_encoding']='jpeg_quality_85'
+        import zipfile
+        output=io.BytesIO()
+        with zipfile.ZipFile(output,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=1) as archive:
+            for name,value in {'metadata':np.frombuffer(json.dumps(meta).encode(),dtype=np.uint8),**arrays}.items():
+                with archive.open(name+'.npy','w') as entry:np.lib.format.write_array(entry,value,allow_pickle=False)
         return Response(output.getvalue(),media_type='application/octet-stream',headers={'Cache-Control':'no-store'})
     return app
 
 
 if __name__=='__main__':
+    import argparse
+    import os
     import uvicorn
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--localhost',choices=('0','1'),default='0')
+    args=parser.parse_args()
+    os.environ['ROS_LOCALHOST_ONLY']=args.localhost
+    (Path(__file__).parent/f'sensors-{args.localhost}.pid').write_text(str(os.getpid()))
     token=json.loads((Path(__file__).parent/'config.json').read_text())['token']
     store=SensorStore();done=threading.Event()
     thread=threading.Thread(target=observe,args=(store,done),daemon=True);thread.start()
-    try:uvicorn.run(make_app(store,token),host='0.0.0.0',port=8043,access_log=False)
+    try:uvicorn.run(make_app(store,token),host='0.0.0.0',port=8043+int(args.localhost),access_log=False)
     finally:done.set();thread.join(timeout=2)

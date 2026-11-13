@@ -61,6 +61,9 @@ class EpisodeWriter:
         features={'observation.state':{'dtype':'float32','shape':(len(state_channels),),'names':state_channels},
                   'action':{'dtype':'float32','shape':(len(channels),),'names':channels},
                   'observation.images.'+self.camera:{'dtype':'video','shape':tuple(size),'names':['height','width','channels']}}
+        if cfg.get('environment_channels'):
+            features['observation.environment_state']={'dtype':'float32','shape':(len(cfg['environment_channels']),),
+                                                        'names':cfg['environment_channels']}
         self.ds=LeRobotDataset.create(repo_id=f'local/{name}_{self.id}',fps=cfg['fps'],features=features,
                                      root=self.root,robot_type=self.robot_id,use_videos=True,
                                      image_writer_threads=2,video_backend='pyav')
@@ -68,6 +71,7 @@ class EpisodeWriter:
         self.last_observation=-1
         self.initial_state=None
         self.command_source=None
+        self.sensor_archive=None
 
     def add(self, sample: dict):
         image=sample['images'][self.camera]
@@ -88,10 +92,24 @@ class EpisodeWriter:
             raise ValueError('State/action channel contract mismatch')
         if not np.isfinite(state).all() or not np.isfinite(action).all():raise ValueError('Nonfinite state/action')
         rgb=image['image']
-        self.ds.add_frame({'observation.state':np.asarray(sample['observation.state'],dtype=np.float32),
+        frame={'observation.state':np.asarray(sample['observation.state'],dtype=np.float32),
                            'action':np.asarray(sample['action'],dtype=np.float32),
-                           'observation.images.'+self.camera:rgb,'task':self.cfg['task']})
-        record={k:v for k,v in sample.items() if k!='images'}
+                           'observation.images.'+self.camera:rgb,'task':self.cfg['task']}
+        sensor_ref=None
+        if self.cfg.get('environment_channels'):
+            from .sensors import SensorArchive,environment_features
+            packet=sample.get('_sensor_packet')
+            if packet is None or packet['received_ns']>timestamp:raise ValueError('Missing or future sensor packet')
+            vector=environment_features(packet,timestamp)
+            if len(vector)!=len(self.cfg['environment_channels']) or not np.allclose(vector,sample['observation.environment_state']):
+                raise ValueError('Environment feature contract mismatch')
+            if self.sensor_archive is None:self.sensor_archive=SensorArchive(self.root/'sensors')
+            self.sensor_archive.add(packet)
+            sensor_ref=f'sensors/{self.sensor_archive.count-1:06}.npz'
+            frame['observation.environment_state']=vector
+        self.ds.add_frame(frame)
+        record={k:v for k,v in sample.items() if k not in {'images','_sensor_packet'}}
+        if sensor_ref:record['sensor_packet']=sensor_ref
         record.update(domain=self.domain,episode_id=self.id,frame_index=self.frames,robot_id=self.robot_id,task_id=self.name,
                       session_id=self.session,scene_id=self.scene,command_source=command_source,
                       measured_response_kind=sample.get('measured_response_kind','unknown'),
@@ -110,6 +128,7 @@ class EpisodeWriter:
             raise ValueError('Unknown outcome')
         self.sidecar.flush()
         self.sidecar.close()
+        if self.sensor_archive:self.sensor_archive.finish()
         if self.frames:
             self.ds.save_episode()
             self.ds.finalize()

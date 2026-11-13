@@ -29,6 +29,11 @@ def train_command(dataset: Path, output: Path, policy='act',steps=50,batch=8,see
           '--wandb.enable=false',f'--output_dir={output}',f'--steps={steps}',f'--batch_size={batch}',
           '--num_workers=0','--persistent_workers=false',f'--seed={seed}','--env_eval_freq=0',
           '--log_freq=10',f'--save_freq={min(steps,5000)}']
+    info_path=dataset/'meta/info.json'
+    if info_path.exists() and 'observation.environment_state' in json.loads(info_path.read_text())['features'] and not initial_checkpoint:
+        normalization='MIN_MAX' if policy=='diffusion' else 'MEAN_STD'
+        args.append('--policy.normalization_mapping='+json.dumps({
+            'VISUAL':'MEAN_STD','STATE':normalization,'ACTION':normalization,'ENV':normalization}))
     if initial_checkpoint:
         args.remove(f'--policy.type={policy}')
         args.append(f'--policy.path={initial_checkpoint}')
@@ -37,6 +42,8 @@ def train_command(dataset: Path, output: Path, policy='act',steps=50,batch=8,see
         base,vlm=smolvla_paths()
         if not initial_checkpoint:args.remove('--policy.type=smolvla')
         info=json.loads((dataset/'meta/info.json').read_text())
+        if 'observation.environment_state' in info['features']:
+            raise ValueError('SmolVLA recipe cannot silently discard depth/lidar environment_state')
         features={}
         for key,value in info['features'].items():
             if key=='observation.state':

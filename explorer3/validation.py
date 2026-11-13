@@ -29,6 +29,11 @@ def validate(episode_id: str, *, domain='real'):
     if len(ds)!=len(records) or len(ds)!=entry['frames'] or not records:
         raise ValueError('Frame/sidecar/catalogue mismatch')
     previous=-1
+    sensor_index={}
+    cached_sensor=None
+    cached_sensor_ref=None
+    if cfg.get('environment_channels'):
+        sensor_index={s['file']:s for s in (json.loads(line) for line in (root/'sensors/index.jsonl').read_text().splitlines())}
     for index,row in enumerate(records):
         if row['frame_index']!=index or row['episode_id']!=episode_id:
             raise ValueError('Invalid sidecar linkage')
@@ -48,12 +53,25 @@ def validate(episode_id: str, *, domain='real'):
             raise ValueError('Unexpected claimed acknowledgement')
         if not all(math.isfinite(v) for v in row['action']+row['observation.state']):
             raise ValueError('Nonfinite action/state')
+        if cfg.get('environment_channels'):
+            from .sensors import decode_packet,environment_features
+            ref=(root/row['sensor_packet']).resolve()
+            if not ref.is_relative_to(root/'sensors'):raise ValueError('Sensor packet outside episode')
+            entry_sensor=sensor_index.get(ref.name)
+            if entry_sensor is None or entry_sensor['homebrain_received_ns']>obs:raise ValueError('Missing/future sensor receipt')
+            if cached_sensor_ref!=ref:
+                cached_sensor=decode_packet(ref.read_bytes(),entry_sensor['homebrain_received_ns'],entry_sensor['request_elapsed_s'])
+                cached_sensor_ref=ref
+            expected=environment_features(cached_sensor,obs)
+            if not np.allclose(expected,row['observation.environment_state']):raise ValueError('Sensor feature mismatch')
     for index in sorted({0,len(ds)//2,len(ds)-1}):
         frame=ds[index]
         shape=cfg.get('image_shape',[480,640,3])
         assert tuple(frame['observation.images.'+cfg['camera']].shape)==(shape[2],shape[0],shape[1])
         assert np.allclose(frame['action'].numpy(),records[index]['action'],atol=1e-5)
         assert np.allclose(frame['observation.state'].numpy(),records[index]['observation.state'],atol=1e-5)
+        if cfg.get('environment_channels'):
+            assert np.allclose(frame['observation.environment_state'].numpy(),records[index]['observation.environment_state'],atol=1e-5)
     times=np.array([r['observation_timestamp_ns'] for r in records],dtype=np.int64)
     intervals=np.diff(times)/1e6
     sequence=[r['camera']['sequence'] for r in records]

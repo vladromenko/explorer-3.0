@@ -1,0 +1,13 @@
+[Unit]
+Description=Explorer read-only Tank sensor observer %i
+Requires=docker.service
+After=docker.service network.target
+[Service]
+User=pi
+ExecStart=/usr/bin/docker exec -u ubuntu -w /home/ubuntu/explorer3 MentorPi /bin/bash /home/ubuntu/explorer3/start-sensors.sh %i
+ExecStop=/usr/bin/docker exec -u ubuntu -e PYTHONNOUSERSITE=1 MentorPi /home/ubuntu/explorer3/.venv/bin/python /home/ubuntu/explorer3/stop_sensors.py %i
+Restart=always
+RestartSec=8
+TimeoutStopSec=8
+[Install]
+WantedBy=multi-user.target

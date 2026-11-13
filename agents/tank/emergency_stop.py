@@ -7,7 +7,7 @@ import json,os,signal,time
 from pathlib import Path
 root=Path(__file__).resolve().parent
 boot=Path('/proc/sys/kernel/random/boot_id').read_text().strip()
-for name in ('native-driver-active.json','camera-active.json'):
+for name in ('native-driver-active.json','camera-active.json','lidar-active.json'):
     marker=root/name
     if marker.exists():
         info=json.loads(marker.read_text())
@@ -15,7 +15,10 @@ for name in ('native-driver-active.json','camera-active.json'):
             proc=Path('/proc')/str(info['pid'])
             if proc.exists():
                 args=(proc/'cmdline').read_bytes().split(b'\0')
-                expected=str(root/'vendor/camera/bin/aurora930_node').encode() if name=='camera-active.json' else b'native_driver.py'
+                if name=='lidar-active.json':
+                    from lidar import DRIVER
+                    expected=str(DRIVER).encode()
+                else:expected=str(root/'vendor/camera/bin/aurora930_node').encode() if name=='camera-active.json' else b'native_driver.py'
                 if expected in args and (proc/'cwd').resolve()==root:
                     os.kill(info['pid'],signal.SIGTERM if name=='native-driver-active.json' else signal.SIGINT)
                     deadline=time.monotonic()+4
