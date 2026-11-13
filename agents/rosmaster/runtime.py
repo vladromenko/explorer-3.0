@@ -376,8 +376,8 @@ class Runtime:
                 if profile=='prepare':
                     if observing is not True:raise ValueError('Подтвердите свободное пространство и наблюдение за рукой')
                     if not self.model.collision_free([90]*6,self.cfg['arm']['floor_margin_m']):raise ValueError('Исходная поза не проходит прежнюю модель')
-                elif not self.model.within_limits(measured):
-                    raise ValueError('Рука вне рабочих пределов '+json.dumps([round(v) for v in measured])+': сначала «Поднять руку» под наблюдением')
+            # A folded arm (outside the working range) is raised automatically right after enable.
+            raise_first=profile in {'rosmaster_manual','rosmaster_pick_place'} and not self.model.within_limits(measured)
             with self.core_lock:self.core.enable()
             try:
                 self.profile=profile;self.sequence=-1;self.lease=secrets.token_urlsafe(24)
@@ -392,6 +392,9 @@ class Runtime:
                 else:
                     self.controls.arm_mode=arm_mode
                     self.controls.enable(profile,time.monotonic())
+                    if raise_first:
+                        self.begin_pose(list(self.cfg['arm']['safe_pose']),self.core.measured_arm(self.ARM_FEEDBACK_HOLD_S) or measured,time.monotonic())
+                        self.log('Рука сложена: выпрямляю автоматически, затем управление')
                 self.session={'started':time.time(),'started_monotonic':time.monotonic(),'profile':profile,
                     'arm_mode':arm_mode,'commands':0,'stale_commands':0,'max_command_gap':0.,
                     'last_command':time.monotonic(),'max_loop_dt':0.,'battery_at_enable':volts}

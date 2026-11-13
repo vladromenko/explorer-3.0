@@ -55,7 +55,7 @@ def mirror_check(s):
             'pair':s.get('mirror_ref_pair'),'aligning':s.get('mirror_aligning')}
 
 
-REASONS={'Explicit enable required':'Управление выключено. Отметьте «Я рядом» и нажмите «▶ Включить»',
+REASONS={'Explicit enable required':'Управление выключено. Нажмите «▶ Я рядом — включить»',
          'Operator STOP':'Остановлено (STOP)','Operator heartbeat expired':'Связь с браузером прервалась — включите снова',
          'Browser / Homebrain heartbeat lost':'Связь с браузером прервалась — включите снова'}
 
@@ -71,7 +71,7 @@ def telemetry(health,mode,notice):
     sample=operator.leader_sample
     age=time.monotonic()-sample[0] if sample else None
     return {'arm_mode':mode,'dry_run':False,'enabled':s.get('armed',False),
-        'notice':notice or russian(s.get('reason')) or ('Управление включено' if s.get('armed') else 'Включите управление'),
+        'notice':notice or russian(s.get('reason')) or ('Управление включено' if s.get('armed') else 'Нажмите «▶ Я рядом — включить»'),
         'mode':s.get('mode','manual'),'battery':{'soc':None,'minutes_left':None,'volts':s.get('battery_voltage',observation.get('battery_voltage'))},
         'battery_stale':False,'arm':[round(v,1) if v is not None else '?' for v in arm],
         'arm_measured':measured,'tcp':s.get('tcp') or [],'jog_blocked':s.get('arm_blocked'),
@@ -206,7 +206,12 @@ async def websocket(socket:WebSocket):
                         if operator.mirror:
                             operator.disable_mirror(owner);state['notice']='Зеркало выключено, ручное управление продолжается'
                         else:
-                            if operator.owner!=owner or not operator.lease:raise RuntimeError('Сначала «▶ Включить»')
+                            if operator.owner!=owner or not operator.lease:
+                                # One button: enable control first (same checks as «▶ Включить»).
+                                if operator.lease:await asyncio.to_thread(operator.stop,'Переход к зеркалу')
+                                health=await asyncio.to_thread(lambda:(ensure_agent(),request('/health'))[1])
+                                if not health.get('hardware_open'):await asyncio.to_thread(request,'/acquire',{},45)
+                                await asyncio.to_thread(operator.enable,owner,'rosmaster_manual',state['mode'],True)
                             if operator.leader_sample is None or time.monotonic()-operator.leader_sample[0]>.2:
                                 await asyncio.to_thread(operator.start_leader,owner)
                                 end=time.monotonic()+5

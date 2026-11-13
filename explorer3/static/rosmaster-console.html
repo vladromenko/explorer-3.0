@@ -26,8 +26,7 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
 <header><h1>ROSMASTER</h1><span class="pill" id="mode">остановлено</span><span class="pill" id="link">нет связи</span>
 <span class="grow"></span><span id="bat" class="pill">батарея …</span><a href="/" style="color:var(--acc);font-size:13px">Explorer</a></header>
 <nav class="bar1">
- <label class="near"><input id="observing" type="checkbox"> Я рядом, место свободно</label>
- <button class="go big" onclick="send({action:'enable',observing:$('observing').checked})">▶ Включить</button>
+ <button class="go big" onclick="send({action:'enable',observing:true})" title="Нажимая, вы подтверждаете, что вы рядом и место свободно">▶ Я рядом — включить</button>
  <button class="stop big" onclick="send({action:'stop'})">■ STOP <small>(пробел)</small></button>
  <b id="notice" style="color:var(--warn)">Управление выключено</b></nav>
 <main>
@@ -53,10 +52,10 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
    <div class="angles"><span>осн.</span><span>плечо</span><span>локоть</span><span>кисть</span><span>пов.</span><span>клешня</span></div>
    <div class="angles nums" id="arm"></div>
    <div class="help" style="margin-top:4px">Ограничение: <span id="blocked">—</span></div>
-   <div class="row" style="margin-top:8px"><button onclick="send({action:'prepare',observing:$('observing').checked})">Поднять руку</button><button onclick="act('preset','look')">Обзор</button><button onclick="act('preset','home')">Домой</button></div></div>
+   <div class="row" style="margin-top:8px"><button onclick="send({action:'prepare',observing:true})">Поднять руку</button><button onclick="act('preset','look')">Обзор</button><button onclick="act('preset','home')">Домой</button></div></div>
   <div class="card"><h2>Зеркало: Leader SO-101 → рука</h2>
-   <div class="row"><button class="go" id="mirbtn" onclick="send({action:'mirror_toggle'})">Включить зеркало</button><span id="mir" class="help">выкл</span></div>
-   <div class="help" style="margin-top:6px">После «Включить зеркало» рука сначала сама встанет в позу Leader (держите Leader неподвижно), затем повторяет движения. <span id="pairstate"></span></div>
+   <div class="row"><button class="go" id="mirbtn" onclick="send({action:'mirror_toggle',observing:true})">Включить зеркало</button><span id="mir" class="help">выкл</span></div>
+   <div class="help" style="margin-top:6px">Отметьте «Я рядом» и нажмите — управление включится само. Рука сначала встанет в позу Leader (держите Leader неподвижно), затем повторяет движения. <span id="pairstate"></span></div>
    <details style="margin-top:8px"><summary>Тонкая настройка зеркала (не обязательно)</summary>
     <div class="help" style="margin-top:6px"><b>1. Совпадение поз.</b> Нажмите «Поднять руку» (рука прямо вверх), поставьте Leader в ту же позу (прямо вверх, клешня как у робота), нажмите «Подключить Leader», затем «Запомнить совпадение поз».</div>
     <div class="row" style="margin-top:4px"><button onclick="send({action:'leader'})">Подключить Leader</button><button class="go" onclick="send({action:'pair_capture'})">Запомнить совпадение поз</button><button onclick="send({action:'pair_reset'})">Сбросить</button></div>
@@ -71,13 +70,13 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
   <div class="card"><h2>Запись показа</h2>
    <div class="row"><select id="rprof"><option value="rosmaster_pick_place">Кубик → коробка (рука)</option><option value="rosmaster_dock">Подъезд к цели (база)</option></select>
     <input id="rscene" value="scene-01" size="8" title="Расстановка: меняйте при новой расстановке предметов"></div>
-   <div class="row" style="margin-top:8px" id="recstart"><button class="go" onclick="send({action:'record_start',profile:$('rprof').value,category:$('rcat').value,scene:$('rscene').value,observing:$('observing').checked})">● Начать запись</button></div>
+   <div class="row" style="margin-top:8px" id="recstart"><button class="go" onclick="send({action:'record_start',profile:$('rprof').value,category:$('rcat').value,scene:$('rscene').value,observing:true})">● Начать запись</button></div>
    <div class="row" style="margin-top:8px;display:none" id="recout"><button class="go" onclick="send({action:'record_finish',outcome:'success'})">✓ Успех</button><button onclick="send({action:'record_finish',outcome:'failure'})">✗ Неуспех</button><button onclick="send({action:'record_finish',outcome:'aborted'})">Прервать</button></div>
    <div class="help" id="rstate" style="margin-top:6px">—</div></div>
   <details class="card"><summary>Испытания и исследование</summary>
    <div class="help" style="margin-top:6px">План готовится и разрешается во вкладке «Испытания» Explorer.</div>
    <div class="row" style="margin-top:8px"><select id="tplan"><option value="">нет планов</option></select><select id="tstudy"><option value="">без пилота</option></select>
-    <button onclick="send({action:'trial_start',plan:$('tplan').value,study:$('tstudy').value,scene:$('rscene').value,observing:$('observing').checked})">Запустить</button></div>
+    <button onclick="send({action:'trial_start',plan:$('tplan').value,study:$('tstudy').value,scene:$('rscene').value,observing:true})">Запустить</button></div>
    <div class="row" style="margin-top:8px"><button onclick="send({action:'correction_done'})">Коррекция готова</button><button class="stop" style="flex:0" onclick="send({action:'emergency'})">Аварийное вмешательство</button></div>
    <div class="row" style="margin-top:8px"><span class="help">Тип записи:</span><select id="rcat"><option value="demonstration">Показ</option><option value="correction">Коррекция</option></select></div></details>
   <details class="card"><summary>Ещё: позы, камера, джойстик</summary>

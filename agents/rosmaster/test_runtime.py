@@ -370,3 +370,16 @@ def test_folded_low_arm_can_always_be_raised_but_not_pushed_lower():
         assert not arm.collision_free(lower,m)
     free=RelaxedArm(model,lambda:[90]*6)          # in free space the original rule is unchanged
     assert free.collision_free(low,m)==model.collision_free(low,m)
+
+
+def test_enable_with_a_folded_arm_raises_it_automatically(tmp_path):
+    board,runtime=ready_runtime(tmp_path)
+    try:
+        runtime.core.servo_deg=[92.,135.,-49.,31.,90.,27.];runtime.core.joint_valid=[True]*6
+        runtime.core.joint_times=[runtime.core.clock()]*6
+        orig=runtime.core.measured_arm
+        runtime.core.measured_arm=lambda a=.25:[92.,135.,-49.,31.,90.,27.]
+        session=runtime.enable('rosmaster_manual',observing=True)
+        assert runtime.armed and runtime.preparing and runtime.pose_target==[float(v) for v in runtime.cfg['arm']['safe_pose']]
+        runtime.core.measured_arm=orig
+    finally:runtime.close();board.close()
