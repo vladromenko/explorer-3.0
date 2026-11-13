@@ -159,10 +159,17 @@ def index():
         selected=ui.label('Выбран: '+ROBOT_NAMES[control.robot]).classes('selected')
         mode_label=ui.label('Наблюдение · приводы не включены').classes('muted')
         task=ui.select({k:k for k,v in PROFILES.items() if v['robot']==control.robot},value=next(k for k,v in PROFILES.items() if v['robot']==control.robot),label='Задача').style('min-width:320px')
+        def teleop_check():
+            try:session.start(owner,task.value,'teleop-check',record=False)
+            except Exception as exc:notify_error(exc)
         with ui.column().style('width:100%') as tank_controls:
             tank_status=ui.label('Tank: связь проверяется, приводы закрыты').classes('muted')
+            with ui.row():
+                tank_start=ui.button('Включить управление',on_click=teleop_check)
+                ui.button('STOP',color='negative',on_click=lambda:lost('STOP Tank'))
+            tank_motion_state=ui.label('Управление выключено').classes('notice')
             tank_help=ui.label('').classes('notice')
-            ui.html('<img src="/api/live/camera.mjpg?robot=tank" alt="Камера Tank появится после включения проверки" style="width:100%;max-width:640px;aspect-ratio:8/5;object-fit:contain;background:#10161f">')
+            ui.html('<img src="/api/live/camera.mjpg?robot=tank" alt="Камера появится после включения управления" style="width:100%;aspect-ratio:8/5;object-fit:contain;background:#10161f">').style('width:100%;max-width:640px')
             ui.label('Стрелки или W/A/S/D; две клавиши вместе — движение по дуге. ↙ и ↘ — назад по дуге в выбранную сторону. Отпускание — остановка; пробел — STOP.')
             ui.html('''<div id="tank-drive-pad" style="display:grid;grid-template-columns:repeat(3,72px);gap:8px;touch-action:none;user-select:none">'''+''.join(
                 f'''<button class="q-btn bg-primary text-white" style="min-width:64px;min-height:48px;touch-action:none"
@@ -183,9 +190,9 @@ def index():
             trials=ui.tab('Испытания',icon='science')
         with ui.tab_panels(tabs,value=management):
             with ui.tab_panel(management):
-                ui.label('Режим владения устройством').style('font-size:19px')
-                with ui.row():
-                    ui.button('Наблюдение',on_click=lambda:control.stop('Наблюдение'))
+                ownership_title=ui.label('Подключение SO-101').style('font-size:19px')
+                with ui.row() as ownership_controls:
+                    ui.button('Отключить управление',on_click=lambda:control.stop('Управление отключено'))
                     async def transfer(restore=False):
                         try:
                             if not restore and not (control.robot=='tank' and bench_authorized(DATA/'configs')):
@@ -207,16 +214,15 @@ def index():
                         except Exception as exc:notify_error(exc)
                     async def take_control():await transfer()
                     async def old_control():await transfer(restore=True)
-                    take_button=ui.button('Explorer 3.0',on_click=take_control)
-                    def teleop_check():
-                        try:session.start(owner,task.value,'teleop-check',record=False)
-                        except Exception as exc:notify_error(exc)
+                    take_button=ui.button('Подключить к Explorer',on_click=take_control)
                     teleop_button=ui.button('Проверить телеперацию',on_click=teleop_check)
-                    old_button=ui.button('Прежнее управление',on_click=old_control)
-                ui.label('Проверка телеперации не записывает показ. После проверки нажмите STOP.').classes('muted')
+                    old_button=ui.button('Вернуть управление Wristlab',on_click=old_control)
+                ownership_help=ui.label('Телеперация без записи. Для записи перейдите во вкладку «Запись».').classes('muted')
+                with ui.expansion('Приложение телефона и диагностика').style('width:100%') as tank_settings:
+                    tank_restore=ui.button('Вернуть управление приложению Hiwonder',on_click=old_control)
+                    ui.label('После STOP эта кнопка освобождает камеру и шасси для штатного приложения телефона. Следующее включение в Explorer само подключит Tank обратно.').classes('muted')
                 device_table=ui.table(columns=[{'name':'name','label':'Устройство','field':'name'}, {'name':'state','label':'Фактическое состояние','field':'state'}],
                     rows=[],row_key='name')
-                ui.label('SO-101 управляется Leader. Tank и ROSMASTER подключаются по очереди.').classes('muted')
                 # ROSMASTER: the same full control page (camera, keyboard/gamepad, poses, Leader mirror)
                 # embedded here; it connects the robot on «Включить управление». Loaded only while shown.
                 with ui.column().style('width:100%') as rosmaster_panel:
@@ -388,9 +394,17 @@ def index():
         start_button.set_enabled(authorized and supported and idle and not tank_bench)
         take_button.set_enabled(authorized and supported and idle)
         teleop_button.set_enabled(authorized and supported and idle)
+        tank_start.set_enabled(authorized and idle)
+        tank_start.set_text('Подключается…' if session.phase=='preparing' and control.robot=='tank' else 'Включить управление')
         old_button.set_enabled(supported and idle)
+        tank_restore.set_enabled(idle)
+        ownership_title.set_visibility(control.robot=='so101')
+        ownership_controls.set_visibility(control.robot=='so101')
+        ownership_help.set_visibility(control.robot=='so101')
+        device_table.set_visibility(control.robot=='so101')
+        tank_settings.set_visibility(control.robot=='tank')
         teleop_button.set_text('Включить проверку на подставке' if tank_bench else ('Включить управление' if control.robot=='tank' else 'Проверить телеперацию'))
-        tank_help.set_text('Только на подставке. Нажмите «Включить проверку на подставке» ниже, дождитесь «Управление готово», затем удерживайте стрелку.' if tank_bench else '«Включить управление» → дождитесь «Управление готово» → удерживайте стрелки. Для показа: «Запись» → «Начать показ». STOP и отпускание проверены оператором; скорость 0,2 м/с, поворот 0,5 рад/с.')
+        tank_help.set_text('Только на подставке. Включите управление и дождитесь готовности.' if tank_bench else 'Нажмите «Включить управление», дождитесь готовности и удерживайте стрелки. Отпускание останавливает движение. Для показа откройте «Запись».')
         tank_controls.set_visibility(control.robot=='tank')
         rosmaster_panel.set_visibility(control.robot=='rosmaster')
         for button in (take_button,teleop_button,old_button):button.set_visibility(control.robot!='rosmaster')
@@ -427,7 +441,7 @@ def index():
         if control.robot=='tank':
             phases.update(preparing='Подготовка камеры и питания — пока не нажимайте стрелки',aligning='Подготовка',following='Управление готово — можно удерживать стрелки')
         if control.robot=='tank' and session.phase=='idle':
-            phases['idle']='Командная сессия закрыта; физическая остановка не измеряется'
+            phases['idle']='Управление выключено — нажмите «Включить управление»'
         phase_text='Передача управления — дождитесь завершения' if control.maintenance else phases.get(session.phase,session.phase)
         recording_status.set_text(session.error or (phase_text+' · кадров: '+str(session.frame_count)+((' · '+control.last_stop_reason) if control.last_stop_reason else '')))
         device_table.rows=[{'name':k,'state':('занято' if v['owners'] else 'USB обнаружено, не открыто') if v['present'] else 'отсутствует'} for k,v in inventory().items()]
@@ -437,6 +451,8 @@ def index():
         job_table.rows=catalog.rows('jobs');job_table.update()
         event_table.rows=catalog.rows('events')[:20];event_table.update()
         mode_label.set_text(control.mode+' · '+(session.error or phase_text))
+        tank_motion_state.set_text((session.error or phase_text).removeprefix('RuntimeError: '))
+        tank_motion_state.classes('text-red-4' if session.error else 'text-green-4',remove='text-red-4 text-green-4')
     def refresh_preview():
         with session.lock:
             sample=session.latest
@@ -460,8 +476,8 @@ def index():
                 observed=await asyncio.to_thread(probe)
                 voltage=observed['battery_voltage']
                 fresh=observed['battery_received_ns'] is not None and observed['monotonic_ns']-observed['battery_received_ns']<2_000_000_000
-                battery=f'{voltage:.2f} В' if fresh else 'неизвестно (нет свежего измерения)'
-                tank_status.set_text('Tank по Wi-Fi · '+('порт управления открыт' if observed['hardware_open'] else 'порт управления закрыт; остановка моторов не измеряется')+' · питание: '+battery)
+                battery=f' · батарея {voltage:.2f} В' if fresh else ''
+                tank_status.set_text('Tank подключён по Wi-Fi · '+('управление включено' if observed['armed'] else 'управление выключено')+battery)
             except Exception as exc:tank_status.set_text('Tank недоступен: '+str(exc))
     refresh()
     ui.timer(2,refresh_tank)

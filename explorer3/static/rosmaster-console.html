@@ -57,7 +57,7 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
   <div class="card"><h2>Зеркало: Leader SO-101 → рука</h2>
    <div class="row"><button class="go" id="mirbtn" onclick="send({action:'mirror_toggle'})">Включить зеркало</button><span id="mir" class="help">выкл</span></div>
    <div class="help" style="margin-top:6px">После «Включить зеркало» рука сначала сама встанет в позу Leader (держите Leader неподвижно), затем повторяет движения. <span id="pairstate"></span></div>
-   <details style="margin-top:8px"><summary>Настройка зеркала (один раз)</summary>
+   <details style="margin-top:8px"><summary>Тонкая настройка зеркала (не обязательно)</summary>
     <div class="help" style="margin-top:6px"><b>1. Совпадение поз.</b> Нажмите «Поднять руку» (рука прямо вверх), поставьте Leader в ту же позу (прямо вверх, клешня как у робота), нажмите «Подключить Leader», затем «Запомнить совпадение поз».</div>
     <div class="row" style="margin-top:4px"><button onclick="send({action:'leader'})">Подключить Leader</button><button class="go" onclick="send({action:'pair_capture'})">Запомнить совпадение поз</button><button onclick="send({action:'pair_reset'})">Сбросить</button></div>
     <div class="help" style="margin-top:8px"><b>2. Направления.</b></div>
@@ -116,7 +116,7 @@ function render(s){
  const mi=s.mirror;$('mir').textContent=(mi.on?'включено':'выкл')+' · Leader '+(mi.leader||'—')+(mi.blocked?' · '+mi.blocked:'')+(mi.age!=null?' · данные '+mi.age+' с назад':'');$('mirn').textContent=mi.frames;$('mirt').textContent=fmt(mi.target,0,6);$('mirm').textContent=s.arm_measured?fmt(s.arm_measured,1,6):'нет обратной связи';
  $('gmsg').textContent=s.guard?(s.guard[0]==='translate'?'⚠ препятствие впереди/сбоку — езда ограничена':'⚠ препятствие мешает повороту'):'';
  $('mstate').textContent=s.mission;$('mres').textContent=s.mission_result||'—';
- const MC=s.mirror_check;if(MC){$('pairstate').textContent=MC.aligning?'Сейчас: рука встаёт в позу Leader…':(MC.pair?'Совпадение поз сохранено.':'Совпадение поз ещё не задано — откройте «Настройка зеркала».');const N=['основание','плечо','локоть','кисть','поворот кисти'];
+ const MC=s.mirror_check;if(MC){$('pairstate').textContent=MC.aligning?'Сейчас: рука встаёт в позу Leader…':'';const N=['основание','плечо','локоть','кисть','поворот кисти'];
   $('mcheck').innerHTML='<tr><th style="text-align:left">сустав</th><th>Leader Δ°</th><th>робот Δ°</th><th>знак</th><th></th></tr>'+MC.rows.map((r,i)=>{return '<tr><td>'+N[i]+'</td><td style="text-align:center">'+(r.leader??'—')+'</td><td style="text-align:center">'+(r.robot??'—')+'</td><td style="text-align:center">'+(MC.sign?(MC.sign[i]>0?'+':'−'):'?')+'</td><td><button onclick="send({action:\'mirror_flip\',joint:'+i+'})">⇄</button>'+'</td></tr>'}).join('');
   $('gstate').textContent='Leader '+(MC.leader_gripper??'—')+(MC.gripper_map?' · соответствие '+MC.gripper_map.map(v=>(+v).toFixed(0)).join(' → ')+' (открыт → закрыт)':' · относительный (прежний)');}
  const R=s.recording||{};const P=R.pilot||{};const rec=R.phase&&R.phase!=='idle';

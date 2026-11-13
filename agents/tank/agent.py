@@ -47,6 +47,7 @@ class Hardware:
         self.image=None
         self.image_info=None
         self.frame_sequence=0
+        self.camera_timing={}
         self.battery=None
         self.battery_time=None
         self.imu=None
@@ -62,6 +63,7 @@ class Hardware:
                     'reason':self.reason,'action':self.last_action,'motor_acknowledged':False,
                     'physical_stop_confirmed':False,'wheel_feedback':'unavailable','odometry':'not_used_command_integral_is_not_measurement',
                     'monotonic_ns':time.monotonic_ns(),'camera':self.image_info,
+                    'camera_timing':dict(self.camera_timing),
                     'battery_voltage':self.battery,'battery_received_ns':self.battery_time,
                     'imu':self.imu,'imu_received_ns':self.imu_time}
 
@@ -96,7 +98,8 @@ class Hardware:
                             elif self.battery<6.9:
                                 self.stop('Low battery: below existing controller threshold 6.9 V')
                             elif self.image_info is None or now-self.image_info['received_ns']>500_000_000:
-                                self.stop('Camera stale')
+                                age=None if self.image_info is None else round((now-self.image_info['received_ns'])/1e6)
+                                self.stop(f'Camera stale: {age} ms; callback {self.camera_timing}')
                     except Exception as exc:
                         self.armed=False
                         self.lease=None
@@ -111,27 +114,32 @@ class Hardware:
         import numpy as np
         import rclpy
         from rclpy.node import Node
-        from rclpy.qos import qos_profile_sensor_data
+        from rclpy.qos import QoSProfile,ReliabilityPolicy
         from sensor_msgs.msg import Image
         rclpy.init()
         self.node=Node('explorer3_tank_camera_receiver',namespace='/explorer3/tank')
         self.ros_stop.clear()
+        self.camera_timing={}
         def frame(msg):
+            received=time.monotonic_ns()
+            self.camera_timing['callback_started_ns']=received
             if msg.encoding not in ('rgb8','bgr8'):
                 return
             array=np.frombuffer(msg.data,dtype=np.uint8).reshape(msg.height,msg.step)[:,:msg.width*3].reshape(msg.height,msg.width,3)
             bgr=cv2.cvtColor(array,cv2.COLOR_RGB2BGR) if msg.encoding=='rgb8' else array
-            received=time.monotonic_ns()
-            ok,jpeg=cv2.imencode('.jpg',bgr,[cv2.IMWRITE_JPEG_QUALITY,90])
+            ok,jpeg=cv2.imencode('.jpg',bgr,[cv2.IMWRITE_JPEG_QUALITY,80])
+            encoded=time.monotonic_ns()
             if ok:
                 with self.lock:
+                    self.camera_timing.update(encode_ms=round((encoded-received)/1e6,2),lock_wait_ms=round((time.monotonic_ns()-encoded)/1e6,2))
                     self.frame_sequence+=1
                     self.image=jpeg.tobytes()
                     self.image_info={'sequence':self.frame_sequence,'received_ns':received,
                         'source_timestamp_ns':msg.header.stamp.sec*1_000_000_000+msg.header.stamp.nanosec,
                         'source_clock':'tank_ros_realtime','width':msg.width,'height':msg.height,
                         'encoding':'jpeg','measured':True}
-        self.subscription=self.node.create_subscription(Image,'/explorer3/tank/front/image_raw',frame,qos_profile_sensor_data)
+        self.subscription=self.node.create_subscription(Image,'/explorer3/tank/front/image_raw',frame,
+            QoSProfile(depth=1,reliability=ReliabilityPolicy.BEST_EFFORT))
         def spin():
             while not self.ros_stop.is_set():
                 rclpy.spin_once(self.node,timeout_sec=.1)
