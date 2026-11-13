@@ -55,7 +55,7 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
    <div class="row" style="margin-top:8px"><button onclick="send({action:'prepare',observing:true})">Поднять руку</button><button onclick="act('preset','look')">Обзор</button><button onclick="act('preset','home')">Домой</button></div></div>
   <div class="card"><h2>Зеркало: Leader SO-101 → рука</h2>
    <div class="row"><button class="go" id="mirbtn" onclick="send({action:'mirror_toggle',observing:true})">Включить зеркало</button><span id="mir" class="help">выкл</span></div>
-   <div class="help" style="margin-top:6px">Отметьте «Я рядом» и нажмите — управление включится само. Рука сначала встанет в позу Leader (держите Leader неподвижно), затем повторяет движения. <span id="pairstate"></span></div>
+   <div class="help" style="margin-top:6px">Одна кнопка: управление включится само, рука встанет в позу Leader (держите Leader неподвижно), затем повторяет движения. <span id="pairstate"></span></div>
    <details style="margin-top:8px"><summary>Тонкая настройка зеркала (не обязательно)</summary>
     <div class="help" style="margin-top:6px"><b>1. Совпадение поз.</b> Нажмите «Поднять руку» (рука прямо вверх), поставьте Leader в ту же позу (прямо вверх, клешня как у робота), нажмите «Подключить Leader», затем «Запомнить совпадение поз».</div>
     <div class="row" style="margin-top:4px"><button onclick="send({action:'leader'})">Подключить Leader</button><button class="go" onclick="send({action:'pair_capture'})">Запомнить совпадение поз</button><button onclick="send({action:'pair_reset'})">Сбросить</button></div>
