@@ -6,7 +6,7 @@ from fastapi.responses import Response
 
 app = FastAPI()
 S = {'acquired': False, 'armed': False, 'lease': None, 'profile': None, 'seq': -1, 'step': 0, 'reason': 'Explicit enable required',
-     'last_intent': None, 'requests': []}
+     'last_intent': None, 'source': 'human', 'direct': None, 'requests': []}
 LOCK = threading.Lock()
 
 
@@ -43,14 +43,16 @@ def acquire():
 def session(value: dict = Body(default={})):
     log('session', value)
     if not S['acquired']: raise HTTPException(409, 'Сначала передайте управление Explorer')
-    S.update(armed=True, lease='L' + str(time.time()), profile=value.get('profile'), seq=-1, reason=None)
+    S.update(armed=True, lease='L' + str(time.time()), profile=value.get('profile'), seq=-1, reason=None, source=value.get('source') or 'human', direct=None)
     return {'lease': S['lease'], 'profile': S['profile']}
 
 
 @app.post('/command')
 def command(value: dict = Body(...)):
     if not S['armed'] or value.get('lease') != S['lease']: raise HTTPException(409, 'Сессия остановлена')
-    S['seq'] = value['sequence']; S['last_intent'] = value.get('intent'); log('command', value.get('intent'))
+    S['seq'] = value['sequence']; S['last_intent'] = value.get('intent')
+    S['source'] = value.get('source') or S['source']; S['direct'] = value.get('direct')  # like the agent: no 'source' = no switch
+    log('command', value.get('intent')); log('packet', {'source': S['source'], 'direct': S['direct']})
     return status()
 
 
@@ -73,7 +75,7 @@ def frame():
 def sample():
     now = time.monotonic_ns(); data = jpeg(); intent = S['last_intent'] or {}
     state = {'agent_monotonic_ns': now, 'control_step': S['step'], 'armed': S['armed'], 'profile': S['profile'], 'preparing': False,
-             'mode': 'manual', 'command_source': 'human', 'operator_intent': intent, 'direct_requested': None, 'direct_received_ns': None,
+             'mode': 'manual', 'command_source': 'policy' if S['source'] == 'policy' else 'human', 'operator_intent': intent, 'direct_requested': None, 'direct_received_ns': None,
              'base_requested': [0, 0, 0], 'base_after_limits': [0, 0, 0], 'base_guard': None, 'base_sent': [0., 0., 0.], 'base_sent_ns': None,
              'arm_sent': None, 'arm_sent_ns': None, 'arm_blocked': None, 'arm_target': [90., 90., 90., 90., 90., 30.],
              'arm_measured': [90., 90., 90., 90., 90., 30.], 'arm_measured_ages_s': [.01] * 6, 'arm_measured_valid': [True] * 6,

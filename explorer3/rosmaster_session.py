@@ -139,6 +139,11 @@ class RosmasterSession:
         self.termination = 'emergency' if emergency else 'operator_'+('abort' if outcome == 'aborted' else outcome)
         self.stop_event.set()
 
+    def mark_emergency(self):
+        """Called BEFORE the STOP: the loop may end on the lost lease before finish() runs."""
+        self.emergency = True
+        self.termination = 'emergency'
+
     def end_correction(self):
         self.correction_done.set()
 

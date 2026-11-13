@@ -1,0 +1,195 @@
+{
+  "domain": "fixture",
+  "robot_touched": false,
+  "training_started": false,
+  "data": "/tmp/explorer3-rosmaster-pilot-pqe5c74p",
+  "checkpoint_source": "/home/jetsonnx/.local/share/explorer3/pipeline-check/20261112-190255/checkpoints/f50a3792648d463895dbaf4609763605-b8/checkpoints/last/pretrained_model",
+  "plan_and_study_listed_in_panel": true,
+  "trials": [
+    {
+      "attempt": 0,
+      "hold_banner": "Робот ждёт помощи (удержание 1 с) — приготовьтесь",
+      "assigned": 1,
+      "correction_banner": "ВАША КОРРЕКЦИЯ: управляйте клавишами/джойстиком · осталось 4 с · затем «Коррекция готова»",
+      "human_phase_packets_have_no_policy_action": true,
+      "policy_resumed_after_correction": true,
+      "finished_with": "emergency"
+    },
+    {
+      "attempt": 1,
+      "assigned": 0,
+      "policy_kept_control": true,
+      "finished_with": "success"
+    },
+    {
+      "attempt": 2,
+      "hold_banner": "Робот ждёт помощи (удержание 1 с) — приготовьтесь",
+      "assigned": 1,
+      "correction_banner": "ВАША КОРРЕКЦИЯ: управляйте клавишами/джойстиком · осталось 4 с · затем «Коррекция готова»",
+      "human_phase_packets_have_no_policy_action": true,
+      "policy_resumed_after_correction": true,
+      "finished_with": "success"
+    }
+  ],
+  "both_branches_seen": true,
+  "page_errors": [],
+  "episodes": [
+    {
+      "id": "7b06203b394d4b029a43987ecdc0cf29",
+      "profile": "rosmaster_pick_place",
+      "category": "rollout",
+      "outcome": "aborted",
+      "frames": 45
+    },
+    {
+      "id": "17fb14b8a0114f25aa3cb251d98afe52",
+      "profile": "rosmaster_pick_place",
+      "category": "correction",
+      "outcome": "aborted",
+      "frames": 17
+    },
+    {
+      "id": "bfe46d0f977f46e2b4ab546d7ecc4f98",
+      "profile": "rosmaster_pick_place",
+      "category": "rollout",
+      "outcome": "aborted",
+      "frames": 30
+    },
+    {
+      "id": "ef99d02553ee452f8ded8e3d2ae3ca77",
+      "profile": "rosmaster_pick_place",
+      "category": "rollout",
+      "outcome": "success",
+      "frames": 65
+    },
+    {
+      "id": "3d24b9b9cde84715b35508481ab96149",
+      "profile": "rosmaster_pick_place",
+      "category": "rollout",
+      "outcome": "success",
+      "frames": 50
+    },
+    {
+      "id": "a9ffeb82b5814509803d94b4c36d3cc8",
+      "profile": "rosmaster_pick_place",
+      "category": "correction",
+      "outcome": "success",
+      "frames": 21
+    },
+    {
+      "id": "389a87f5f1f744a18ffcc75cf49ae18f",
+      "profile": "rosmaster_pick_place",
+      "category": "rollout",
+      "outcome": "success",
+      "frames": 30
+    }
+  ],
+  "decisions": [
+    {
+      "episode_id": "817287502cf84a859da6788fb83e1e3a",
+      "assigned": 1,
+      "propensity": 0.5,
+      "assigned_delay_s": 1.0,
+      "outcome": "aborted",
+      "emergency": true,
+      "events": [
+        "request",
+        "operator_notified",
+        "human_start",
+        "human_end",
+        "finish"
+      ]
+    },
+    {
+      "episode_id": "fda4c2ebd9f84cbfb24ea3a375abd988",
+      "assigned": 0,
+      "propensity": 0.5,
+      "assigned_delay_s": 1.0,
+      "outcome": "success",
+      "emergency": false,
+      "events": [
+        "finish"
+      ]
+    },
+    {
+      "episode_id": "d833ee180f9b46468712816191f42ce0",
+      "assigned": 1,
+      "propensity": 0.5,
+      "assigned_delay_s": 1.0,
+      "outcome": "success",
+      "emergency": false,
+      "events": [
+        "request",
+        "operator_notified",
+        "human_start",
+        "human_end",
+        "finish"
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "trial_id": "817287502cf84a859da6788fb83e1e3a",
+      "segment": 1,
+      "of": 3,
+      "source": "human",
+      "outcome": "aborted",
+      "termination_reason": "emergency",
+      "emergency": true
+    },
+    {
+      "trial_id": "d833ee180f9b46468712816191f42ce0",
+      "segment": 2,
+      "of": 3,
+      "source": "policy",
+      "outcome": "success",
+      "termination_reason": "operator_success",
+      "emergency": false
+    },
+    {
+      "trial_id": "d833ee180f9b46468712816191f42ce0",
+      "segment": 0,
+      "of": 3,
+      "source": "policy",
+      "outcome": "success",
+      "termination_reason": "operator_success",
+      "emergency": false
+    },
+    {
+      "trial_id": "817287502cf84a859da6788fb83e1e3a",
+      "segment": 0,
+      "of": 3,
+      "source": "policy",
+      "outcome": "aborted",
+      "termination_reason": "emergency",
+      "emergency": true
+    },
+    {
+      "trial_id": "d833ee180f9b46468712816191f42ce0",
+      "segment": 1,
+      "of": 3,
+      "source": "human",
+      "outcome": "success",
+      "termination_reason": "operator_success",
+      "emergency": false
+    },
+    {
+      "trial_id": "817287502cf84a859da6788fb83e1e3a",
+      "segment": 2,
+      "of": 3,
+      "source": "policy",
+      "outcome": "aborted",
+      "termination_reason": "emergency",
+      "emergency": true
+    },
+    {
+      "trial_id": "fda4c2ebd9f84cbfb24ea3a375abd988",
+      "segment": 0,
+      "of": 1,
+      "source": "policy",
+      "outcome": "success",
+      "termination_reason": "operator_success",
+      "emergency": false
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 {
   "domain": "fixture",
   "robot_touched": false,
-  "data": "/tmp/explorer3-rosmaster-browser-wrzua89v",
+  "data": "/tmp/explorer3-rosmaster-browser-srjgfc68",
   "1_cold_open_no_motor_open": true,
   "2_enable_acquires_and_opens_session": true,
   "3_hold_W_drives_forward": true,
@@ -12,7 +12,7 @@
   "page_errors": [],
   "5_episode_saved": [
     {
-      "id": "1d3b70b91f644ed795d262a201fe5fef",
+      "id": "bede6992782342e8af6524f9963f13a2",
       "profile": "rosmaster_pick_place",
       "outcome": "success",
       "frames": 42

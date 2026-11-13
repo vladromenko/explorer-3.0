@@ -201,6 +201,7 @@ async def websocket(socket:WebSocket):
             elif action=='correction_done':
                 recorder.end_correction();state['notice']='Коррекция завершена, управление у политики'
             elif action=='emergency':
+                recorder.mark_emergency()  # before STOP, so the pilot record and provenance say 'emergency'
                 await asyncio.to_thread(operator.stop,'Аварийное вмешательство оператора')
                 recorder.finish('aborted',emergency=True);state['notice']='Аварийное вмешательство: STOP, эпизод помечен'
             elif action=='arm_mode':
