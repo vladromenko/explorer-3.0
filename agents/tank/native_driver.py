@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 ROOT=Path(__file__).resolve().parent
 sys.path.insert(0,str(ROOT/'native'))
 from serial_guard import CheckedSerial,WriteJournal
-from motion_permission import require_motion_permission, limited_command, bench_authorized, BENCH_PULSE_S
+from motion_permission import require_motion_permission, limited_command, bench_authorized
 
 
 class CaptureSerial:
@@ -76,7 +76,6 @@ def build(verification=False):
             self.expected=None
             self.sequence=0
             self.expires=None
-            self.bench_motion_started=None
             self.latched=False
             self.reason=None
             self.done=threading.Event()
@@ -88,7 +87,8 @@ def build(verification=False):
             finally:self.publisher_stopped.set()
         def neutral(self,reason):
             with self.command_lock:
-                self.latched=True;self.reason=reason
+                if not self.latched:self.reason=reason
+                self.latched=True
                 self.board.set_motor_speed([[1,0.],[2,0.],[3,0.],[4,0.]])
                 journal.emit({'event':'neutral_written','reason':reason,'physical_stop_confirmed':False})
                 self.condition.notify_all()
@@ -108,9 +108,6 @@ def build(verification=False):
                     finally:self.condition.notify_all()
                     raise
                 self.sequence+=1
-                if any(v[1] for v in values):
-                    if self.bench_motion_started is None:self.bench_motion_started=time.monotonic()
-                else:self.bench_motion_started=None
                 self.last_write={'sequence':self.sequence,'motor_targets_rps':values,'send_start_ns':started,'send_end_ns':time.monotonic_ns(),'motor_acknowledged':False}
                 self.expires=time.monotonic()+.35
                 self.expected=None
@@ -126,7 +123,6 @@ def build(verification=False):
                         elif not verification:
                             bench=bench_authorized(ROOT)
                             if (ROOT/'incident-block.json').exists() and not bench:reason='Bench permission expired'
-                            elif bench and self.bench_motion_started is not None and time.monotonic()-self.bench_motion_started>=BENCH_PULSE_S:reason='Bench pulse limit; explicit new start required'
                             elif self.board.battery_time is None or time.monotonic_ns()-self.board.battery_time>2_000_000_000:reason='Battery stale'
                             elif self.board.battery<6.9:reason='Low battery'
                     if reason:

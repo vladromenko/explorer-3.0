@@ -60,7 +60,7 @@ class Operator:
         self.leader=None;self.leader_sample=None;self.leader_thread=None;self.leader_done=threading.Event()
         self.mirror=False;self.done=threading.Event();self.operation=threading.Lock()
         self.leader_count=0;self.leader_owner=None;self.leader_error=None
-        self.direct=None;self.source=None;self.mirror_ref=None
+        self.direct=None;self.source=None;self.mirror_ref=None;self.arm_mode=None
         self.thread=threading.Thread(target=self.run,daemon=True);self.thread.start()
 
     def input(self,owner,value):
@@ -83,7 +83,7 @@ class Operator:
                 if generation!=self.generation:
                     request('/stop',{})
                     raise RuntimeError('STOP во время включения')
-                self.owner=owner;self.lease=response['lease'];self.sequence=0;self.error=None;self.direct=None;self.source=None
+                self.owner=owner;self.lease=response['lease'];self.sequence=0;self.error=None;self.direct=None;self.source=None;self.arm_mode=arm_mode
                 self.status={'profile':profile,'armed':True,'source':source}
 
     def stop(self,reason='STOP'):
@@ -217,6 +217,7 @@ class Operator:
                 if sample is not None and last-sample[0]<.2:packet['leader']=sample[1]
                 if self.direct is not None and last-self.direct[0]<.3:packet['direct']=self.direct[1]
                 if self.source:packet['source']=self.source
+                if self.arm_mode:packet['arm_mode']=self.arm_mode
             if not lease:
                 self.stats={};continue
             stats=self.stats

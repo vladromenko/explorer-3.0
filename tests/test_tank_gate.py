@@ -19,7 +19,8 @@ class TankGateTests(unittest.TestCase):
                     'created_at':time.time()-1,'expires_at':time.time()+60}
             (root/'bench-authorized.json').write_text(json.dumps(permit))
             self.assertTrue(bench_authorized(root))
-            self.assertEqual(limited_command(root,.1,-.3),(.03,-.12))
+            self.assertEqual(limited_command(root,.8,-.9),(.2,-.5))
+            self.assertEqual(limited_command(root,.1,-.3),(.1,-.3))
             with patch('agents.tank.motion_permission.time.time',return_value=permit['expires_at']+1):
                 with self.assertRaises(PermissionError):limited_command(root,.1,0.)
             permit['boot_id']='previous-boot'

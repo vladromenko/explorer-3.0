@@ -67,10 +67,10 @@ class Hardware:
 
     def stop(self,reason):
         with self.lock:
+            if self.armed or self.reason in (None,'Not started'):self.reason=reason
             self.armed=False
             self.expires=0.
             self.lease=None
-            self.reason=reason
             if self.board is not None:
                 self.board.stop()
             self.last_action=[0.,0.]
@@ -202,7 +202,7 @@ class Hardware:
         with self.lock:
             now=time.monotonic()
             if not self.armed or lease!=self.lease or now>self.expires:
-                raise PermissionError('Inactive or expired lease; no automatic rearm')
+                raise PermissionError(self.reason or 'Command lease expired; explicit new start required')
             if sequence<=self.last_sequence:
                 raise ValueError('Stale command sequence')
             if not all(math.isfinite(value) for value in (v,w)):

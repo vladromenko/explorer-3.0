@@ -341,3 +341,14 @@ def test_arm_targets_never_lead_the_measurement_by_more_than_the_cancel_margin()
     io._publish_arm=lambda servo,ms:rt.sent.append(list(servo))
     io.move_arm([90,80,90,90,90,90],duration_ms=160,wait=False,check=False)
     assert rt.sent[-1]==[90,96,90,90,90,64]
+
+
+def test_arm_mode_switches_inside_the_session_without_stopping(tmp_path):
+    board,runtime=ready_runtime(tmp_path)
+    try:
+        session=runtime.enable('rosmaster_dock',observing=True)
+        runtime.command(session['lease'],0,{'drive':[0,0,0]},arm_mode='joint');time.sleep(.1)
+        assert runtime.armed and runtime.controls.arm_mode=='joint'
+        runtime.command(session['lease'],1,{'drive':[0,0,0]},arm_mode='cartesian');time.sleep(.1)
+        assert runtime.armed and runtime.controls.arm_mode=='cartesian'
+    finally:runtime.close();board.close()

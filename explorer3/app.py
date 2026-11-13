@@ -386,7 +386,7 @@ def index():
         teleop_button.set_enabled(authorized and supported and idle)
         old_button.set_enabled(supported and idle)
         teleop_button.set_text('Включить проверку на подставке' if tank_bench else 'Проверить телеперацию')
-        tank_help.set_text('Только на подставке. Нажмите «Включить проверку на подставке» ниже, дождитесь «Управление готово», затем кратко удержите ↑ и отпустите. Большой STOP сверху завершает проверку. Непрерывное движение ограничено 0,7 секунды.' if tank_bench else 'Сначала включите телеперацию во вкладке «Управление», затем используйте стрелки.')
+        tank_help.set_text('Только на подставке. Нажмите «Включить проверку на подставке» ниже, дождитесь «Управление готово», затем удерживайте стрелку. Отпускание останавливает гусеницы; большой STOP сверху закрывает управление. Штатные скорости: 0,2 м/с и 0,5 рад/с.' if tank_bench else 'Сначала включите телеперацию во вкладке «Управление», затем используйте стрелки.')
         tank_controls.set_visibility(control.robot=='tank')
         rosmaster_panel.set_visibility(control.robot=='rosmaster')
         for button in (take_button,teleop_button,old_button):button.set_visibility(control.robot!='rosmaster')
@@ -408,7 +408,7 @@ def index():
         act_pass=(DATA/'validation/act-pass.json').exists()
         ready.set_text('Программный smoke: ACT '+('PASS' if act_pass else 'не проверен')+' · SmolVLA '+('PASS' if smol_pass else 'не проверен')+' · физические навыки не проверены')
         if tank_bench:
-            stage_label.set_text('Tank · проверка на подставке · 0,03 м/с · движение на полу и запись показов заблокированы')
+            stage_label.set_text('Tank · проверка на подставке · штатная скорость · движение на полу и запись показов пока не приняты')
         elif local_work.enabled():
             stage_label.set_text('Сбор и испытания остаются в локальном режиме. Ручное управление ROSMASTER доступно по отдельной ссылке в его карточке.' if rosmaster_control.enabled() else 'Локальный режим · роботы не опрашиваются. Датасеты, обучение и анализ доступны без включения устройств.')
         elif control.robot=='tank' and (DATA/'validation/tank-motion-incident.json').exists():

@@ -140,7 +140,8 @@ addEventListener('keydown',e=>{const k=physical(e);
  if(!document.hidden&&viewActive&&!lockedKeys.has(k)&&ws&&ws.readyState===1)keys[k]=true;
  if(k in map||[',','.','[',']','n','m'].includes(k))e.preventDefault();});
 addEventListener('keyup',e=>{const k=physical(e);delete keys[k];lockedKeys.delete(k)});
-addEventListener('blur',()=>send({action:'stop',reason:'окно потеряло фокус'}));
+// Losing focus releases every key (motion stops) but keeps the session; hiding the tab is a STOP.
+addEventListener('blur',()=>{keys={};lockedKeys.clear();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden)send({action:'stop',reason:'вкладка скрыта'})});
 function pad(){const g=(navigator.getGamepads?navigator.getGamepads():[]);for(const p of g){if(p&&p.mapping==='standard')return p}return null}
 let prevBtn={};
@@ -155,6 +156,6 @@ function collect(){if(document.hidden||!viewActive||!ws||ws.readyState!==1)retur
  const c=v=>Math.max(-1,Math.min(1,v));return{drive:d.map(c),arm:a.map(c),pitch:c(pitch),roll:c(roll),grip:c(grip),free:!!($('freec')&&$('freec').checked),slow:!!(keys['shift'])||($('slowc')&&$('slowc').checked)}}
 document.querySelectorAll('button.hold').forEach(b=>{const k=b.dataset.k,on=e=>{e.preventDefault();if(!lockedKeys.has(k))keys[k]=true},off=()=>{delete keys[k];lockedKeys.delete(k)};
  b.addEventListener('pointerdown',on);['pointerup','pointerleave','pointercancel'].forEach(t=>b.addEventListener(t,off))});
-setInterval(()=>{if(!document.hidden&&document.hasFocus())send(collect())},33);connect();
+setInterval(()=>{if(!document.hidden)send(document.hasFocus()?collect():{drive:[0,0,0],arm:[0,0,0],pitch:0,roll:0,grip:0,slow:false})},33);connect();
 try{const saved=+localStorage.getItem('rosmasterLight2');if(saved>=0&&saved<=3&&localStorage.getItem('rosmasterLight2')!==null)light(saved)}catch(e){}
 </script></body></html>

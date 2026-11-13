@@ -359,7 +359,7 @@ class Runtime:
                 self.stop('Enable failed')
                 raise
 
-    def command(self, lease, sequence, intent, leader=None, mirror=False, direct=None, source=None):
+    def command(self, lease, sequence, intent, leader=None, mirror=False, direct=None, source=None, arm_mode=None):
         with self.lock:
             if not self.lease or not secrets.compare_digest(lease,self.lease):raise PermissionError('Сессия остановлена')
             if type(sequence) is not int:raise ValueError('Invalid command sequence')
@@ -375,6 +375,12 @@ class Runtime:
                 if any(abs(v)>1e-3 for v in [*intent.get('drive',[]),*intent.get('arm',[]),intent.get('pitch',0),intent.get('roll',0),intent.get('grip',0)]):
                     session['active_inputs']=session.get('active_inputs',0)+1
             if source is not None and self.policy_session:self.switch_source(source)
+            if arm_mode is not None and arm_mode!=self.controls.arm_mode:
+                if arm_mode not in {'cartesian','joint'}:raise ValueError('Unknown arm mode')
+                self.controls.arm_mode=arm_mode
+                measured=self.io.measured_arm()
+                if measured is not None:self.restart_arm_from(measured)
+                self.log('Режим руки: '+('суставы' if arm_mode=='joint' else 'захват XYZ'))
             if direct is not None:
                 if not self.direct_source:raise PermissionError('Session is not a policy/replay session')
                 self.direct=(time.monotonic(),self.validate_direct(direct))

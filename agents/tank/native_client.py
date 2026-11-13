@@ -32,6 +32,7 @@ class NativeDriver:
 
     def command(self,v,w):
         result=self.http.post('/command',json={'v':v,'w':w},timeout=.35)
+        if result.status_code==409:raise PermissionError(result.json().get('detail','Native driver stopped'))
         result.raise_for_status();return result.json()
 
     def stop(self):

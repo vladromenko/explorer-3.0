@@ -177,8 +177,9 @@ async def websocket(socket:WebSocket):
                         recorder.finish('aborted',emergency=True);state['notice']='Аварийное вмешательство: STOP, эпизод помечен'
                     elif action=='arm_mode':
                         if value.get('mode') not in {'cartesian','joint'}:raise ValueError('Неизвестный режим руки')
-                        if operator.owner==owner:await asyncio.to_thread(operator.stop,'Смена режима руки')
-                        state['mode']=value['mode'];state['notice']='Режим изменён. Нажмите «Включить управление»'
+                        state['mode']=value['mode']
+                        if operator.owner==owner:operator.arm_mode=value['mode']  # switched live, no stop
+                        state['notice']='Режим руки: '+('суставы' if value['mode']=='joint' else 'захват XYZ')
                     elif action=='mirror_toggle':
                         if operator.mirror:
                             operator.disable_mirror(owner);state['notice']='Зеркало выключено, ручное управление продолжается'

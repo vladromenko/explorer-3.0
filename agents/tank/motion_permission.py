@@ -3,9 +3,10 @@ import json
 import time
 from pathlib import Path
 
-BENCH_V = .03
-BENCH_W = .12
-BENCH_PULSE_S = .7
+# Native app_cmd_vel_callback limits, requested by the operator after the
+# reduced-speed bench check failed to turn the tracks.
+BENCH_V = .2
+BENCH_W = .5
 
 
 def bench_authorized(root):

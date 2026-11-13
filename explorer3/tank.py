@@ -14,6 +14,12 @@ def client():
     return httpx.Client(base_url=f"http://{cfg['host']}:{cfg['port']}",headers={'X-Explorer-Token':cfg['token']},
                         trust_env=False,timeout=.25)
 
+
+def require_response(response, operation):
+    if response.status_code==409:
+        raise RuntimeError('Tank · '+operation+': '+str(response.json().get('detail','Управление остановлено')))
+    response.raise_for_status()
+
 class TankSource:
     def __init__(self,control):
         self.control=control
@@ -33,7 +39,7 @@ class TankSource:
             'clock_mapping_kind':'midpoint_estimate_not_shared_clock','physical_skill_verified':False,
             'state_kind':'previous_transmitted_command_estimate','wheel_feedback':'unavailable',
             'motor_acknowledgement':False,'odometry_integral_excluded':True}
-        r=self.http.post('/session',timeout=20);r.raise_for_status();self.lease=r.json()['lease']
+        r=self.http.post('/session',timeout=20);require_response(r,'запуск');self.lease=r.json()['lease']
         if stop():raise InterruptedError('Operator stopped during preparation')
         return self.provenance
 
@@ -41,7 +47,10 @@ class TankSource:
 
     def sample(self,index,stop=lambda:False):
         if stop():raise InterruptedError('STOP before command')
-        r=self.http.get('/frame.jpg');r.raise_for_status();received=time.monotonic_ns()
+        try:r=self.http.get('/frame.jpg')
+        except httpx.TimeoutException as exc:
+            raise RuntimeError('Tank: камера не ответила по Wi-Fi за 0,25 с; управление остановлено') from exc
+        r.raise_for_status();received=time.monotonic_ns()
         info=json.loads(r.headers['X-Explorer-Camera'])
         status=json.loads(r.headers['X-Explorer-Observation'])
         bgr=cv2.imdecode(np.frombuffer(r.content,dtype=np.uint8),cv2.IMREAD_COLOR)
@@ -53,8 +62,10 @@ class TankSource:
         if stop():raise InterruptedError('STOP before command')
         a=time.monotonic_ns()
         self.provenance['last_command_attempt']={'sequence':index,'requested':requested,'send_start_ns':a,'accepted':'unknown'}
-        response=self.http.post('/command',json={'lease':self.lease,'sequence':index,'v':requested[0],'w':requested[1]})
-        b=time.monotonic_ns();response.raise_for_status();sent=response.json()
+        try:response=self.http.post('/command',json={'lease':self.lease,'sequence':index,'v':requested[0],'w':requested[1]})
+        except httpx.TimeoutException as exc:
+            raise RuntimeError('Tank: нет ответа на команду по Wi-Fi; управление остановлено') from exc
+        b=time.monotonic_ns();require_response(response,'команда');sent=response.json()
         self.provenance['last_command_attempt']['accepted']=True
         reused=info['sequence']==self.previous_camera;self.previous_camera=info['sequence']
         image={'image':rgb,'sequence':info['sequence'],'timestamp_ns':received,'reused':reused,
