@@ -1,0 +1,294 @@
+{
+  "fixture_size_per_profile": 400,
+  "fixture_groups_per_profile": 40,
+  "domain": "fixture",
+  "research_result": false,
+  "robot_touched": false,
+  "data": "/tmp/explorer3-research-fixture-ksaz10ho",
+  "scope": "pair",
+  "profiles": [
+    "rosmaster_pick_place",
+    "so101_pick_place",
+    "tank_dock"
+  ],
+  "variants": {
+    "rosmaster_pick_place-transfer-0-commands": {
+      "status": "completed",
+      "brier_assigned": 0.2736402453669829,
+      "held_out_episodes": 30,
+      "groups": 3,
+      "reason": null
+    },
+    "rosmaster_pick_place-transfer-0-physical": {
+      "status": "completed",
+      "brier_assigned": 0.2824565025268169,
+      "held_out_episodes": 30,
+      "groups": 3,
+      "reason": null
+    },
+    "rosmaster_pick_place-transfer-10-commands": {
+      "status": "completed",
+      "brier_assigned": 0.27153201591036075,
+      "held_out_episodes": 30,
+      "groups": 3,
+      "reason": null
+    },
+    "rosmaster_pick_place-transfer-10-physical": {
+      "status": "completed",
+      "brier_assigned": 0.28103249859661794,
+      "held_out_episodes": 30,
+      "groups": 3,
+      "reason": null
+    },
+    "rosmaster_pick_place-target-only-10-commands": {
+      "status": "insufficient_data",
+      "brier_assigned": null,
+      "held_out_episodes": null,
+      "groups": null,
+      "reason": "Each assignment arm needs both outcomes and ≥20 episodes (pilot only)"
+    },
+    "rosmaster_pick_place-target-only-10-physical": {
+      "status": "insufficient_data",
+      "brier_assigned": null,
+      "held_out_episodes": null,
+      "groups": null,
+      "reason": "Each assignment arm needs both outcomes and ≥20 episodes (pilot only)"
+    },
+    "rosmaster_pick_place-transfer-20-commands": {
+      "status": "completed",
+      "brier_assigned": 0.2697801122073302,
+      "held_out_episodes": 30,
+      "groups": 3,
+      "reason": null
+    },
+    "rosmaster_pick_place-transfer-20-physical": {
+      "status": "completed",
+      "brier_assigned": 0.2777939425999272,
+      "held_out_episodes": 30,
+      "groups": 3,
+      "reason": null
+    },
+    "rosmaster_pick_place-target-only-20-commands": {
+      "status": "completed",
+      "brier_assigned": 0.19649793369362975,
+      "held_out_episodes": 30,
+      "groups": 3,
+      "reason": null
+    },
+    "rosmaster_pick_place-target-only-20-physical": {
+      "status": "completed",
+      "brier_assigned": 0.18765778978824743,
+      "held_out_episodes": 30,
+      "groups": 3,
+      "reason": null
+    },
+    "rosmaster_pick_place-decision-rules": {
+      "status": "completed",
+      "estimator": "IPW (plain and self-normalized) on held-out randomized episodes",
+      "random_rule_reference": "a 50 % random rule equals the observed held-out success rate in expectation",
+      "observed_success_rate": 0.36666666666666664,
+      "threshold_baseline": {
+        "feature": "tracking_error",
+        "threshold": 0.21960879946200526,
+        "chosen_on": "train rows only"
+      },
+      "rules": {
+        "never": {
+          "success_ipw": 0.4666666666666667,
+          "success_ipw_normalized": 0.3888888888888889,
+          "help_rate": 0.0,
+          "matched_episodes": 18
+        },
+        "always": {
+          "success_ipw": 0.26666666666666666,
+          "success_ipw_normalized": 0.3333333333333333,
+          "help_rate": 1.0,
+          "matched_episodes": 12
+        },
+        "threshold:tracking_error": {
+          "success_ipw": 0.3333333333333333,
+          "success_ipw_normalized": 0.35714285714285715,
+          "help_rate": 0.8,
+          "matched_episodes": 14
+        },
+        "risk:rosmaster_pick_place-target-only-20-commands": {
+          "success_ipw": 0.4666666666666667,
+          "success_ipw_normalized": 0.4375,
+          "help_rate": 0.8,
+          "matched_episodes": 16
+        },
+        "gain:rosmaster_pick_place-target-only-20-commands": {
+          "success_ipw": 0.5333333333333333,
+          "success_ipw_normalized": 0.4,
+          "help_rate": 0.5333333333333333,
+          "matched_episodes": 20
+        },
+        "risk:rosmaster_pick_place-target-only-20-physical": {
+          "success_ipw": 0.5333333333333333,
+          "success_ipw_normalized": 0.47058823529411764,
+          "help_rate": 0.6333333333333333,
+          "matched_episodes": 17
+        },
+        "gain:rosmaster_pick_place-target-only-20-physical": {
+          "success_ipw": 0.4666666666666667,
+          "success_ipw_normalized": 0.3684210526315789,
+          "help_rate": 0.5,
+          "matched_episodes": 19
+        },
+        "risk:rosmaster_pick_place-transfer-0-commands": {
+          "success_ipw": 0.26666666666666666,
+          "success_ipw_normalized": 0.3333333333333333,
+          "help_rate": 1.0,
+          "matched_episodes": 12
+        },
+        "gain:rosmaster_pick_place-transfer-0-commands": {
+          "success_ipw": 0.26666666666666666,
+          "success_ipw_normalized": 0.3333333333333333,
+          "help_rate": 1.0,
+          "matched_episodes": 12
+        },
+        "risk:rosmaster_pick_place-transfer-0-physical": {
+          "success_ipw": 0.26666666666666666,
+          "success_ipw_normalized": 0.3333333333333333,
+          "help_rate": 1.0,
+          "matched_episodes": 12
+        },
+        "gain:rosmaster_pick_place-transfer-0-physical": {
+          "success_ipw": 0.26666666666666666,
+          "success_ipw_normalized": 0.2857142857142857,
+          "help_rate": 0.9333333333333333,
+          "matched_episodes": 14
+        },
+        "risk:rosmaster_pick_place-transfer-10-commands": {
+          "success_ipw": 0.26666666666666666,
+          "success_ipw_normalized": 0.3333333333333333,
+          "help_rate": 1.0,
+          "matched_episodes": 12
+        },
+        "gain:rosmaster_pick_place-transfer-10-commands": {
+          "success_ipw": 0.26666666666666666,
+          "success_ipw_normalized": 0.3333333333333333,
+          "help_rate": 1.0,
+          "matched_episodes": 12
+        },
+        "risk:rosmaster_pick_place-transfer-10-physical": {
+          "success_ipw": 0.26666666666666666,
+          "success_ipw_normalized": 0.3333333333333333,
+          "help_rate": 1.0,
+          "matched_episodes": 12
+        },
+        "gain:rosmaster_pick_place-transfer-10-physical": {
+          "success_ipw": 0.26666666666666666,
+          "success_ipw_normalized": 0.2857142857142857,
+          "help_rate": 0.9333333333333333,
+          "matched_episodes": 14
+        },
+        "risk:rosmaster_pick_place-transfer-20-commands": {
+          "success_ipw": 0.26666666666666666,
+          "success_ipw_normalized": 0.3333333333333333,
+          "help_rate": 1.0,
+          "matched_episodes": 12
+        },
+        "gain:rosmaster_pick_place-transfer-20-commands": {
+          "success_ipw": 0.26666666666666666,
+          "success_ipw_normalized": 0.3333333333333333,
+          "help_rate": 1.0,
+          "matched_episodes": 12
+        },
+        "risk:rosmaster_pick_place-transfer-20-physical": {
+          "success_ipw": 0.26666666666666666,
+          "success_ipw_normalized": 0.3333333333333333,
+          "help_rate": 1.0,
+          "matched_episodes": 12
+        },
+        "gain:rosmaster_pick_place-transfer-20-physical": {
+          "success_ipw": 0.26666666666666666,
+          "success_ipw_normalized": 0.2857142857142857,
+          "help_rate": 0.9333333333333333,
+          "matched_episodes": 14
+        }
+      },
+      "group_bootstrap_ci95_normalized": {
+        "never": [
+          0.3333333333333333,
+          0.42857142857142855
+        ],
+        "always": [
+          0.14285714285714285,
+          0.6666666666666666
+        ],
+        "threshold:tracking_error": [
+          0.14285714285714285,
+          1.0
+        ],
+        "risk:rosmaster_pick_place-target-only-20-commands": [
+          0.2857142857142857,
+          0.6666666666666666
+        ],
+        "gain:rosmaster_pick_place-target-only-20-commands": [
+          0.25,
+          0.5
+        ],
+        "risk:rosmaster_pick_place-target-only-20-physical": [
+          0.2857142857142857,
+          0.6
+        ],
+        "gain:rosmaster_pick_place-target-only-20-physical": [
+          0.2857142857142857,
+          0.5
+        ],
+        "risk:rosmaster_pick_place-transfer-0-commands": [
+          0.14285714285714285,
+          0.6666666666666666
+        ],
+        "gain:rosmaster_pick_place-transfer-0-commands": [
+          0.14285714285714285,
+          0.6666666666666666
+        ],
+        "risk:rosmaster_pick_place-transfer-0-physical": [
+          0.14285714285714285,
+          0.6666666666666666
+        ],
+        "gain:rosmaster_pick_place-transfer-0-physical": [
+          0.14285714285714285,
+          0.6666666666666666
+        ],
+        "risk:rosmaster_pick_place-transfer-10-commands": [
+          0.14285714285714285,
+          0.6666666666666666
+        ],
+        "gain:rosmaster_pick_place-transfer-10-commands": [
+          0.14285714285714285,
+          0.6666666666666666
+        ],
+        "risk:rosmaster_pick_place-transfer-10-physical": [
+          0.14285714285714285,
+          0.6666666666666666
+        ],
+        "gain:rosmaster_pick_place-transfer-10-physical": [
+          0.14285714285714285,
+          0.6666666666666666
+        ],
+        "risk:rosmaster_pick_place-transfer-20-commands": [
+          0.14285714285714285,
+          0.6666666666666666
+        ],
+        "gain:rosmaster_pick_place-transfer-20-commands": [
+          0.14285714285714285,
+          0.6666666666666666
+        ],
+        "risk:rosmaster_pick_place-transfer-20-physical": [
+          0.14285714285714285,
+          0.6666666666666666
+        ],
+        "gain:rosmaster_pick_place-transfer-20-physical": [
+          0.14285714285714285,
+          0.6666666666666666
+        ]
+      },
+      "independent_groups": 3,
+      "held_out_episodes": 30,
+      "limitation": "Estimated success had the fixed rule been followed; not a causal effect for any single episode. With few groups the CI is wide or unavailable; help_rate is the human-time cost proxy."
+    }
+  }
+}

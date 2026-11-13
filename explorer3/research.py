@@ -326,6 +326,7 @@ def analyze(output, *, scope='all', source_profiles=None, target_profile=None):
         source=[r for r in split['train'] if r['profile'] in source_names]
         held_out=[r for r in split['test'] if r['profile']==target_name]
         variants=[('local',len(target),target)] if scope=='local' or not source else []
+        fitted={}
         if source:
             for budget in (0,10,20):
                 variants.append(('transfer',budget,source+target[:budget]))
@@ -340,14 +341,17 @@ def analyze(output, *, scope='all', source_profiles=None, target_profile=None):
                         model=fit(train,output/(name+'.joblib'),include_physical=physical,
                             source_only=variant=='transfer' and budget==0,
                             minimum_per_arm=20 if budget==0 else 2)
+                        fitted[name]=model
                         results[name]={'status':'completed','source_profiles':source_names if variant=='transfer' else [],
                             'target_profile':target_name,'target_episodes':budget,'report':report(model,held_out),
                             'small_target_budget':budget in {10,20}}
                     except ValueError as exc:
                         results[name]={'status':'insufficient_data','reason':str(exc)}
+        from .research_value import evaluate as rule_values
+        results[target_name+'-decision-rules']=rule_values(fitted,source+target,held_out) if fitted else {'status':'no_fitted_estimator'}
     result={'scope':scope,'profiles':selected,'snapshot_sha256':hashlib.sha256(snapshot.encode()).hexdigest(),
         'variants':results,'physical_skill_verified':False,'causal_effect_proven':False,
         'common_sensor_baseline':'commands variant masks out all measured response features',
-        'scheduler_experiment':'not performed by this report; predictive diagnostics are not empirical policy value'}
+        'scheduler_experiment':'not performed by this report; <target>-decision-rules gives IPW value of fixed rules on held-out randomized episodes, not a physical scheduler experiment'}
     (output/'result.json').write_text(json.dumps(result,indent=2,ensure_ascii=False))
     return result
