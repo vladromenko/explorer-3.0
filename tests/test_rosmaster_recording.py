@@ -3,6 +3,68 @@ import json, os, subprocess, sys
 import pytest
 
 
+@pytest.mark.parametrize('phase,frames', [('preparing', 0), ('recording', 0), ('saving', 10)])
+def test_outcome_requires_captured_frames(monkeypatch, phase, frames):
+    from explorer3.rosmaster_session import RosmasterSession
+    session = RosmasterSession(object())
+    monkeypatch.setattr(session, 'active', lambda: True)
+    session.state.update(phase=phase, frames=frames)
+    session.emergency = False
+    for outcome in ('success', 'failure'):
+        with pytest.raises(RuntimeError, match='счётчика кадров'):
+            session.finish(outcome)
+        assert not session.stop_event.is_set()
+        assert session.outcome == 'aborted'
+    assert session.finish('aborted')  # cancellation remains available while preparing
+
+
+def test_completed_outcome_cannot_be_overwritten(monkeypatch):
+    from explorer3.rosmaster_session import RosmasterSession
+    session = RosmasterSession(object())
+    monkeypatch.setattr(session, 'active', lambda: True)
+    session.emergency = False
+    session.state.update(phase='recording', frames=10)
+    assert session.finish('success')
+    assert not session.finish('failure')
+    assert session.outcome == 'success'
+    assert session.termination == 'operator_success'
+
+
+def test_idle_finish_cannot_invent_success():
+    from explorer3.rosmaster_session import RosmasterSession
+    session = RosmasterSession(object())
+    assert not session.finish('success')
+    assert session.outcome == 'aborted'
+
+
+def test_cancel_during_writer_setup_reports_no_saved_episode(monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from explorer3 import rosmaster_session as rs
+    session = rs.RosmasterSession(object())
+    monkeypatch.setattr(session, 'active', lambda: True)
+    session.emergency = False
+    session.termination = None
+    session.study = None
+    session.state.update(phase='preparing')
+    monkeypatch.setattr(rs, 'ResourceLease', lambda name: nullcontext())
+    monkeypatch.setattr(rs, 'agent_client', lambda: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr(rs.ClockMap, 'probe', lambda self, count=5: {})
+    finalized = []
+    class ColdWriter:
+        def __init__(self, *args, **kwargs):
+            session.finish('aborted')
+        def finish(self, outcome, provenance):
+            finalized.append(outcome)
+    monkeypatch.setattr(rs, 'EpisodeWriter', ColdWriter)
+    session.run('test', 'rosmaster_dock', 'scene', 'demonstration', 'test', True)
+    assert finalized == ['aborted']
+    assert session.status()['phase'] == 'idle'
+    assert session.status()['outcome'] == 'aborted'
+    assert session.status()['segments'] == []
+    assert 'до первого кадра' in session.status()['error']
+
+
 @pytest.mark.parametrize('name', ['rosmaster_dock', 'rosmaster_pick_place'])
 def test_recording_writes_valid_causal_episode(tmp_path, name):
     env = {**os.environ, 'EXPLORER3_DATA': str(tmp_path), 'PYTHONPATH': os.path.dirname(os.path.dirname(os.path.abspath(__file__)))}

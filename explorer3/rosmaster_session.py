@@ -134,10 +134,16 @@ class RosmasterSession:
     def finish(self, outcome, emergency=False):
         if outcome not in {'success', 'failure', 'aborted'}:
             raise ValueError('Исход: success, failure или aborted')
-        self.outcome = outcome
-        self.emergency = self.emergency or bool(emergency)
-        self.termination = 'emergency' if emergency else 'operator_'+('abort' if outcome == 'aborted' else outcome)
-        self.stop_event.set()
+        with self.lock:
+            if not self.active() or self.stop_event.is_set():
+                return False
+            if outcome != 'aborted' and (self.state['phase'] != 'recording' or self.state['frames'] < 1):
+                raise RuntimeError('Запись ещё готовится: дождитесь надписи «Запись идёт» и счётчика кадров. Показ пока не сохранён.')
+            self.outcome = outcome
+            self.emergency = self.emergency or bool(emergency)
+            self.termination = 'emergency' if emergency else 'operator_'+('abort' if outcome == 'aborted' else outcome)
+            self.stop_event.set()
+            return True
 
     def mark_emergency(self):
         """Called BEFORE the STOP: the loop may end on the lost lease before finish() runs."""
@@ -301,6 +307,9 @@ class RosmasterSession:
                     catalog.event('error', 'Журнал пилота: '+str(exc))
             with self.lock:
                 self.state['phase'] = 'saving'
+                if not segments:
+                    self.outcome = 'aborted'
+                    self.state['error'] = self.state.get('error') or 'Показ не сохранён: запись завершилась до первого кадра.'
             for unused in pool:
                 try:unused['writer'].finish('aborted', {'unused_segment': True})
                 except Exception as exc:catalog.event('error', 'ROSMASTER пустой сегмент: '+str(exc))

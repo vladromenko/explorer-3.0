@@ -80,12 +80,31 @@ async def scenario():
         await page.get_by_role('button',name='▶ Я рядом — включить').click();await page.wait_for_timeout(1000)
         assert get(AGENT+'/health')['armed']
         await page.locator('button.stop.big').click();await page.wait_for_timeout(500)
+        # Render lifecycle states synchronously, without touching a real robot or creating a job.
+        states=await page.evaluate('''() => {
+          const result=[];
+          for(const recording of [{phase:'preparing',frames:0},{phase:'recording',frames:0},
+              {phase:'recording',frames:4},{phase:'saving',frames:4},
+              {phase:'idle',frames:4,episode:'abc12345',outcome:'success'},
+              {phase:'idle',frames:0,error:'Показ не сохранён: нет кадров'}]) {
+            render({battery:{},mirror:{},log:[],recording});
+            result.push({text:$('rstate').textContent,disabled:[...$('recout').querySelectorAll('button')].map(b=>b.disabled)});
+          }
+          return result;
+        }''')
+        assert states[0]['disabled']==[True,True,False] and 'Пока не начинайте' in states[0]['text']
+        assert states[1]['disabled']==[True,True,False]
+        assert states[2]['disabled']==[False,False,False] and 'можно начинать' in states[2]['text']
+        assert states[3]['disabled']==[True,True,True]
+        assert 'Сохранён показ abc12345' in states[4]['text']
+        assert 'не сохранён' in states[5]['text']
         assert not errors
         await browser.close()
         return {'domain':'fixture','physical_robot_access':False,'cold_open_no_acquire':True,'profiles':checked,
                 'stop_reenable_cycles':3,'half_open_recovery_without_resume':True,'http_stop':True,
                 'stop_cancels_pending_acquire_enable':True,'wrong_profile_inputs_ignored':True,
-                'intended_inputs_received':True,'held_key_not_replayed_after_stop':True,'errors':errors}
+                'intended_inputs_received':True,'held_key_not_replayed_after_stop':True,
+                'recording_preparation_and_saved_states':True,'errors':errors}
 def main():
     OUT.mkdir(exist_ok=True);data=Path(tempfile.mkdtemp(prefix='explorer3-profile-check-'));(data/'configs').mkdir()
     (data/'configs/workflow.json').write_text(json.dumps({'stage':'B','allowed_robots':['rosmaster']}))

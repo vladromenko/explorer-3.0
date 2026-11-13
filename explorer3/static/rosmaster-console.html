@@ -159,12 +159,14 @@ function render(s){
   $('gstate').textContent='Leader '+(MC.leader_gripper??'—')+(MC.gripper_map?' · соответствие '+MC.gripper_map.map(v=>(+v).toFixed(0)).join(' → ')+' (открыт → закрыт)':' · относительный (прежний)');}
  const R=s.recording||{};const P=R.pilot||{};const rec=R.phase&&R.phase!=='idle';
  $('recstart').style.display=rec?'none':'flex';$('recout').style.display=rec?'flex':'none';
+ const canFinish=R.phase==='recording'&&R.frames>0;
+ $('recout').querySelectorAll('button').forEach((b,i)=>{b.disabled=R.phase==='saving'||(i<2&&!canFinish);});
  mirrorWanted=!!(s.mirror.on||s.mirror.requested);$('mirbtn').textContent=mirrorWanted?'Выключить зеркало':'Включить зеркало';$('mirbtn').className=mirrorWanted?'':'go';const pb=$('pilotbar');
  if(R.phase==='recording'&&P.phase==='human'){pb.style.display='block';pb.textContent='ВАША КОРРЕКЦИЯ: управляйте клавишами/джойстиком · осталось '+Math.max(0,Math.round((P.until*1000-Date.now())/1000))+' с · затем «Коррекция готова»';}
  else if(R.phase==='recording'&&P.phase==='decided'&&P.assigned){pb.style.display='block';pb.textContent='Робот ждёт помощи (удержание '+P.delay_s+' с) — приготовьтесь';}
  else pb.style.display='none';
  const ts=$('tstudy'),sids=(s.studies||[]).map(p=>p.id).join(',');if(ts.dataset.ids!==sids){ts.dataset.ids=sids;ts.innerHTML='<option value="">без пилота</option>'+(s.studies||[]).map(p=>'<option value="'+p.id+'">'+p.label+'</option>').join('');}
- $('rstate').textContent=R.phase&&R.phase!=='idle'?(R.phase==='recording'?'● идёт · ':R.phase+' · ')+(R.profile||'')+' · кадров '+R.frames+(R.hz?' · '+R.hz+' Гц':''):'нет'+(R.outcome?' · последняя: '+R.outcome+(R.error?' ('+R.error+')':''):'');
+ $('rstate').textContent=R.error?'Показ не завершён: '+R.error:R.phase==='preparing'||(R.phase==='recording'&&!R.frames)?'Подготовка записи… Пока не начинайте показ.':R.phase==='recording'?'● Запись идёт — можно начинать · кадров '+R.frames+(R.hz?' · '+R.hz+' Гц':''):R.phase==='saving'?'Сохранение показа…':R.episode?'Сохранён показ '+R.episode.slice(0,8)+' · кадров '+R.frames+' · '+({success:'успех',failure:'неуспех',aborted:'прерван'}[R.outcome]||R.outcome):'Нет сохранённого показа';
  const tp=$('tplan'),ids=(s.plans||[]).map(p=>p.id).join(',');if(tp.dataset.ids!==ids){tp.dataset.ids=ids;tp.innerHTML=(s.plans||[]).length?(s.plans.map(p=>'<option value="'+p.id+'">'+p.label+'</option>').join('')):'<option value="">нет планов</option>';}
  const L=$('log');const atEnd=L.scrollTop+L.clientHeight>=L.scrollHeight-8;L.textContent=s.log.join('\n');if(atEnd)L.scrollTop=L.scrollHeight;}
 const map={w:['d',0,1],s:['d',0,-1],a:['d',1,1],d:['d',1,-1],q:['d',2,1],e:['d',2,-1],i:['a',0,1],k:['a',0,-1],j:['a',1,1],l:['a',1,-1],r:['a',2,1],f:['a',2,-1]};
