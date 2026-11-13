@@ -44,6 +44,7 @@ def inventory():
             for k,v in DEVICE_PATHS.items()}
 
 def current_stage():
+    if local_work.workflow_stage():return local_work.workflow_stage()
     if local_work.homebrain_only():return 'A'
     if (DATA/'validation/stage-b-pass.json').exists():
         return 'C'
@@ -481,7 +482,9 @@ def index():
                 ('Не опрашивается · локальный режим' if not local_work.hardware_allowed(ident) else ('Выбран' if ident==control.robot else 'Не выбран')))
         act_pass=(DATA/'validation/act-pass.json').exists()
         ready.set_text('Программный smoke: ACT '+('PASS' if act_pass else 'не проверен')+' · SmolVLA '+('PASS' if smol_pass else 'не проверен')+' · физические навыки не проверены')
-        if tank_bench:
+        if current_stage()=='B' and local_work.hardware_allowed('rosmaster'):
+            stage_label.set_text('Этап B · ROSMASTER. Камера и измерения доступны в его панели; движение — только явной кнопкой рядом с роботом. Tank и SO-101 пока отключены от Explorer.')
+        elif tank_bench:
             stage_label.set_text('Tank · проверка на подставке · штатная скорость · движение на полу и запись показов пока не приняты')
         elif control.robot=='tank' and authorized:
             stage_label.set_text('Tank · ручное управление и запись доступны · отпускание и STOP подтверждены · автономный навык ещё не проверен')

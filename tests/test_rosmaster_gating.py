@@ -24,3 +24,18 @@ def test_stage_a_gating_and_rosmaster_only_exception(tmp_path):
     assert r['before'] == {'rosmaster': False, 'tank': False, 'so101': False}
     assert r['after'] == {'rosmaster': True, 'tank': False, 'so101': False}
     assert r['tank_flag_in_A'] is False   # the exception is ROSMASTER-only
+
+
+def test_stage_scope_overrides_stale_robot_flags(tmp_path,monkeypatch):
+    from explorer3 import local_work
+    monkeypatch.setattr(local_work,'DATA',tmp_path)
+    cfg=tmp_path/'configs';cfg.mkdir()
+    (cfg/'local-only.json').write_text(json.dumps({'enabled':True}))
+    for robot in ('tank','rosmaster'):(cfg/f'{robot}-hardware-enabled.json').write_text(json.dumps({'enabled':True}))
+    (cfg/'workflow.json').write_text(json.dumps({'stage':'B','allowed_robots':['rosmaster']}))
+    assert local_work.workflow_stage()=='B'
+    assert local_work.hardware_allowed('rosmaster')
+    assert not local_work.hardware_allowed('tank') and not local_work.hardware_allowed('so101')
+    assert not local_work.hardware_allowed()
+    (cfg/'workflow.json').write_text(json.dumps({'stage':'C','allowed_robots':['tank']}))
+    assert not local_work.hardware_allowed('rosmaster') and local_work.hardware_allowed('tank')

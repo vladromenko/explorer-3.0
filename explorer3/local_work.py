@@ -8,6 +8,13 @@ def homebrain_only():
     return path.exists() and json.loads(path.read_text()).get('stage')=='A'
 
 
+def workflow_stage():
+    path=DATA/'configs/workflow.json'
+    if not path.exists():return None
+    value=json.loads(path.read_text()).get('stage')
+    return value if value in ('A','B','C','D','E','F') else None
+
+
 def enabled():
     path = DATA/'configs/local-only.json'
     return path.exists() and json.loads(path.read_text()).get('enabled') is True
@@ -20,6 +27,12 @@ def robot_exception(robot):
 
 
 def hardware_allowed(robot=None):
+    path=DATA/'configs/workflow.json'
+    workflow=json.loads(path.read_text()) if path.exists() else {}
+    # Current-stage scope wins over stale authorization files from older stages.
+    if 'allowed_robots' in workflow:
+        allowed=workflow['allowed_robots']
+        if not isinstance(allowed,list) or robot not in allowed:return False
     if robot_exception(robot):return True
     if homebrain_only():return False
     if not enabled():return True

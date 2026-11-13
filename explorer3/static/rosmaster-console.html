@@ -26,7 +26,8 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
 <header><h1>ROSMASTER</h1><span class="pill" id="mode">остановлено</span><span class="pill" id="link">нет связи</span>
 <span class="grow"></span><span id="bat" class="pill">батарея …</span><button onclick="send({action:'use8090'});setTimeout(()=>window.open('http://192.168.0.177:8090','_blank'),8000)" title="Отдать робот старой консоли CubeBot">Консоль 8090 ↗</button><a href="/" style="color:var(--acc);font-size:13px">Explorer</a></header>
 <nav class="bar1">
- <button class="go big" onclick="send({action:'enable',observing:true})" title="Нажимая, вы подтверждаете, что вы рядом и место свободно">▶ Я рядом — включить</button>
+ <label class="help">Управлять <select id="control-profile" aria-label="Что управляем" onchange="send({action:'stop'})"><option value="rosmaster_manual">рукой и шасси</option><option value="rosmaster_pick_place">только рукой</option><option value="rosmaster_dock">только шасси</option></select></label>
+ <button class="go big" onclick="send({action:'enable',profile:$('control-profile').value,observing:true})" title="Нажимая, вы подтверждаете, что вы рядом и место свободно. Сложенная рука сначала поднимается автоматически.">▶ Я рядом — включить</button>
  <button class="stop big" onclick="send({action:'stop'})">■ STOP <small>(пробел)</small></button>
  <b id="notice" style="color:var(--warn)">Управление выключено</b></nav>
 <main>
