@@ -49,8 +49,15 @@ ACT видит только wrist RGB 640×480 и шесть суставов. S
 
 ## Уточнение T1: исходная геометрия найдена
 
-`sim.tank_model` импортирует original package CAD через MuJoCo URDF loader. Источник — public mirror `gongyizhi0425/Shipcleaning-Robot` e63726dcd51620fd1778672a1296c6ca3d7c29af; загрузка `scripts/cache_tank_model.py`, локальный manifest SHA каждого файла. Официальный открытый T1 repository по-прежнему не содержит этих файлов. Геометрия/преобразование шасси сверены с официальной главой 6.2.3; полная идентичность образу на пользовательском Tank ещё не проверена. Не объявлять mirror официальным release. TODO-license сохранена; assets не распространяются в Git.
+`sim.tank_model` импортирует original package CAD через MuJoCo URDF loader. Источник — public mirror `gongyizhi0425/Shipcleaning-Robot` e63726dcd51620fd1778672a1296c6ca3d7c29af; загрузка `scripts/cache_tank_model.py`, локальный manifest SHA каждого файла. Официальный открытый T1 repository по-прежнему не содержит этих файлов. Геометрия/преобразование шасси сверены с официальной главой 6.2.3; 14 ноября2026 все10используемых файлов совпали поSHA256 с установленным пакетом пользовательскогоTank (docs/tank-stage-c-readonly.json). Это не проверка массы, динамики или оптического крепления. Не объявлять mirror официальным release. TODO-license сохранена; assets не распространяются в Git.
 
 STL шасси имеет больше 200000 граней; точное преобразование в OBJ сохраняет все исходные треугольники. Camera mount из depth_cam.xacro; optical center/FOV не измерены. Track mesh — единая неподвижная геометрия внутри planar model, не симуляция звеньев гусеницы. Масса полного комплекта и инерция корпуса, response/slip — отдельные предположения, не результат одометрической калибровки.
 
 `fleet_lab_sim` — один мир, отдельные namespace и рабочие зоны, ROSMASTER только arm profile. Common solver 2000 Hz/elliptic/impratio10; это новая versioned модель. Механические scripted проверки не заменяют оценку trained policies. Общая сцена пока nominal; индивидуальные вариации сохранены в отдельных средах.
+
+
+### Tank: измеренная камера, 14 ноября2026
+
+Скопирован реальный CameraInfo RGB640×400: fx415.28833, fy416.09375, cx318.07541, cy188.47833. Вместо предположенияfovy65° используются MuJoCo resolution/focalpixel/principalpixel. Общий произвольный масштаб пикселя нужен только для отношенияfocal/sensorsize; физический размер матрицы не заявляется измеренным. Знакиoffset проверены отрисовкой трёхточек поROS K (погрешность<0.8px). Базовый вертикальныйFOV≈51.35°. Lens distortionD сохранена, но в рендере не применяется; extrinsics относительно CAD и динамика пока не идентифицированы.
+
+РандомизацияFOV изменяет такжеcam_intrinsic, snapshot/restoreсохраняет их.11проверок projection/variation/mobile/fleet/branching прошли безобучения. Изменение камеры меняетmodelhash; старые checkpoints не являются проверенными политиками для обновлённой модели.

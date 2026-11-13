@@ -19,7 +19,7 @@ RECIPE={'version':1,'status':'assumed_not_measured','modes':['nominal','varied']
 
 class EpisodeVariation:
     fields=('geom_rgba','geom_matid','geom_friction','mat_rgba','light_diffuse','light_ambient',
-            'cam_pos','cam_quat','cam_fovy','body_mass','body_inertia')
+            'cam_pos','cam_quat','cam_fovy','cam_intrinsic','body_mass','body_inertia')
 
     def __init__(self, model, camera):
         self.model=model;self.camera=model.camera(camera).id
@@ -43,7 +43,12 @@ class EpisodeVariation:
             m.cam_pos[self.camera]+=translation
             rotation=Rotation.from_quat(m.cam_quat[self.camera][[1,2,3,0]])*Rotation.from_euler('xyz',angles,degrees=True)
             m.cam_quat[self.camera]=rotation.as_quat()[[3,0,1,2]]
-            fov=float(rng.uniform(-1,1));m.cam_fovy[self.camera]+=fov
+            fov=float(rng.uniform(-1,1));old_fovy=m.cam_fovy[self.camera];m.cam_fovy[self.camera]+=fov
+            if m.cam_sensorsize[self.camera,1]>0:
+                # Intrinsic cameras ignore fovy during rendering; vary their
+                # focal lengths too, keeping the measured principal point.
+                scale=np.tan(np.deg2rad(old_fovy)/2)/np.tan(np.deg2rad(old_fovy+fov)/2)
+                m.cam_intrinsic[self.camera,:2]*=scale
             self.realization.update(floor=RECIPE['floor'][floor],light_multiplier=light,
                 camera_translation_m=translation.tolist(),camera_rotation_degrees=angles.tolist(),camera_fov_delta_degrees=fov)
             cube=mujoco.mj_name2id(m,mujoco.mjtObj.mjOBJ_BODY,'task_cube')

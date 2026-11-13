@@ -32,7 +32,7 @@ def model_xml(robot):
     ET.SubElement(base,'joint',name='y',type='slide',axis='0 1 0',damping='.1',limited='false')
     ET.SubElement(base,'joint',name='yaw',type='hinge',axis='0 0 1',damping='.03',limited='false')
     if tank:
-        from .tank_model import native_tree as tank_tree
+        from .tank_model import native_tree as tank_tree, camera_attributes
         native,provenance=tank_tree()
         root.append(native.find('asset'))
         for body in native.find('worldbody'):base.append(body)
@@ -46,10 +46,10 @@ def model_xml(robot):
         ET.SubElement(base,'inertial',pos='0 0 .09',mass=str(mass),
             diaginertia=f'{mass*(.195**2+.182**2)/12} {mass*(.278**2+.182**2)/12} {mass*(.278**2+.195**2)/12}')
         camera_body=base.find(".//body[@name='depth_cam']")
-        ET.SubElement(camera_body,'camera',name='front_cam',pos='0 0 0',xyaxes='0 -1 0 0 0 1',fovy='65')
+        ET.SubElement(camera_body,'camera',name='front_cam',pos='0 0 0',xyaxes='0 -1 0 0 0 1',**camera_attributes())
         provenance['published_mass_kg']=mass
         provenance['source_url']='https://github.com/'+provenance['source_repository']+'/tree/'+provenance['revision']
-        provenance['unknown']=['installed CAD match','assembled mass/inertia','optical calibration','drive response/slip']
+        provenance['unknown']=['assembled mass/inertia','optical extrinsics and distortion','drive response/slip']
     else:
         from .manufacturer import native_tree
         from .vendor_rosmaster.arm_model import DCW2_ON_ARM4,REP103_OPTICAL
@@ -95,7 +95,7 @@ class MobileDock(SO101PickPlace):
             'xml_sha256':hashlib.sha256(xml.encode()).hexdigest(),'calibration':'assumed_uncalibrated',
             'manufacturer':provenance,
             'geometry_source':provenance['source'],
-            'assumed':['traction/slip','command delay','gains','camera FOV','Tank whole-body box inertia and optical camera center'],
+            'assumed':['traction/slip','command delay','gains','Tank whole-body box inertia and optical camera center'],
             'limitations':'Planar force-driven chassis, fixed wheels/tracks, no wheel-floor friction because vertical DOF is constrained; object collisions retained; not a calibrated physical twin; geometry alone does not verify odometry'}
         self.images=images;self.render_mode=render_mode;self.renderer=None
         self.dt=1/self.fps;self.deadline_s=deadline_s

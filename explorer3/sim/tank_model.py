@@ -9,7 +9,30 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 import mujoco
 import numpy as np
-from explorer3.paths import DATA
+from explorer3.paths import DATA, ROOT
+
+
+def camera_attributes():
+    """Factory ROS CameraInfo pinhole projection, not an invented sensor size.
+
+    Sensor dimensions use an arbitrary common 10um pixel scale; only the
+    dimensionless ratios affect projection. MuJoCo offsets have the opposite
+    sign to top-left pixel coordinates. Lens distortion is not rendered.
+    """
+    info=json.loads((ROOT/'configs/tank-hardware-evidence.json').read_text())['installed_camera']['intrinsics']
+    width,height=info['width'],info['height'];k=np.asarray(info['k']).reshape(3,3)
+    if width<=0 or height<=0 or not np.isfinite(k).all() or k[0,0]<=0 or k[1,1]<=0:
+        raise ValueError('Invalid measured Tank camera intrinsics')
+    return {'resolution':f'{width} {height}','sensorsize':f'{width*1e-5} {height*1e-5}',
+            'focalpixel':f'{k[0,0]} {k[1,1]}',
+            'principalpixel':f'{width/2-k[0,2]} {height/2-k[1,2]}'}
+
+
+def installed_geometry_matches(entries):
+    report=json.loads((ROOT/'docs/tank-stage-c-readonly.json').read_text())
+    expected={f['path']:f['installed_sha256'] for f in report['geometry']['files']}
+    current={f['path']:f['sha256'] for f in entries}
+    return bool(current) and current==expected
 
 
 def compatible_mesh(path):
@@ -59,8 +82,8 @@ def native_tree():
     evidence.update(source='MentorPi T1 package CAD from pinned public mirror',
         geometry='original STL chassis/tracks, board, depth camera and lidar; original fixed URDF transforms',
         original_cad_mass_kg=sum(float(x.get('mass')) for x in result.findall('.//inertial')),
-        calibration='geometry_unverified_against_installed_robot; dynamics_uncalibrated',
-        camera='URDF depth_cam mount; optical center and FOV still require calibration',
+        calibration=('geometry_matches_installed_package' if installed_geometry_matches(evidence['files']) else 'geometry_unverified_against_installed_robot')+'; dynamics_uncalibrated',
+        camera='URDF depth_cam mount, measured ROS pinhole intrinsics; optical extrinsics and lens distortion remain unverified',
         adaptations=['native MuJoCo URDF import','one rigid planar chassis; tracks represented by chassis CAD mesh',
                      'published complete-kit mass used for surrogate dynamics, CAD partial inertias not a whole-robot measurement'])
     return result,evidence

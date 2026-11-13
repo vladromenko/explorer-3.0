@@ -72,7 +72,7 @@ def main():
     if job_file.exists():
         remote=json.loads(job_file.read_text())['path']
     else:
-        remote='/home/pi/explorer3/diagnostics/startup-'+str(uuid.uuid4())+'.jsonl'
+        remote='/home/pi/.local/state/explorer3/diagnostics/startup-'+str(uuid.uuid4())+'.jsonl'
         job_file.write_text(json.dumps({'path':remote})+'\n')
         try:
             r=subprocess.run(SSH+[detached_command(source,remote)],capture_output=True,text=True,timeout=8)

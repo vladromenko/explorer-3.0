@@ -268,7 +268,7 @@ def install(stop_real,css,jobs):
                         camera_title.set_text('Камера спереди' if mobile else 'Камера руки')
                         task_help.set_text('Подъехать к видимой цели → остановиться в зелёной зоне.' if mobile else 'Захватить кубик → положить в коробку → отпустить → отвести руку.')
                         success_help.set_text('Успех: положение, направление и малая скорость сохраняются в зоне 0,5 секунды.' if mobile else 'Кубик отпущен и неподвижен в коробке 0,5 секунды.')
-                        model_note.set_text('MentorPi T1: исходные STL и URDF из публичной копии пакета; сверка с установленным роботом и калибровка впереди.' if state['profile']=='tank_dock_sim' else
+                        model_note.set_text('MentorPi T1: геометрия совпадает с установленной моделью; параметры камеры измерены. Калибровка движения ещё впереди.' if state['profile']=='tank_dock_sim' else
                             'ROSMASTER M3Pro: исходная геометрия Yahboom, перенесённая из заводской модели.' if state['profile'].startswith('rosmaster') else
                             'SO-101: исходная модель MuJoCo Menagerie с контактной геометрией захвата.')
                     if state['episode']!=last_episode:

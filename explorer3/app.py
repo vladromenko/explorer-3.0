@@ -516,7 +516,7 @@ def index():
         mode_label.set_text((session.error or phase_text) if control.robot=='tank' else control.mode+' · '+(session.error or phase_text))
         tank_motion_state.set_text((session.error or phase_text).removeprefix('RuntimeError: '))
         tank_motion_state.classes('text-red-4' if session.error else 'text-green-4',remove='text-red-4 text-green-4')
-        if control.robot=='tank' and (DATA/'validation/tank-motion-incident.json').exists():
+        if control.robot=='tank' and not tank_bench and (DATA/'validation/tank-motion-incident.json').exists():
             tank_motion_state.set_text('Tank заблокирован после отказа STOP. Соединение с моторной платой пропало; закрытие программы не подтверждает остановку гусениц. Повторный запуск запрещён до проверки причины.')
             tank_motion_state.classes('text-red-4',remove='text-green-4')
     def refresh_preview():

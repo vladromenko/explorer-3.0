@@ -16,9 +16,13 @@
       "Memory: 7896288K/8384512K available (13376K kernel code, 2222K rwdata, 4288K rodata, 5056K init, 1213K bss, 160544K reserved, 327680K cma-reserved)",
       "smp: Brought up 1 node, 4 CPUs"
     ],
-    "live_rechecked": false,
+    "live_rechecked": true,
     "available_memory_now": null,
-    "thermal_headroom_now": null
+    "thermal_headroom_now": null,
+    "live_rechecked_date": "2026-11-14",
+    "available_memory_at_probe_kib": 6503424,
+    "temperature_at_probe_c": 57.1,
+    "live_evidence": "docs/tank-stage-c-readonly.json"
   },
   "manufacturer_specs": {
     "dimensions_m": [
@@ -43,17 +47,56 @@
       640,
       3
     ],
-    "evidence": "docs/TANK.md and validation/tank-handoff-before.json"
+    "evidence": "docs/TANK.md and validation/tank-handoff-before.json",
+    "intrinsics": {
+      "width": 640,
+      "height": 400,
+      "k": [
+        415.288330078125,
+        0.0,
+        318.0754089355469,
+        0.0,
+        416.09375,
+        188.47833251953125,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "p": [
+        415.288330078125,
+        0.0,
+        318.0754089355469,
+        0.0,
+        0.0,
+        416.09375,
+        188.47833251953125,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "d": [
+        0.011891799978911877,
+        -0.05691109970211983,
+        6.319559906842187e-05,
+        -0.000561447988729924,
+        0.03300280123949051
+      ],
+      "distortion_model": "plumb_bob",
+      "frame_id": "rgb_camera_link"
+    },
+    "live_evidence": "docs/tank-stage-c-readonly.json"
   },
   "unknown": [
-    "current available RAM and temperature",
     "actual total mass with user accessories",
     "track contact/slip coefficients",
     "motor torque and inertia",
-    "sensor extrinsics/intrinsics not yet copied",
-    "installed lidar hardware revision"
+    "optical camera extrinsics relative to CAD mount",
+    "installed lidar hardware revision",
+    "controller-side timeout under USB loss"
   ],
-  "simulation_model_status": "Official T1 URDF described in docs but missing from public T1 branch; do not substitute M1/A1 meshes",
+  "simulation_model_status": "All 10 cached CAD files match installed Tank package by SHA256; dynamics still uncalibrated",
   "compute_placement": {
     "Homebrain": [
       "simulation",

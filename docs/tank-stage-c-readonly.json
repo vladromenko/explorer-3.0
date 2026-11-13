@@ -1,0 +1,227 @@
+{
+  "date": "2026-11-14",
+  "boot_id": "d8cb8a25-2653-4e01-a5aa-585d57f71118",
+  "scope": "stationary factory ROS subscribers; no hardware ownership or motor commands",
+  "geometry": {
+    "status": "all_10_files_match_installed_package",
+    "installed_root": "/home/ubuntu/ros2_ws/src/simulations/mentorpi_description",
+    "files": [
+      {
+        "path": "package.xml",
+        "cached_sha256": "cb53570185333c8b1992aa526d7ee363b37c689625e6fc16d12c025c94436ef2",
+        "installed_sha256": "cb53570185333c8b1992aa526d7ee363b37c689625e6fc16d12c025c94436ef2",
+        "match": true
+      },
+      {
+        "path": "urdf/tank.xacro",
+        "cached_sha256": "0a07b3fd9afb4ffc9b3501db9ab70f485c4747a977c8990815f2f770ba064db8",
+        "installed_sha256": "0a07b3fd9afb4ffc9b3501db9ab70f485c4747a977c8990815f2f770ba064db8",
+        "match": true
+      },
+      {
+        "path": "urdf/depth_cam.xacro",
+        "cached_sha256": "bf6efcf72ee4db4207c873fed74e42cac7b03ac3e3a5a4c2877f6d502fdc0261",
+        "installed_sha256": "bf6efcf72ee4db4207c873fed74e42cac7b03ac3e3a5a4c2877f6d502fdc0261",
+        "match": true
+      },
+      {
+        "path": "urdf/inertial_matrix.xacro",
+        "cached_sha256": "a6e9c97cf27bdb88b19e5281dbb0bda956ed14394c772a15903abea8c112fd26",
+        "installed_sha256": "a6e9c97cf27bdb88b19e5281dbb0bda956ed14394c772a15903abea8c112fd26",
+        "match": true
+      },
+      {
+        "path": "meshes/tank/base_chaais.STL",
+        "cached_sha256": "60d1fb8481eb79564efc38fb923d520cf87098e19cd980e5bc3b63ea0fd9dd5b",
+        "installed_sha256": "60d1fb8481eb79564efc38fb923d520cf87098e19cd980e5bc3b63ea0fd9dd5b",
+        "match": true
+      },
+      {
+        "path": "meshes/tank/body_board.STL",
+        "cached_sha256": "2fce77e59017da9aec10c029cd355bd3af0169b7ba20fe777db597e6df9825cd",
+        "installed_sha256": "2fce77e59017da9aec10c029cd355bd3af0169b7ba20fe777db597e6df9825cd",
+        "match": true
+      },
+      {
+        "path": "meshes/tank/cam_Link.STL",
+        "cached_sha256": "4bf9e75f7d7070db2263b978cbb34b159f981f6db57a50a64b64547c8835292e",
+        "installed_sha256": "4bf9e75f7d7070db2263b978cbb34b159f981f6db57a50a64b64547c8835292e",
+        "match": true
+      },
+      {
+        "path": "meshes/tank/cam_link_asc.STL",
+        "cached_sha256": "4bf9e75f7d7070db2263b978cbb34b159f981f6db57a50a64b64547c8835292e",
+        "installed_sha256": "4bf9e75f7d7070db2263b978cbb34b159f981f6db57a50a64b64547c8835292e",
+        "match": true
+      },
+      {
+        "path": "meshes/tank/depth_cam.STL",
+        "cached_sha256": "1c66ad024d2beb67f935bff8447a7087ca59ed4656f3b7a1f84959892df92fb3",
+        "installed_sha256": "1c66ad024d2beb67f935bff8447a7087ca59ed4656f3b7a1f84959892df92fb3",
+        "match": true
+      },
+      {
+        "path": "meshes/tank/lidar_Link.STL",
+        "cached_sha256": "93c5329be97117f2b2f0196586627730e48798565415bcdcd7be4799ffb7047d",
+        "installed_sha256": "93c5329be97117f2b2f0196586627730e48798565415bcdcd7be4799ffb7047d",
+        "match": true
+      }
+    ]
+  },
+  "telemetry": {
+    "read_only": true,
+    "motion_commands_sent": 0,
+    "duration_s": 15.007495117000019,
+    "streams": {
+      "image": {
+        "samples": 114,
+        "hz": 8.637534509341005,
+        "max_gap_s": 0.57636715000001,
+        "last": {
+          "width": 640,
+          "height": 400,
+          "encoding": "bgr8",
+          "frame_id": "rgb_camera_link"
+        },
+        "publishers": 1
+      },
+      "camera_info": {
+        "samples": 157,
+        "hz": 11.768377852320409,
+        "max_gap_s": 0.3632244789999959,
+        "last": {
+          "width": 640,
+          "height": 400,
+          "k": [
+            415.288330078125,
+            0.0,
+            318.0754089355469,
+            0.0,
+            416.09375,
+            188.47833251953125,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "p": [
+            415.288330078125,
+            0.0,
+            318.0754089355469,
+            0.0,
+            0.0,
+            416.09375,
+            188.47833251953125,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "d": [
+            0.011891799978911877,
+            -0.05691109970211983,
+            6.319559906842187e-05,
+            -0.000561447988729924,
+            0.03300280123949051
+          ],
+          "distortion_model": "plumb_bob",
+          "frame_id": "rgb_camera_link"
+        },
+        "publishers": 1
+      },
+      "imu": {
+        "samples": 680,
+        "hz": 46.12468766362051,
+        "max_gap_s": 0.3433261939999852,
+        "last": {
+          "angular_velocity_rad_s": [
+            0.03906537739815433,
+            -0.006272276999354622,
+            0.000818123086872342
+          ],
+          "linear_acceleration_m_s2": [
+            -0.5446808776855468,
+            0.8164227661132812,
+            10.226832391357421
+          ],
+          "frame_id": "imu_link"
+        },
+        "publishers": 1
+      },
+      "battery": {
+        "samples": 14,
+        "hz": 0.9518390032149703,
+        "max_gap_s": 1.0678268070000172,
+        "last": {
+          "voltage": 7.029
+        },
+        "publishers": 1
+      },
+      "lidar": {
+        "samples": 128,
+        "hz": 10.052161302957128,
+        "max_gap_s": 0.10668510699997569,
+        "last": {
+          "ranges": 449,
+          "finite_ranges": 449,
+          "range_min": 0.05000000074505806,
+          "range_max": 12.0,
+          "frame_id": "lidar_frame"
+        },
+        "publishers": 1
+      },
+      "velocity_command": {
+        "samples": 0,
+        "hz": null,
+        "max_gap_s": null,
+        "last": null,
+        "publishers": 5
+      }
+    },
+    "battery_range_v": [
+      7.012,
+      7.031
+    ],
+    "nonzero_commands_observed": 0,
+    "wheel_feedback": "unavailable_in_verified_sdk",
+    "odometry": "command_integral_excluded_from_measurements"
+  },
+  "power": {
+    "operator_report": "Charging cable prevented charging; after fixing cable no repeated beep",
+    "motor_battery_charging_during_measurement": true,
+    "discharge_voltage_unverified": true,
+    "pi_throttled": "0x0",
+    "pi_temperature_c": 57.1,
+    "mem_total_kib": 8245728,
+    "mem_available_kib": 6503424
+  },
+  "usb": {
+    "vid_pid": "1a86:55d4",
+    "serial": "5B22017409",
+    "disconnects_observed_this_boot": 0,
+    "previous_incident_resolved": false
+  },
+  "independent_stop": {
+    "status": "unverified",
+    "limitation": "No documented controller-side timeout found; Linux zero writes cannot stop motors through disconnected serial",
+    "installed_sdk_configurable_motor_timeout_found": false,
+    "manufacturer_warning_url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/3.motion_control_courses.html#tank-chassis-speed-control",
+    "manufacturer_warning": "Closing the control program alone may not stop the chassis; send zero velocity first."
+  },
+  "deployment": {
+    "native_driver_sha256": "526e69d33ff34a8de1b042b09510632b301602f38384aa0c3e5a435783dbb435",
+    "simulated_transport_stop_pass": true,
+    "hardware_stop_test": false,
+    "simulated_transport_cases_passed": [
+      "stop",
+      "timeout",
+      "unsolicited"
+    ]
+  },
+  "training_started": false,
+  "software_checks": {
+    "sim_projection_variation_fleet_branching_tests": 11,
+    "tank_runtime_probe_gate_tests": 28,
+    "training_started": false
+  }
+}

@@ -84,7 +84,9 @@ print(json.dumps(result))'''
 
 def observe_host(source,seconds):
     print(json.dumps({'kind':'host','data':host_snapshot()}),flush=True)
-    command=['docker','exec','-i','MentorPi','bash','-lc',
+    # Match the running ROS user's Fast DDS shared-memory permissions. Root can
+    # discover topics yet receive no samples from ubuntu-owned participants.
+    command=['docker','exec','-i','-u','ubuntu','MentorPi','bash','--noprofile','--norc','-c',
              'source /opt/ros/humble/setup.bash && source /home/ubuntu/ros2_ws/install/setup.bash && exec python3 - --ros --seconds '+str(seconds)]
     result=run(command,timeout=seconds+12,input=source)
     if result.get('returncode')==0:

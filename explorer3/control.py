@@ -25,10 +25,10 @@ class Control:
         self.maintenance=False
 
     def authorized(self):
-        if self.robot=='tank' and bench_authorized(DATA/'configs'):
-            return True
         if not local_work.hardware_allowed(self.robot):
             return False
+        if self.robot=='tank' and bench_authorized(DATA/'configs'):
+            return True
         if self.robot=='so101' and (DATA/'configs/so101-external-owner.json').exists():
             return False
         if self.robot=='tank' and (DATA/'validation/tank-motion-incident.json').exists():

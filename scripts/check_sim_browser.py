@@ -37,8 +37,9 @@ async def main():
             await frame.locator('canvas').first.wait_for(state='visible',timeout=60000)
             assert (await page.locator('iframe').bounding_box())['width']>500
             await page.get_by_role('button',name='Сбросить сцену',exact=True).click()
-            await page.get_by_role('combobox').last.click()
-            await page.get_by_role('option',name='Вариации для обучения',exact=True).click()
+            await page.get_by_role('combobox').nth(1).click()
+            await page.get_by_role('combobox').nth(1).press('End')
+            await page.get_by_role('combobox').nth(1).press('Enter')
             await page.wait_for_timeout(800)
             varied_response=await context.request.get('http://127.0.0.1:8036/')
             assert (await varied_response.json())['task']['variation']['mode']=='varied'
@@ -85,8 +86,9 @@ async def main():
             await page.get_by_role('button',name='Закончить запись',exact=True).click()
             await page.get_by_text('Пауза · запись сохранена:',exact=False).wait_for(timeout=60000)
             await page.get_by_role('button',name='Сбросить сцену',exact=True).click()
-            await page.get_by_role('combobox').last.click()
-            await page.get_by_role('option',name='Базовая сцена · сетка 10 см',exact=True).click()
+            await page.get_by_role('combobox').nth(1).click()
+            await page.get_by_role('combobox').nth(1).press('Home')
+            await page.get_by_role('combobox').nth(1).press('Enter')
             await page.wait_for_timeout(1500)
             await page.screenshot(path=str(ARTIFACTS/'scene.png'),full_page=True)
             if errors or external:raise AssertionError({'errors':errors,'external':external})

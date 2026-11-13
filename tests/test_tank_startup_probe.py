@@ -30,10 +30,11 @@ def test_probe_does_not_execute_reference_text_as_shell():
 
 def test_ros_probe_is_subscriber_only():
     import ast
-    tree=ast.parse((ROOT/'agents/tank/startup_probe.py').read_text())
-    methods=[n.func.attr for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute)]
-    assert 'create_subscription' in methods
-    assert not set(methods)&{'create_publisher','publish','Serial','set_buzzer','set_motor_speed'}
+    for filename in ('startup_probe.py','telemetry_probe.py'):
+        tree=ast.parse((ROOT/'agents/tank'/filename).read_text())
+        methods=[n.func.attr for n in ast.walk(tree) if isinstance(n,ast.Call) and isinstance(n.func,ast.Attribute)]
+        assert 'create_subscription' in methods
+        assert not set(methods)&{'create_publisher','publish','Serial','set_buzzer','set_motor_speed'}
 
 
 @pytest.mark.parametrize('samples',[0,4])
