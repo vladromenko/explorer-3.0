@@ -60,7 +60,7 @@ def model_xml(robot):
         wrist=base.find(".//body[@name='arm4']")
         rotation=Rotation.from_euler('xyz',DCW2_ON_ARM4[1]).as_matrix() @ REP103_OPTICAL @ np.diag([1,-1,-1])
         ET.SubElement(wrist,'camera',name='front_cam',pos=' '.join(str(x) for x in DCW2_ON_ARM4[0]),
-            quat=' '.join(str(x) for x in Rotation.from_matrix(rotation).as_quat()[[3,0,1,2]]),fovy='60')
+            quat=' '.join(str(x) for x in Rotation.from_matrix(rotation).as_quat()[[3,0,1,2]]),fovy='53.06')  # ROSMASTER Orbbec colour camera, measured 2026-11-13 from /camera/color/camera_info: fy=480.71 px at 480 px height -> 2*atan(240/480.71)=53.06 deg
         mass=sum(float(x.get('mass')) for x in native.findall('.//inertial'))
     # The scene goal is shared by both chassis models.
     ET.SubElement(world,'geom',name='dock_zone',type='cylinder',pos='.9 0 .002',size='.09 .002',

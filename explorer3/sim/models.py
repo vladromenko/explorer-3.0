@@ -87,7 +87,7 @@ def rosmaster_arm_model():
     wrist=root.find(".//body[@name='arm4']")
     rotation=Rotation.from_euler('xyz',DCW2_ON_ARM4[1]).as_matrix() @ REP103_OPTICAL @ np.diag([1,-1,-1])
     ET.SubElement(wrist,'camera',name='front_cam',pos=numbers(DCW2_ON_ARM4[0]),
-        quat=numbers(Rotation.from_matrix(rotation).as_quat()[[3,0,1,2]]),fovy='60')
+        quat=numbers(Rotation.from_matrix(rotation).as_quat()[[3,0,1,2]]),fovy='53.06')  # ROSMASTER Orbbec colour camera, measured 2026-11-13 from /camera/color/camera_info: fy=480.71 px at 480 px height -> 2*atan(240/480.71)=53.06 deg
     ET.SubElement(root.find(".//body[@name='arm5']"),'site',name='gripperframe',pos=root.find(".//body[@name='Gripping']").get('pos'),size='.003',rgba='1 0 0 1')
     actuators=ET.SubElement(root,'actuator')
     for i,joint in enumerate(ARM_JOINTS):
