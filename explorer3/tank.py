@@ -23,8 +23,9 @@ def require_response(response, operation):
     response.raise_for_status()
 
 class TankSource:
-    def __init__(self,control):
+    def __init__(self,control,mode='manual'):
         self.control=control
+        self.mode=mode
         self.http=client()
         self.lease=None
         self.previous_camera=None
@@ -44,7 +45,7 @@ class TankSource:
             'clock_mapping_kind':'midpoint_estimate_not_shared_clock','physical_skill_verified':False,
             'state_kind':'previous_transmitted_command_estimate','wheel_feedback':'unavailable',
             'motor_acknowledgement':False,'odometry_integral_excluded':True}
-        r=self.http.post('/session',timeout=20);require_response(r,'запуск');self.lease=r.json()['lease']
+        r=self.http.post('/session',json={'mode':self.mode},timeout=20);require_response(r,'запуск');self.lease=r.json()['lease']
         if stop():raise InterruptedError('Operator stopped during preparation')
         return self.provenance
 
@@ -84,12 +85,13 @@ class TankSource:
         index=self.sequence;self.sequence+=1
         a=time.monotonic_ns()
         self.provenance['last_command_attempt']={'sequence':index,'requested':list(requested),'send_start_ns':a,'accepted':'unknown'}
-        try:response=self.http.post('/command',json={'lease':self.lease,'sequence':index,'v':requested[0],'w':requested[1]})
+        try:response=self.http.post('/command',json={'lease':self.lease,'sequence':index,'v':requested[0],'w':requested[1]},timeout=.5)
         except httpx.TimeoutException as exc:
             raise RuntimeError('Tank: нет ответа на команду по Wi-Fi; управление остановлено') from exc
         b=time.monotonic_ns();require_response(response,'команда');sent=response.json()
         self.provenance['last_command_attempt']['accepted']=True
         return {'action':sent['action'],'requested_action':list(requested),
+                'motion_paused':sent.get('motion_paused',False),'pause_reason':sent.get('pause_reason'),
                 'action_send_start_ns':a,'action_send_end_ns':b,'action_acknowledged':False,
                 'agent_accepted_command':True,'robot_serial_send_start_ns':sent['send_start_ns'],
                 'robot_serial_send_end_ns':sent['send_end_ns'],'motor_targets_rps':sent['motor_targets_rps']}
@@ -99,7 +101,8 @@ class TankSource:
         observation=self.observe()
         if stop():raise InterruptedError('STOP before command')
         action=self.send(self.control.base_action(),observation)
-        return {**observation,**action,'frame_id':index,'teleoperation_phase':'following'}
+        if action['motion_paused']:self.control.clear_base_inputs()
+        return {**observation,**action,'frame_id':index,'teleoperation_phase':'paused' if action['motion_paused'] else 'following'}
 
     def plan_action(self,provider,observation):
         if not provider.needs_inference():return provider.next(observation)

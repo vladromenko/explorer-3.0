@@ -57,6 +57,32 @@ class TankGateTests(unittest.TestCase):
         finally:
             h.done.set();h.watchdog.join(timeout=1)
 
+    def test_camera_gap_stops_motion_and_requires_neutral_before_manual_resume(self):
+        class Board:
+            def __init__(self):self.sent=[]
+            def status(self):return {'battery_voltage':8.,'battery_received_ns':time.monotonic_ns(),'imu':None,'imu_received_ns':None,'latched':False}
+            def command(self,v,w):self.sent.append([v,w]);return {'action':[v,w]}
+            def stop(self):self.sent.append('STOP')
+        for mode in ('manual','policy'):
+            with self.subTest(mode=mode):
+                h=Hardware()
+                try:
+                    h.board=Board();h.mode=mode;h.armed=True;h.lease='operator';h.expires=time.monotonic()+3
+                    h.image_info={'received_ns':time.monotonic_ns()-600_000_000}
+                    deadline=time.monotonic()+1
+                    while not h.board.sent and time.monotonic()<deadline:time.sleep(.01)
+                    if mode=='policy':
+                        self.assertFalse(h.armed);self.assertEqual(h.board.sent,['STOP'])
+                    else:
+                        self.assertTrue(h.armed);self.assertTrue(h.motion_paused)
+                        self.assertEqual(h.board.sent,[[0.,0.]])
+                        h.image_info={'received_ns':time.monotonic_ns()}
+                        self.assertEqual(h.command('operator',1,.2,.5)['action'],[0.,0.])
+                        self.assertTrue(h.motion_paused)
+                        h.command('operator',2,0.,0.);self.assertFalse(h.motion_paused)
+                        self.assertEqual(h.command('operator',3,.2,.5)['action'],[.2,.5])
+                finally:h.done.set();h.watchdog.join(timeout=1)
+
     def test_key_release_switch_and_expiration_clear_motion(self):
         from unittest.mock import patch
         from explorer3.control import Control

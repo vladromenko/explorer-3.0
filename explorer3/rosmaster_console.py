@@ -126,6 +126,10 @@ async def websocket(socket:WebSocket):
                     elif action=='restore':
                         await asyncio.to_thread(operator.stop,'Возврат прежнего управления')
                         await asyncio.to_thread(request,'/restore',{},45);state['notice']='Прежнее управление восстановлено'
+                    elif action=='prepare' and operator.owner==owner and operator.lease:
+                        # Already enabled: raise the arm with a preset instead of a new session.
+                        await asyncio.to_thread(request,'/preset',{'lease':operator.lease,'name':'up'})
+                        state['notice']='Рука выпрямляется'
                     elif action in ('enable','prepare'):
                         # Connect automatically: start the inert agent and take serial/camera if needed.
                         health=await asyncio.to_thread(lambda:(ensure_agent(),request('/health'))[1])

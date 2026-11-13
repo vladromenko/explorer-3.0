@@ -10,6 +10,7 @@ import subprocess
 import threading
 import time
 import uuid
+from typing import Literal
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
@@ -44,6 +45,8 @@ class Hardware:
         self.last_sequence=-1
         self.last_action=[0.,0.]
         self.reason='Not started'
+        self.mode='manual'
+        self.motion_paused=False
         self.image=None
         self.image_info=None
         self.frame_sequence=0
@@ -60,6 +63,7 @@ class Hardware:
         with self.lock:
             return {'robot':'tank','armed':self.armed,'hardware_open':self.board is not None,
                     'bench_mode':bench_authorized(ROOT),
+                    'motion_paused':self.motion_paused,'mode':self.mode,
                     'reason':self.reason,'action':self.last_action,'motor_acknowledged':False,
                     'physical_stop_confirmed':False,'wheel_feedback':'unavailable','odometry':'not_used_command_integral_is_not_measurement',
                     'monotonic_ns':time.monotonic_ns(),'camera':self.image_info,
@@ -99,7 +103,12 @@ class Hardware:
                                 self.stop('Low battery: below existing controller threshold 6.9 V')
                             elif self.image_info is None or now-self.image_info['received_ns']>500_000_000:
                                 age=None if self.image_info is None else round((now-self.image_info['received_ns'])/1e6)
-                                self.stop(f'Camera stale: {age} ms; callback {self.camera_timing}')
+                                reason=f'Camera stale: {age} ms'
+                                if self.mode=='manual':
+                                    if not self.motion_paused:
+                                        self.motion_paused=True;self.reason=reason
+                                        self.last_action=self.board.command(0.,0.)['action']
+                                else:self.stop(reason)
                     except Exception as exc:
                         self.armed=False
                         self.lease=None
@@ -155,17 +164,19 @@ class Hardware:
         finally:
             log.close()
 
-    def start(self):
+    def start(self,mode='manual'):
+        if mode not in {'manual','policy','replay'}:raise ValueError('Unknown control mode')
         if not self.lifecycle.acquire(blocking=False):
             raise RuntimeError('Another lifecycle operation is in progress')
         try:
             self.cancel_start.clear()
-            return self._start()
+            return self._start(mode)
         finally:
             self.lifecycle.release()
 
-    def _start(self):
+    def _start(self,mode):
         require_motion_permission(ROOT)
+        if mode!='manual' and bench_authorized(ROOT):raise PermissionError('Bench mode allows only manual control')
         if not (ROOT/'physical-block-authorized.json').exists():
             raise PermissionError('Tank physical block has not been authorized')
         marker=ROOT/'handoff-active.json'
@@ -201,6 +212,7 @@ class Hardware:
                 self.expires=time.monotonic()+.5
                 self.armed=True
                 self.reason=None
+                self.mode=mode;self.motion_paused=False
                 return {'lease':self.lease,**self.status()}
         except Exception:
             self.close()
@@ -216,9 +228,15 @@ class Hardware:
             if not all(math.isfinite(value) for value in (v,w)):
                 raise ValueError('Nonfinite command')
             v,w=limited_command(ROOT,v,w)
+            if self.motion_paused:
+                fresh=self.image_info is not None and time.monotonic_ns()-self.image_info['received_ns']<=500_000_000
+                if fresh and v==0. and w==0.:
+                    self.motion_paused=False;self.reason=None
+                else:v,w=0.,0.
             sent=self.board.command(v,w)
             self.last_action=sent['action'];self.last_sequence=sequence;self.expires=now+.35
-            return {**sent,'sequence':sequence,'accepted_by_agent':True,'motor_acknowledged':False}
+            return {**sent,'sequence':sequence,'accepted_by_agent':True,'motor_acknowledged':False,
+                    'motion_paused':self.motion_paused,'pause_reason':self.reason if self.motion_paused else None}
 
     def close(self):
         self.cancel_start.set()
@@ -281,6 +299,9 @@ class Command(BaseModel):
     v:float
     w:float
 
+class SessionStart(BaseModel):
+    mode:Literal['manual','policy','replay']='manual'
+
 @app.get('/health')
 def health():return hardware.status()
 @app.get('/frame.jpg')
@@ -289,8 +310,8 @@ def image():
         if hardware.image is None:raise HTTPException(503,'No camera frame')
         return Response(hardware.image,media_type='image/jpeg',headers={'X-Explorer-Camera':json.dumps(hardware.image_info),'X-Explorer-Observation':json.dumps(hardware.status()),'Cache-Control':'no-store'})
 @app.post('/session')
-def start():
-    try:return hardware.start()
+def start(value:SessionStart|None=None):
+    try:return hardware.start(value.mode if value else 'manual')
     except (PermissionError,RuntimeError) as exc:raise HTTPException(409,str(exc)) from exc
 @app.post('/command')
 def command(value:Command):

@@ -437,7 +437,7 @@ class Runtime:
                     path_ok=target is not None and all(self.io.arm.collision_free(
                         [m+(t-m)*f for m,t in zip(measured,target)],self.cfg['arm']['floor_margin_m']) for f in (.25,.5,.75,1.))
                     if target is not None and not path_ok:
-                        self.controls.mirror.blocked='поза Leader недостижима без столкновения — измените позу Leader'
+                        self.controls.mirror.blocked='поднимите Leader в рабочую позу — рука подстроится, как только поза станет достижимой'
                     elif target is not None and max(abs(a-b) for a,b in zip(target,measured))>4:
                         # First bring the arm to the Leader's pose, then start following (see prepare_step).
                         self.io.stop_base();self.begin_pose(target,measured,time.monotonic());self.mirror_align=True
@@ -464,7 +464,7 @@ class Runtime:
         with self.lock:
             if not self.lease or not secrets.compare_digest(lease,self.lease) or not self.armed:raise PermissionError('Сначала включите управление')
             if self.profile not in {'rosmaster_manual','rosmaster_pick_place'}:raise PermissionError('Нужен профиль руки')
-            poses={'look':'search_pose','near':'near_search_pose','carry':'carry_pose','home':'safe_pose'}
+            poses={'look':'search_pose','near':'near_search_pose','carry':'carry_pose','home':'safe_pose','up':'safe_pose'}
             if name not in poses:raise ValueError('Unknown native preset')
             if self.odom is None or time.monotonic()-self.odom_at>.25 or any(abs(v)>.01 for v in self.odom):raise ValueError('Сначала остановите шасси')
             measured=self.io.measured_arm()
@@ -473,7 +473,7 @@ class Runtime:
             if not self.model.within_limits(target):raise ValueError('Поза вне пределов руки')
             start=np.array(measured,float);end=np.array(target,float)
             for frac in (0.,.25,.5,.75,1.):
-                if not self.model.collision_free(start+(end-start)*frac,self.cfg['arm']['floor_margin_m']):
+                if not self.io.arm.collision_free(start+(end-start)*frac,self.cfg['arm']['floor_margin_m']):
                     raise ValueError('Путь к позе пересекает пол или шасси')
             self.io._arm_cmd=list(measured)
             self.io.stop_base()

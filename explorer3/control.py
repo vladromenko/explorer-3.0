@@ -115,3 +115,7 @@ class Control:
             # Reverse diagonals describe the path of the rear of the chassis:
             # down-left backs into a left arc, using the same native v/omega channels.
             return [BENCH_V*forward,BENCH_W*turn*(-1 if forward<0 else 1)]
+
+    def clear_base_inputs(self):
+        with self.lock:
+            self.base_inputs.clear();self.base_keys.clear()

@@ -93,7 +93,8 @@ class Session:
                 from .tank_handoff import invoke
                 invoke('enter')
                 if self.control.expired():raise InterruptedError('STOP during Tank handoff')
-            source=HardwareSource(teleoperate=not bool(provider)) if name=='so101_pick_place' else TankSource(self.control)
+            source=(HardwareSource(teleoperate=not bool(provider)) if name=='so101_pick_place'
+                    else TankSource(self.control,mode=self.trial_plan['kind'] if self.trial_plan else 'manual'))
             provenance=source.start(explicit_user_start=True,stop=self.control.expired)
             source.begin_episode()
             self.phase='aligning'

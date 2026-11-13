@@ -110,7 +110,7 @@ def index():
     ui.on('operator_blur',lambda:lost('окно потеряло фокус') if control.robot=='tank' else None)
     def drive_key(event):
         value=event.args
-        if session.phase=='following' and control.robot=='tank':
+        if session.phase in {'following','paused'} and control.robot=='tank':
             control.base_key(owner,value['key'],bool(value['pressed']),value.get('source'))
     ui.on('tank_key',drive_key)
     ui.on('operator_stop',lambda:lost('клавиша STOP'))
@@ -439,7 +439,8 @@ def index():
             stage_label.set_text('Этап B · разрешённый физический блок. Движение начинается только явной кнопкой.')
         phases={'idle':'Остановлено','preparing':'Подготовка — пока не двигайте Leader','aligning':'Плавное совмещение — держите Leader неподвижно','following':'Следование — можно двигать Leader','error':'Ошибка','saving':'Сохранение эпизода — дождитесь завершения','trial':'Испытание — действует STOP, исход отмечается оператором'}
         if control.robot=='tank':
-            phases.update(preparing='Подготовка камеры и питания — пока не нажимайте стрелки',aligning='Подготовка',following='Управление готово — можно удерживать стрелки')
+            phases.update(preparing='Подключение камеры и шасси — дождитесь готовности',aligning='Подготовка',following='Управление готово — можно удерживать стрелки',
+                          paused='Видео задерживается — движение остановлено. После появления видео отпустите и снова нажмите стрелку.')
         if control.robot=='tank' and session.phase=='idle':
             phases['idle']='Управление выключено — нажмите «Включить управление»'
         phase_text='Передача управления — дождитесь завершения' if control.maintenance else phases.get(session.phase,session.phase)
