@@ -175,7 +175,7 @@ class Operator:
     # 0.4 s heartbeat and the controller's 240 ms lease remain the hard limits, so one late HTTP
     # reply is retried instead of ending the session.
     INPUT_HOLD_S=.25
-    BROWSER_LOST_S=1.
+    BROWSER_LOST_S=3.  # motion is already zero after INPUT_HOLD_S; background tabs can pause timers ~1 s
     COMMAND_TIMEOUT_S=.25
     COMMAND_LOST_S=.8
 

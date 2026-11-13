@@ -252,13 +252,14 @@ class Runtime:
     # (Leader 0 deg = servo 90, 'neutral' in mirror-original.json) at 1:1, and the Leader gripper's
     # calibrated 0..100 range with 0 = closed (its resting value) mapped to gripper_close..gripper_open.
     DEFAULT_GRIPPER_MAP=[100.,0.]
-    # Measured 2026-11-13: both arms folded at rest against their mechanical stops — Leader shoulder
-    # -103.6 / elbow +96.1 (ends of its calibrated range), ROSMASTER shoulder 137 / elbow -51 — give the
-    # shoulder/elbow pair; the elbow and wrist run opposite to the copied CubeBot signs (rest poses agree
-    # only with -1, matching the operator's 'one joint moved the other way'). Pan/roll use the CubeBot
-    # neutral convention (Leader 0 = servo 90).
+    # Default Leader -> ROSMASTER correspondence (no operator setup). Leader degrees (LeRobot SO-101,
+    # use_degrees) are 0 in the SO-101 calibration 'middle' pose: upper arm vertical, forearm bent 90 deg
+    # forward, wrist in line — consistent with its stowed reading (shoulder -103 lying back, elbow +96
+    # folded flat). ROSMASTER servo 90 = straight up per joint; lower servo = forward (arm model FK).
+    # Hence shoulder/wrist 0 <-> 90 and elbow 0 <-> 0 (bent 90 deg), with the measured directions
+    # (elbow and wrist opposite to the copied CubeBot signs, matching 'one joint moved the other way').
     DEFAULT_SIGN=[1,-1,-1,-1,1]
-    DEFAULT_PAIR={'leader':[0.,-103.6,96.1,0.,0.],'servo':[90.,137.,-51.,90.,90.]}
+    DEFAULT_PAIR={'leader':[0.,0.,0.,0.,0.],'servo':[90.,90.,0.,90.,90.]}
 
     def load_mirror_overrides(self):
         path=self.root/self.MIRROR_OVERRIDES

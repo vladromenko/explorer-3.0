@@ -75,7 +75,7 @@ def telemetry(health,mode,notice):
         'mode':s.get('mode','manual'),'battery':{'soc':None,'minutes_left':None,'volts':s.get('battery_voltage',observation.get('battery_voltage'))},
         'battery_stale':False,'arm':[round(v,1) if v is not None else '?' for v in arm],
         'arm_measured':measured,'tcp':s.get('tcp') or [],'jog_blocked':s.get('arm_blocked'),
-        'mirror':{'on':s.get('mode')=='mirror','blocked':s.get('mirror_blocked') or operator.leader_error,'frames':operator.leader_count,
+        'mirror':{'on':s.get('mode')=='mirror','requested':bool(operator.mirror),'blocked':s.get('mirror_blocked') or operator.leader_error,'frames':operator.leader_count,
                   'leader':'ошибка' if operator.leader_error else 'подключён' if sample else 'не подключён',
                   'age':round(age,2) if age is not None else None,'target':s.get('mirror_target') or []},
         'guard':s.get('guard'),'mission':'не запущена','mission_result':None,
@@ -202,8 +202,12 @@ async def websocket(socket:WebSocket):
                         state['mode']=value['mode']
                         if operator.owner==owner:operator.arm_mode=value['mode']  # switched live, no stop
                         state['notice']='Режим руки: '+('суставы' if value['mode']=='joint' else 'захват XYZ')
-                    elif action=='mirror_toggle':
-                        if operator.mirror:
+                    elif action in ('mirror_on','mirror_off','mirror_toggle'):
+                        # Idempotent on/off: a double click must never switch the mirror on and straight off.
+                        wanted=(not operator.mirror) if action=='mirror_toggle' else action=='mirror_on'
+                        if wanted and operator.mirror and operator.owner==owner:
+                            state['notice']='Зеркало уже включено'
+                        elif not wanted:
                             operator.disable_mirror(owner);state['notice']='Зеркало выключено, ручное управление продолжается'
                         else:
                             if operator.owner!=owner or not operator.lease:

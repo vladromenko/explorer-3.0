@@ -5,7 +5,7 @@
   "operator_confirmed_motion": true,
   "operator_report": "Проверил, гусеницы крутятся, при отпускании останавливаются, STOP работает.",
   "scope": "manual_control_accepted",
-  "browser_loss_physical": "not_checked",
+  "browser_loss_physical": "operator_confirmed",
   "autonomous_skill_verified": false,
   "recording_verified": false,
   "return_to_factory_verified": false,
@@ -22,5 +22,7 @@
       "max": 96.63
     },
     "not_a_task_demonstration": true
-  }
+  },
+  "operator_confirmed_no_auto_resume": true,
+  "browser_loss_report": "Да, остановился и сам не возобновился"
 }

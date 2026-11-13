@@ -58,7 +58,7 @@ def test_browser_pause_holds_zero_then_stops(op):
     start(op);feed(op,.2);time.sleep(.5)
     assert op.lease=='L'
     assert op.agent.packets[-1]['intent']['drive']==[0,0,0]
-    time.sleep(.7)
+    time.sleep(2.8)
     assert op.lease is None and 'heartbeat' in op.error
 
 

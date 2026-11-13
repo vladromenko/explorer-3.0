@@ -54,7 +54,7 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
    <div class="help" style="margin-top:4px">Ограничение: <span id="blocked">—</span></div>
    <div class="row" style="margin-top:8px"><button onclick="send({action:'prepare',observing:true})">Поднять руку</button><button onclick="act('preset','look')">Обзор</button><button onclick="act('preset','home')">Домой</button></div></div>
   <div class="card"><h2>Зеркало: Leader SO-101 → рука</h2>
-   <div class="row"><button class="go" id="mirbtn" onclick="send({action:'mirror_toggle',observing:true})">Включить зеркало</button><span id="mir" class="help">выкл</span></div>
+   <div class="row"><button class="go" id="mirbtn" onclick="send({action:mirrorWanted?'mirror_off':'mirror_on',observing:true})">Включить зеркало</button><span id="mir" class="help">выкл</span></div>
    <div class="help" style="margin-top:6px">Одна кнопка: управление включится само, рука встанет в позу Leader (держите Leader неподвижно), затем повторяет движения. <span id="pairstate"></span></div>
    <details style="margin-top:8px"><summary>Тонкая настройка зеркала (не обязательно)</summary>
     <div class="help" style="margin-top:6px"><b>1. Совпадение поз.</b> Нажмите «Поднять руку» (рука прямо вверх), поставьте Leader в ту же позу (прямо вверх, клешня как у робота), нажмите «Подключить Leader», затем «Запомнить совпадение поз».</div>
@@ -99,6 +99,7 @@ if(window.top!==window){document.querySelector('header').style.display='none';co
 document.addEventListener('pointerdown',()=>window.focus());
 // Fixed-width numbers on one line, so the cards do not jump while values change.
 function fmt(values,digits,width){return (values||[]).map(v=>(typeof v==='number'?v.toFixed(digits):String(v??'—')).padStart(width,'\u2007')).join('')}
+let mirrorWanted=false;
 function connect(){ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/rosmaster/console/ws');
  ws.onopen=()=>{$('link').textContent='связь есть';$('link').style.background='#1f3a2c'};
  ws.onclose=()=>{clearControls();$('link').textContent='нет связи';$('link').style.background='#3a1f1f';setTimeout(connect,1000)};
@@ -120,7 +121,7 @@ function render(s){
   $('gstate').textContent='Leader '+(MC.leader_gripper??'—')+(MC.gripper_map?' · соответствие '+MC.gripper_map.map(v=>(+v).toFixed(0)).join(' → ')+' (открыт → закрыт)':' · относительный (прежний)');}
  const R=s.recording||{};const P=R.pilot||{};const rec=R.phase&&R.phase!=='idle';
  $('recstart').style.display=rec?'none':'flex';$('recout').style.display=rec?'flex':'none';
- $('mirbtn').textContent=s.mirror.on?'Выключить зеркало':'Включить зеркало';$('mirbtn').className=s.mirror.on?'':'go';const pb=$('pilotbar');
+ mirrorWanted=!!(s.mirror.on||s.mirror.requested);$('mirbtn').textContent=mirrorWanted?'Выключить зеркало':'Включить зеркало';$('mirbtn').className=mirrorWanted?'':'go';const pb=$('pilotbar');
  if(R.phase==='recording'&&P.phase==='human'){pb.style.display='block';pb.textContent='ВАША КОРРЕКЦИЯ: управляйте клавишами/джойстиком · осталось '+Math.max(0,Math.round((P.until*1000-Date.now())/1000))+' с · затем «Коррекция готова»';}
  else if(R.phase==='recording'&&P.phase==='decided'&&P.assigned){pb.style.display='block';pb.textContent='Робот ждёт помощи (удержание '+P.delay_s+' с) — приготовьтесь';}
  else pb.style.display='none';
