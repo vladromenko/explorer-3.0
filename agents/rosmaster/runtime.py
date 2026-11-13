@@ -43,11 +43,11 @@ class NativeIO(BaseIO):
         return values
     # The controller cancels the arm when a target leads the measured joint by ~0.1 rad (~6 deg):
     # every recorded cancel had a 5-9 deg lead. Keep each sent target within this of the measurement.
-    MAX_LEAD_DEG=4.
+    MAX_LEAD_DEG=None  # removed: cancels happen even at 0.5-2 deg lead, the cap only slowed the arm
 
     def move_arm(self,servo,duration_ms=None,wait=True,check=True):
         from cubebot.arm_model import SERVO_LIMITS
-        measured=self.measured_arm(.3)   # already pulled onto the limits when a hair outside
+        measured=self.measured_arm(.3) if self.MAX_LEAD_DEG else None
         clamped=False
         if measured is not None:
             limited=[min(hi,max(lo,m+max(-self.MAX_LEAD_DEG,min(self.MAX_LEAD_DEG,s-m))))
@@ -147,9 +147,9 @@ class Runtime:
     ARM_FEEDBACK_HOLD_S=.6
     # Poses are streamed as short targets (like the native jog) instead of one long native
     # trajectory resent every tick; the controller cancelled those during preparation.
-    POSE_DEG_S=20.
+    POSE_DEG_S=40.
     POSE_STEP_MS=160
-    POSE_MAX_LEAD_DEG=4.
+    POSE_MAX_LEAD_DEG=25.
     # Controller-side arm cancellation (stale servo feedback / expired arm lease) is recoverable
     # a few times per session; the base is held and arm targets restart from measured angles.
     # Like the native bridge, a controller arm cancellation is recovered transparently; only a
@@ -310,9 +310,7 @@ class Runtime:
                     'trace':list(self.trace)})
                 if len(recent)>self.ARM_CANCEL_MAX:
                     self.stop(f'Контроллер отменил движение руки {len(recent)} раз за {self.ARM_CANCEL_WINDOW_S:.0f} с: '+self.controller_detail(now));return True
-                self.log(f'Рука: контроллер отменил движение (№{session["recoveries"]}), восстановление')
-                with self.core_lock:self.core.arm_target=None;self.core.arm_dirty=False
-                self.controls.jog.velocity[:]=0
+                self.log(f'Рука: контроллер отменил движение (№{session["recoveries"]}), продолжаю')
             # The cancellation concerns only the arm: keep the base control cycle (deadman, guard, shaping) running.
             self.io.control_step(dt)
             if now-session['recovery_at']>self.ARM_RECOVERY_S:
@@ -324,8 +322,6 @@ class Runtime:
                 if now-session['recovery_at']>self.ARM_RECOVERY_S:self.stop('Нет обратной связи руки после отмены')
                 return True
             session['recovery_at']=None
-            self.restart_arm_from(measured)
-            self.log('Рука: восстановлено от измеренной позы')
             return False
         disabled=self.profile!='rosmaster_dock' and self.core.arm_target is not None and not self.core.state.get('arm_enabled')
         if disabled:
@@ -588,6 +584,12 @@ class Runtime:
             self.preparing=False;self.controls.last_input=now
             self.log('Поза достигнута; ручное управление продолжается');return
         if now>self.pose_deadline:
+            if self.mirror_align:
+                # Close enough: start following from where the arm is instead of ending the session.
+                self.mirror_align=False;self.preparing=False;self.restart_arm_from(self.io.measured_arm() or measured)
+                try:self.controls.enable_mirror(now);self.controls.mirror.blocked=None
+                except ValueError as exc:self.controls.mirror.blocked='ждём данных руки и Leader: '+str(exc)
+                return
             self.stop('Поза не достигнута за отведённое время: '+json.dumps([round(v,1) for v in measured]));return
         # Advance the commanded pose at a limited rate, but never far ahead of the measured arm.
         lead=max(abs(c-m) for c,m in zip(self.pose_cmd,measured))

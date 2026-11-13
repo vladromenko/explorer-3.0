@@ -33,10 +33,13 @@ class NativeDriver:
     def command(self,v,w):
         result=self.http.post('/command',json={'v':v,'w':w},timeout=.35)
         if result.status_code==409:raise PermissionError(result.json().get('detail','Native driver stopped'))
+        if result.status_code==503:raise RuntimeError(result.json().get('detail','Motor controller link failed'))
         result.raise_for_status();return result.json()
 
     def stop(self):
-        result=self.http.post('/stop',timeout=.35);result.raise_for_status();return result.json()
+        result=self.http.post('/stop',timeout=.35)
+        if result.status_code==503:raise RuntimeError(result.json().get('detail','STOP delivery failed'))
+        result.raise_for_status();return result.json()
 
     def close(self):
         error=None

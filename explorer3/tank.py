@@ -127,7 +127,13 @@ class TankSource:
     def close(self):
         errors=[]
         try:
-            r=self.http.post('/stop',timeout=8);r.raise_for_status()
-        except Exception as exc:errors.append('Tank STOP: '+str(exc))
+            r=self.http.post('/stop',timeout=8);require_response(r,'STOP')
+        except Exception as exc:
+            reason='STOP Tank не подтверждён. Выключите питание выключателем. '+str(exc)
+            errors.append(reason)
+            marker=DATA/'validation/tank-motion-incident.json'
+            marker.parent.mkdir(parents=True,exist_ok=True)
+            marker.write_text(json.dumps({'blocked':True,'reason':reason,'created_at':time.time(),
+                                          'physical_stop_confirmed':False},ensure_ascii=False,indent=2))
         finally:self.http.close()
         return errors

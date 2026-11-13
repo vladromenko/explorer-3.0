@@ -110,7 +110,7 @@ def index():
     ui.on('operator_blur',lambda:lost('окно потеряло фокус') if control.robot=='tank' else None)
     def drive_key(event):
         value=event.args
-        if session.phase in {'following','paused'} and control.robot=='tank':
+        if session.phase in {'following','paused','correction'} and control.robot=='tank':
             control.base_key(owner,value['key'],bool(value['pressed']),value.get('source'))
     ui.on('tank_key',drive_key)
     ui.on('operator_stop',lambda:lost('клавиша STOP'))
@@ -139,7 +139,7 @@ def index():
             ui.label('HOMEBRAIN / ЛОКАЛЬНАЯ ЛАБОРАТОРИЯ').classes('kicker')
             ui.html('<h1>Explorer 3.0</h1>')
             ui.label('Показы → обучение → проверяемые испытания').classes('muted')
-        ui.button('STOP',icon='stop_circle',color='negative',on_click=stop_all).props('size=lg')
+        ui.button('STOP · все роботы',icon='stop_circle',color='negative',on_click=stop_all).props('size=lg')
     stage_label=ui.label('Этап A · программная подготовка. Движение не разрешено. Запись и физические испытания ещё не проверены.').classes('notice')
     ready=ui.label('').classes('muted')
     fleet_labels={}
@@ -168,6 +168,16 @@ def index():
                 tank_start=ui.button('Включить управление',on_click=teleop_check)
                 ui.button('STOP',color='negative',on_click=lambda:lost('STOP Tank'))
             tank_motion_state=ui.label('Управление выключено').classes('notice')
+            tank_pilot_state=ui.label('').classes('notice')
+            with ui.row() as correction_controls:
+                def correction_done():
+                    if session.pilot and control.owner==owner:session.pilot.correction_done.set()
+                def emergency():
+                    if session.pilot and control.owner==owner:
+                        session.pilot.emergency=True
+                        session.finish('aborted','Аварийное вмешательство оператора')
+                ui.button('Коррекция готова',on_click=correction_done)
+                ui.button('Аварийное вмешательство · STOP',color='negative',on_click=emergency)
             tank_help=ui.label('').classes('notice')
             ui.html('<img src="/api/live/camera.mjpg?robot=tank" alt="Камера появится после включения управления" style="width:100%;aspect-ratio:8/5;object-fit:contain;background:#10161f">').style('width:100%;max-width:640px')
             ui.label('Стрелки или W/A/S/D; две клавиши вместе — движение по дуге. ↙ и ↘ — назад по дуге в выбранную сторону. Отпускание — остановка; пробел — STOP.')
@@ -338,10 +348,20 @@ def index():
                     except Exception as exc:notify_error(exc)
                 async def prepare_replay():await prepare_trial('replay')
                 async def prepare_policy():await prepare_trial('policy')
+                with ui.expansion('Пилот человеческих коррекций Tank').style('width:100%') as pilot_options:
+                    use_pilot=ui.checkbox('Включить пилот для выбранного испытания',value=False)
+                    study_select=ui.select({},label='Пилот с проверенными задержками').style('min-width:320px')
+                    ui.label('Включайте после проверки политики и безопасной точки ожидания. Случайно выбранная коррекция длится не более 10 секунд; затем снова действует политика.').classes('muted')
+                    def reload_studies():
+                        study_select.set_options({s['id']:s['id'][:8]+' · '+s['policy_sha256'][:8]
+                            for s in research.studies() if s['profile']=='tank_dock' and s.get('timing_accepted')})
+                    ui.button('Обновить список пилотов',on_click=reload_studies)
+                    reload_studies()
                 def start_trial():
                     try:
                         if not prepared_trial[0]:raise ValueError('Сначала подготовьте план')
-                        session.start_trial(owner,prepared_trial[0],scene.value)
+                        if use_pilot.value and not study_select.value:raise ValueError('Выберите проверенный пилот')
+                        session.start_trial(owner,prepared_trial[0],scene.value,study_select.value if use_pilot.value else None)
                     except Exception as exc:notify_error(exc)
                 with ui.row():
                     ui.button('Подготовить повтор записи',on_click=prepare_replay)
@@ -356,7 +376,7 @@ def index():
                 with ui.row():
                     ui.button('Посмотреть запись',on_click=view_selected)
 
-                ui.label('Физический replay и rollout недоступны в локальном режиме. Checkpoint можно проверить на записях во вкладке Обучение.').classes('muted')
+                ui.label('Повтор и политика требуют отдельного разрешения выбранного плана. Во время ожидания расчёта Tank стоит. Checkpoint можно проверить без движения во вкладке «Обучение».').classes('muted')
                 ui.link('Исследование вмешательств: пилот, журнал, оценщики','/research')
                 profile_table=ui.table(columns=[{'name':k,'label':v,'field':k} for k,v in [('profile','Задача'),('record','Запись'),('train','Обучение'),('skill','Физический навык')]],
                     rows=[{'profile':k,
@@ -406,6 +426,19 @@ def index():
         teleop_button.set_text('Включить проверку на подставке' if tank_bench else ('Включить управление' if control.robot=='tank' else 'Проверить телеперацию'))
         tank_help.set_text('Только на подставке. Включите управление и дождитесь готовности.' if tank_bench else 'Нажмите «Включить управление», дождитесь готовности и удерживайте стрелки. Отпускание останавливает движение. Для показа откройте «Запись».')
         tank_controls.set_visibility(control.robot=='tank')
+        pilot_options.set_visibility(control.robot=='tank')
+        pilot_active=bool(session.pilot and session.thread and session.thread.is_alive())
+        tank_pilot_state.set_visibility(pilot_active)
+        correction_controls.set_visibility(pilot_active)
+        if pilot_active:
+            ps=session.pilot.status()
+            label={'policy':'Действует политика · решение о помощи ещё не принято',
+                   'hold':'Tank стоит · ожидание коррекции',
+                   'correction':'Ваша коррекция · управляйте стрелками',
+                   'resumed':'Коррекция завершена · действует политика'}[ps['phase']]
+            if ps['assigned']==0:label='Назначено без помощи · действует политика'
+            if ps['phase'] in {'hold','correction'}:label+=f" · осталось {ps['remaining_s']:.1f} с"
+            tank_pilot_state.set_text(label)
         rosmaster_panel.set_visibility(control.robot=='rosmaster')
         for button in (take_button,teleop_button,old_button):button.set_visibility(control.robot!='rosmaster')
         wanted='/rosmaster/control' if control.robot=='rosmaster' else 'about:blank'
@@ -451,7 +484,7 @@ def index():
         episode_table.rows=catalog.rows('episodes');episode_table.update()
         job_table.rows=catalog.rows('jobs');job_table.update()
         event_table.rows=catalog.rows('events')[:20];event_table.update()
-        mode_label.set_text(control.mode+' · '+(session.error or phase_text))
+        mode_label.set_text((session.error or phase_text) if control.robot=='tank' else control.mode+' · '+(session.error or phase_text))
         tank_motion_state.set_text((session.error or phase_text).removeprefix('RuntimeError: '))
         tank_motion_state.classes('text-red-4' if session.error else 'text-green-4',remove='text-red-4 text-green-4')
     def refresh_preview():

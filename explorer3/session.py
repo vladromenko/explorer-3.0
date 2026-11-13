@@ -26,6 +26,8 @@ class Session:
         self.record_requested=False
         self.trial_plan=None
         self.category="demonstration"
+        self.pilot=None
+        self.study=None
 
     def start(self, owner: str, name: str, scene: str, record=True, collection_id=None, category="demonstration"):
         if name=='tank_dock' and record and bench_authorized(DATA/'configs'):
@@ -41,6 +43,8 @@ class Session:
         if category not in {'demonstration','correction'}:raise ValueError('Unknown human segment category')
         self.category=category
         self.trial_plan=None
+        self.pilot=None
+        self.study=None
         session_id=self.control.acquire(owner)
         self.outcome='aborted'
         self.error=None
@@ -52,14 +56,19 @@ class Session:
         self.thread=threading.Thread(target=self._run,args=(name,collection_id or session_id,scene),daemon=True)
         self.thread.start()
 
-    def start_trial(self,owner,trial_id,scene):
+    def start_trial(self,owner,trial_id,scene,study_id=None):
         from . import trials
         plan=trials.load(trial_id)
         trials.require_physical(plan)
         if profile(plan['profile'])['robot']!=self.control.robot:
             raise ValueError('Выберите робота плана испытания')
         if self.thread and self.thread.is_alive():raise RuntimeError('Сначала остановите текущую сессию')
+        if not scene.strip():raise ValueError('Нужно обозначение расстановки')
+        from .tank_pilot import accepted_study
+        study=accepted_study(study_id,plan) if study_id else None
         session_id=self.control.acquire(owner)
+        self.study=study
+        self.pilot=None
         self.trial_plan=plan
         self.outcome='aborted';self.error=None;self.frame_count=0;self.latest=None
         self.scene=scene;self.record_requested=True;self.phase='preparing'
@@ -69,20 +78,31 @@ class Session:
     def finish(self, outcome: str, reason: str | None = None):
         if outcome not in {'success','failure','aborted'}:
             raise ValueError('Invalid outcome')
-        self.outcome=outcome
-        self.control.stop(reason or ('Эпизод закончен: '+outcome))
+        # Repeated clicks or a browser disconnect during saving cannot change the result.
+        with self.lock:
+            if not self.control.stop_event.is_set():
+                self.outcome=outcome
+                self.control.stop(reason or ('Эпизод закончен: '+outcome))
 
     def _run(self,name,session_id,scene):
         source=None
         writer=None
         provenance={}
         provider=None
+        pilot_writers={}
+        trial_run_id=uuid.uuid4().hex
         # Manual control uses no GPU; it must not block the other robot's session.
         lease=ResourceLease('compute') if self.record_requested or self.trial_plan else nullcontext()
         try:
             # A rollout/recording and trainer cannot own compute concurrently.
             lease.__enter__()
-            if self.record_requested:
+            if self.study:
+                from .tank_pilot import TankPilot
+                self.pilot=TankPilot(self.study,trial_run_id,session_id,scene)
+                for phase,command_source in self.pilot.sources.items():
+                    pilot_writers[phase]=EpisodeWriter(name,session_id,scene,
+                        category='correction' if command_source=='human' else 'rollout')
+            elif self.record_requested:
                 writer=EpisodeWriter(name,session_id,scene,category='rollout' if self.trial_plan else self.category)
             if self.trial_plan:
                 from .trials import require_physical,ReplayActions,PolicyActions
@@ -112,17 +132,32 @@ class Session:
                     if time.monotonic()-trial_start>self.trial_plan['max_duration_s']:
                         self.control.stop('Лимит времени испытания');break
                     observation=source.observe()
+                    command_source='policy'
+                    if self.pilot:
+                        changed=self.pilot.tick(time.monotonic_ns(),int(trial_start*1e9))
+                        if changed:
+                            self.control.clear_base_inputs()
+                            provider.reset()
+                        command_source=self.pilot.sources[self.pilot.phase]
                     try:
-                        requested=(source.plan_action(provider,observation)
-                                   if name=='tank_dock' and self.trial_plan['kind']=='policy' else provider.next(observation))
+                        if command_source=='safety':requested=[0.,0.]
+                        elif command_source=='human':requested=self.control.base_action()
+                        else:
+                            requested=(source.plan_action(provider,observation)
+                                       if name=='tank_dock' and self.trial_plan['kind']=='policy' else provider.next(observation))
                     except StopIteration:
                         self.control.stop('Повтор завершён без отметки исхода; запись сохранится как aborted');break
                     if self.control.expired():raise InterruptedError('STOP before trial command')
                     action=source.send(requested,observation)
-                    sample={**observation,**action,'frame_id':self.frame_count,'command_source':'policy',
+                    sample={**observation,**action,'frame_id':self.frame_count,'command_source':command_source,
                             'controller_kind':self.trial_plan['kind'],'action_requested':requested,
                             'trial_id':self.trial_plan['id'],'teleoperation_phase':'trial',
-                            **getattr(provider,'decision_info',{})}
+                            **(getattr(provider,'decision_info',{}) if command_source=='policy' else {})}
+                    if self.pilot:
+                        sample.update(trial_run_id=trial_run_id,study_id=self.study['id'],pilot_phase=self.pilot.phase,
+                                      teleoperation_phase='correction' if command_source=='human' else 'trial')
+                        self.pilot.observe(sample)
+                        pilot_writers[self.pilot.phase].add(sample)
                 else:
                     sample=source.sample(self.frame_count,stop=self.control.expired)
                 with self.lock:
@@ -158,6 +193,7 @@ class Session:
                 errors=source.close()
                 if errors:
                     catalog.event('error','; '.join(errors))
+                    self.error='; '.join(errors)
                     self.outcome='aborted'
             if writer:
                 self.phase='saving'
@@ -169,6 +205,22 @@ class Session:
                 except Exception as exc:
                     self.error=f'Finalize: {exc}'
                     catalog.event('error',self.error)
+            if self.pilot:
+                self.phase='saving'
+                try:
+                    self.pilot.finish(self.outcome,self.error or self.control.last_stop_reason)
+                except Exception as exc:
+                    self.error=f'Pilot journal: {exc}';catalog.event('error',self.error)
+                for segment,segment_writer in pilot_writers.items():
+                    try:
+                        # No-input corrections are kept for audit, never labeled successful training examples.
+                        result=self.outcome if segment!='correction' or self.pilot.human_started else 'aborted'
+                        segment_writer.finish(result,{**provenance,'trial_plan':self.trial_plan,
+                            'trial_run_id':trial_run_id,'study_id':self.study['id'],'segment':segment,
+                            'stop_reason':self.control.last_stop_reason,'pilot_decision':self.pilot.decision})
+                    except Exception as exc:
+                        self.error=f'Finalize {segment}: {exc}';catalog.event('error',self.error)
             lease.__exit__(None,None,None)
             if not self.error:
                 self.phase='idle'
+            else:self.phase='error'

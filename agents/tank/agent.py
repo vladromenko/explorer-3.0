@@ -45,6 +45,8 @@ class Hardware:
         self.last_sequence=-1
         self.last_action=[0.,0.]
         self.reason='Not started'
+        self.fault=None
+        self.neutral_written=None
         self.mode='manual'
         self.motion_paused=False
         self.image=None
@@ -65,11 +67,26 @@ class Hardware:
                     'bench_mode':bench_authorized(ROOT),
                     'motion_paused':self.motion_paused,'mode':self.mode,
                     'reason':self.reason,'action':self.last_action,'motor_acknowledged':False,
+                    'fault':self.fault,'neutral_written':self.neutral_written,
                     'physical_stop_confirmed':False,'wheel_feedback':'unavailable','odometry':'not_used_command_integral_is_not_measurement',
                     'monotonic_ns':time.monotonic_ns(),'camera':self.image_info,
                     'camera_timing':dict(self.camera_timing),
                     'battery_voltage':self.battery,'battery_received_ns':self.battery_time,
                     'imu':self.imu,'imu_received_ns':self.imu_time}
+
+    def latch_fault(self,reason):
+        """A lost motor link is not a stopped motor. Persist the failure across restarts."""
+        with self.lock:
+            if self.fault is None:
+                self.fault=str(reason)
+                try:
+                    (ROOT/'incident-block.json').write_text(json.dumps({
+                        'reason':self.fault,'created_at':time.time(),'physical_stop_confirmed':False,
+                        'requires':'Controller-link investigation and separate physical acceptance'}))
+                except OSError as exc:
+                    self.fault+='; could not persist incident: '+str(exc)
+            self.armed=False;self.lease=None;self.expires=0.
+            self.reason=self.fault
 
     def stop(self,reason):
         with self.lock:
@@ -78,13 +95,21 @@ class Hardware:
             self.expires=0.
             self.lease=None
             if self.board is not None:
-                self.board.stop()
-            self.last_action=[0.,0.]
+                try:
+                    self.board.stop()
+                    self.neutral_written=True
+                    self.last_action=[0.,0.]
+                except Exception as exc:
+                    self.neutral_written=False
+                    message='STOP не доставлен моторному контроллеру. Выключите питание Tank. '+str(exc)
+                    self.latch_fault(message)
+                    self.reason=message
+                    raise RuntimeError(message) from exc
 
     def watch(self):
         while not self.done.wait(.02):
             with self.lock:
-                if self.board is not None:
+                if self.board is not None and self.fault is None:
                     try:
                         native=self.board.status()
                         self.battery=native['battery_voltage']
@@ -110,13 +135,11 @@ class Hardware:
                                         self.last_action=self.board.command(0.,0.)['action']
                                 else:self.stop(reason)
                     except Exception as exc:
-                        self.armed=False
-                        self.lease=None
-                        self.reason='Hardware error: '+str(exc)
+                        self.latch_fault('Связь с моторным контроллером потеряна: '+str(exc))
                         try:
-                            self.board.stop()
+                            self.stop(self.fault)
                         except Exception as stop_error:
-                            self.reason+='; STOP failed: '+str(stop_error)
+                            self.reason=self.fault+'; '+str(stop_error)
 
     def start_camera(self):
         import cv2
@@ -175,6 +198,7 @@ class Hardware:
             self.lifecycle.release()
 
     def _start(self,mode):
+        if self.fault:raise RuntimeError(self.fault)
         require_motion_permission(ROOT)
         if mode!='manual' and bench_authorized(ROOT):raise PermissionError('Bench mode allows only manual control')
         if not (ROOT/'physical-block-authorized.json').exists():
@@ -233,7 +257,14 @@ class Hardware:
                 if fresh and v==0. and w==0.:
                     self.motion_paused=False;self.reason=None
                 else:v,w=0.,0.
-            sent=self.board.command(v,w)
+            try:sent=self.board.command(v,w)
+            except PermissionError:raise
+            except Exception as exc:
+                self.latch_fault('Ошибка передачи команды моторному контроллеру: '+str(exc))
+                try:self.stop(self.fault)
+                except Exception as stop_error:
+                    raise RuntimeError(str(stop_error)) from exc
+                raise RuntimeError(self.fault) from exc
             self.last_action=sent['action'];self.last_sequence=sequence;self.expires=now+.35
             return {**sent,'sequence':sequence,'accepted_by_agent':True,'motor_acknowledged':False,
                     'motion_paused':self.motion_paused,'pause_reason':self.reason if self.motion_paused else None}
@@ -269,8 +300,13 @@ class Hardware:
             except Exception as exc:errors.append('ROS close: '+str(exc))
         with self.lock:
             if self.board is not None:
-                try:self.board.close();self.board=None
+                board=self.board
+                try:board.close()
                 except Exception as exc:errors.append('Native driver close: '+str(exc))
+                finally:
+                    # Never poll a closed HTTP client; retain the incident, not a dead driver object.
+                    if getattr(board,'process',None) is None or board.process.poll() is not None:
+                        self.board=None
             if not errors:(ROOT/'hardware-active.json').unlink(missing_ok=True)
             self.image=None;self.image_info=None;self.battery=None;self.battery_time=None
             self.imu=None;self.imu_time=None
@@ -316,6 +352,9 @@ def start(value:SessionStart|None=None):
 @app.post('/command')
 def command(value:Command):
     try:return hardware.command(value.lease,value.sequence,value.v,value.w)
-    except (PermissionError,ValueError) as exc:raise HTTPException(409,str(exc)) from exc
+    except (PermissionError,ValueError,RuntimeError) as exc:raise HTTPException(409,str(exc)) from exc
 @app.post('/stop')
-def stop():hardware.close();return hardware.status()
+def stop():
+    try:hardware.close()
+    except RuntimeError as exc:raise HTTPException(409,str(exc)) from exc
+    return hardware.status()

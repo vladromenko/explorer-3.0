@@ -227,8 +227,11 @@ def make_app(driver,close_on_shutdown=False):
     def command(value:Command):
         try:return driver.command(value.v,value.w)
         except (ValueError,PermissionError,RuntimeError) as exc:raise HTTPException(409,str(exc)) from exc
+        except OSError as exc:raise HTTPException(503,'Motor serial link failed: '+str(exc)) from exc
     @app.post('/stop')
-    def stop():return driver.stop()
+    def stop():
+        try:return driver.stop()
+        except OSError as exc:raise HTTPException(503,'STOP not delivered: motor serial link failed. '+str(exc)) from exc
     return app
 
 

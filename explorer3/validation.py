@@ -60,6 +60,12 @@ def validate(episode_id: str):
             'camera_age_ms_p95':float(np.percentile([(r['observation_timestamp_ns']-r['camera']['timestamp_ns'])/1e6 for r in records],95)),
             'units':provenance['profile']['units'],'channels':provenance['profile']['channels'],
             'physical_policy_skill_verified':False}
+    if cfg['robot']=='tank':
+        result.update(camera_age_ms_p95_meaning='Homebrain receive-to-observation; not camera capture age',
+            camera_age_at_agent_ms_p95=float(np.percentile([r['camera']['age_at_agent_response_ns']/1e6 for r in records],95)),
+            paused_frames=sum(bool(r.get('motion_paused')) for r in records),
+            nonzero_command_frames=sum(any(abs(a)>1e-6 for a in r['action']) for r in records),
+            measured_wheel_feedback=False)
     from .datasets import fingerprint
     result['dataset_sha256']=fingerprint(root)
     (DATA/'validation'/f'episode-{episode_id}.json').write_text(json.dumps(result,indent=2))

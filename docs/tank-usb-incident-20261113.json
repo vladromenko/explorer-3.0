@@ -1,0 +1,19 @@
+{
+  "date": "2026-11-13",
+  "time": 1794540559.4686892,
+  "blocked": true,
+  "reason": "Motor serial write failed EIO during operator demonstration. STOP returned HTTP500. Physical stop unconfirmed. Operator instructed to switch power off.",
+  "next": "Investigate controller disconnection; no motor start before separate physical acceptance.",
+  "operator_powered_off": true,
+  "operator_report": "выключил танк вручную",
+  "physical_stop_confirmed_by_operator": true,
+  "controller_disconnects": [
+    "11:28:19",
+    "11:28:29",
+    "11:28:38",
+    "11:28:48"
+  ],
+  "controller_usb_id": "1a86:55d4",
+  "controller_serial": "5B22017409",
+  "underlying_disconnect_cause": "not established"
+}
