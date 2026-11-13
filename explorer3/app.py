@@ -20,8 +20,12 @@ from agents.tank.motion_permission import bench_authorized
 from .paths import DATA, ROOT, prepare
 from .profiles import PROFILES
 from .resources import owners
+from .recording import code_version,source_snapshot
 
 prepare()
+PROCESS_BUILD={'pid':os.getpid(),'started_at':time.time(),'git_head':code_version(),
+               'startup_disk_snapshot':source_snapshot()}
+(DATA/'logs'/f'startup-{os.getpid()}.json').write_text(json.dumps(PROCESS_BUILD,indent=2))
 app.add_middleware(LocalNetworkOnly)
 catalog.initialize()
 control=Control()
@@ -54,7 +58,8 @@ def health():
                        'recording':session.record_requested,'thread_active':bool(session.thread and session.thread.is_alive()),
                        'stop_reason':control.last_stop_reason,'heartbeat_count':control.heartbeat_count,
                        'heartbeat_age_s':time.monotonic()-control.last_heartbeat if control.last_heartbeat else None},
-            'compute_job':jobs.active_id,
+            'compute_job':jobs.active_id,'process_build':{k:v for k,v in PROCESS_BUILD.items() if k!='startup_disk_snapshot'},
+            'startup_source_sha256':PROCESS_BUILD['startup_disk_snapshot']['sha256'],
             'preview':{'transport':'mjpeg_http','clients':live_preview.clients,'encoded_frames':live_preview.encoded}}
 
 @app.get('/api/live/camera.mjpg')

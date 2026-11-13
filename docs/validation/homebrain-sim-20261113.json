@@ -1,0 +1,386 @@
+{
+  "kind": "mechanics_and_preparation_without_training",
+  "physical_robots_used": false,
+  "training_started": false,
+  "contacts": [
+    {
+      "profile": "so101_pick_place_sim",
+      "model": {
+        "upstream": "google-deepmind/mujoco_menagerie/robotstudio_so101",
+        "revision": "370c43965323c0944b433b202aac5058b5f907a9",
+        "license": "Apache-2.0 (upstream model LICENSE)",
+        "presentation": {
+          "renderer": "native MuJoCo/Studio",
+          "style": "laboratory-v1",
+          "checker_cell_m": 0.1,
+          "reference": "Menagerie robotstudio_so101/scene.xml (Apache-2.0)",
+          "policy_camera": "same physical scene, no object coordinates or debug overlays"
+        },
+        "calibration": "uncalibrated_to_local_robot",
+        "extension": "free cube + open bin + dwell success",
+        "xml_sha256": "2c89bbd235a6464b621b38783bc155618fe88d660d19ffe275c77edda3f055c5",
+        "numerical_contact": {
+          "timestep_s": 0.0005,
+          "solref": [
+            0.001,
+            1
+          ],
+          "solimp": [
+            0.95,
+            0.99,
+            0.001,
+            0.5,
+            2
+          ],
+          "iterations": 100,
+          "purpose": "bound numerical interpenetration, not fitted material compliance"
+        },
+        "assets_sha256": "7cbc01943a6a459554f35fe9b5b9c6ca5d88acf5693917179b29f36e475fc5be"
+      },
+      "mujoco_version": "4.0.1",
+      "controller": "scripted geometric trajectory; no learning",
+      "sampling": "every physics substep",
+      "pass": true,
+      "results": [
+        {
+          "seed": 1,
+          "outcome": "success",
+          "reason": "stable_released_in_box",
+          "physics_substeps_observed": 31800,
+          "lifted_above_100mm": true,
+          "worst_contact": {
+            "time_s": 13.326500000004796,
+            "geoms": [
+              "cube",
+              "bin_bottom"
+            ],
+            "bodies": [
+              "task_cube",
+              "target_box"
+            ]
+          },
+          "minimum_carry_height_m": 0.05409678019824537,
+          "maximum_cube_penetration_mm": 0.35189506007328797,
+          "maximum_mimic_error_rad": null,
+          "pass": true
+        },
+        {
+          "seed": 2,
+          "outcome": "success",
+          "reason": "stable_released_in_box",
+          "physics_substeps_observed": 31867,
+          "lifted_above_100mm": true,
+          "worst_contact": {
+            "time_s": 13.360000000004836,
+            "geoms": [
+              "cube",
+              "bin_bottom"
+            ],
+            "bodies": [
+              "task_cube",
+              "target_box"
+            ]
+          },
+          "minimum_carry_height_m": 0.056071742078748404,
+          "maximum_cube_penetration_mm": 0.29743513279351663,
+          "maximum_mimic_error_rad": null,
+          "pass": true
+        },
+        {
+          "seed": 3,
+          "outcome": "success",
+          "reason": "stable_released_in_box",
+          "physics_substeps_observed": 31867,
+          "lifted_above_100mm": true,
+          "worst_contact": {
+            "time_s": 13.359000000004835,
+            "geoms": [
+              "cube",
+              "bin_bottom"
+            ],
+            "bodies": [
+              "task_cube",
+              "target_box"
+            ]
+          },
+          "minimum_carry_height_m": 0.05595745741384548,
+          "maximum_cube_penetration_mm": 0.40201160804187713,
+          "maximum_mimic_error_rad": null,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "profile": "rosmaster_pick_place_sim",
+      "model": {
+        "source": "Yahboom official ROSMASTER M3 PRO code archive, orin/M3Pro_ws-0.0.1.zip",
+        "source_url": "https://drive.google.com/file/d/1WxZbB2ulfWldWYRKiT5zheso-8EtqfdV/view",
+        "archive_sha256": "7f9083d301fef50633445272505e9acb561a4b6abe362dd946d7deaaf4caff0f",
+        "srdf_sha256": "770c7df6680f2bfb379019223f52f80162423e1e6dc392c35dae46650b853d59",
+        "gripper_closed_rad": -0.8398,
+        "urdf_sha256": "8046676e826b02f7764d1db5cbf24ea3d82202d22837ae824f8b6a8ddd82b6aa",
+        "meshes_sha256": {
+          "base_link.STL": "82897ec12100b78d8f33800edd7be19f86de3ffbc3574ed446f1d2bf04079f4a",
+          "arm1.STL": "d12f701abb74171df8ed3179b3885d10c6af2863f29d13e52bcce2d0d8933643",
+          "arm2.STL": "6ec3d8c7b02106560f61035e03a034637b988d153319d87bb50994e96728271e",
+          "arm3.STL": "74e309203df8ed80e57962a5ccc871909163cb07c1b1f6db0628233684360a98",
+          "arm4.STL": "8f74b107bdaba930ea482c95e6685d5cf5dccb3923a1e6d8b9280b7986811cda",
+          "arm5.STL": "1a52a732e4664ac3b703968416446b76d67067a78632b520d33858a80a26a281",
+          "rlink1.STL": "9e3bb9c0d08d3d177e01a532d275f108f514eb4be13e857c0a596c61c32891a6",
+          "rlink2.STL": "ff22b15d51ff0d96cddcaa74b6056c9e5f88e1abe6886023a2a90ca80ec3230d",
+          "llink1.STL": "0acf2b0ea73e9eb63e3ef9fec5637f0a151dae108ac3eed58ffd98f0062a6c9d",
+          "llink2.STL": "e356dfad82f1468a6c80e20fe127df4b7b40c395398cf5cb85a1522d9691b31c",
+          "rlink3.STL": "bcf76ccbadf426c3e7ec6135f0fd09c0669b54735e7de91bbee92276b5404b25",
+          "llink3.STL": "81f1c9f5ab75d86362d7e227fda6018c87488db713bd9621f6eb761bbec3109d",
+          "Gripping.STL": "e35ed860419dad49687084f9c8493f43c81cfece5b421d7e63944d27d22d63f7",
+          "DCW2.STL": "085efb1ffed33d9440071886bf1c2ce769facda5e45fd7e1ab24d4d55298d1a1",
+          "Camera.STL": "12d7158cdf2fab1072f2bd3989726e854a20d1fe717206cb7edc114afe59fdbe",
+          "lwheel1.STL": "e629352d69aaef698c948505f046fb241b1d9a7e734f0417a06dfe2d383eacfd",
+          "lwheel2.STL": "f07f85985d6c189b71d839a0d44bf3e893eacfd76dccc4f954b63d247a78ae1b",
+          "rwheel1.STL": "7218e9bea1d0862cacd44b0a8a72e207085d367a022843bfd4e6be23f6786fff",
+          "rwheel2.STL": "f8daf44a79b1b3d5bdec95ef3885e8151f3a39f21f93c2bf2e8fcbf09d57c323",
+          "arm_base_Link.STL": "bbd67c0a59cdbb8fd02c567e8ddff62bde72d3cae753ee63da7681f98f29871c"
+        },
+        "geometry": "original URDF link transforms, visual/collision STL, gripper mimic constraints",
+        "inertias": "original manufacturer CAD values, not identified whole-robot mass",
+        "calibration": "manufacturer_geometry_unverified_local_dynamics",
+        "license": "package.xml says Apache 2.0 but retains TurtleBot metadata; assets cached locally, no redistribution",
+        "adaptations": [
+          "empty visual tags removed",
+          "camera pan and wheels fixed for arm task",
+          "MuJoCo native URDF import; balanceinertia enabled; manufacturer SRDF collision exclusions",
+          "duplicate collision geometry invisible, still active"
+        ],
+        "xml_sha256": "c00c96e75b4f5dd9651832784c109f6d1d4e147662f4c2acad8d870ae5086dda",
+        "presentation": {
+          "renderer": "native MuJoCo/Studio",
+          "style": "laboratory-v1",
+          "checker_cell_m": 0.1,
+          "reference": "Menagerie robotstudio_so101/scene.xml (Apache-2.0)",
+          "policy_camera": "same physical scene, no object coordinates or debug overlays"
+        },
+        "numerical_contact": {
+          "timestep_s": 0.0005,
+          "solref": [
+            0.001,
+            1
+          ],
+          "solimp": [
+            0.95,
+            0.99,
+            0.001,
+            0.5,
+            2
+          ],
+          "iterations": 100,
+          "purpose": "bound numerical interpenetration, not fitted material compliance"
+        },
+        "controller_assumptions": [
+          "position servo gains/torque caps",
+          "lag",
+          "friction",
+          "servo-to-gripper alignment pending physical check",
+          "camera FOV pending intrinsics"
+        ],
+        "task_geometry": "simulated 32mm cube and bin; not a measurement of user objects"
+      },
+      "mujoco_version": "4.0.1",
+      "controller": "scripted geometric trajectory; no learning",
+      "sampling": "every physics substep",
+      "pass": true,
+      "results": [
+        {
+          "seed": 1,
+          "outcome": "success",
+          "reason": "stable_released_in_box",
+          "physics_substeps_observed": 31300,
+          "lifted_above_100mm": true,
+          "worst_contact": {
+            "time_s": 13.979500000005594,
+            "geoms": [
+              "cube",
+              "bin_bottom"
+            ],
+            "bodies": [
+              "task_cube",
+              "target_box"
+            ]
+          },
+          "minimum_carry_height_m": 0.05555835382693753,
+          "maximum_cube_penetration_mm": 0.2203368508048825,
+          "maximum_mimic_error_rad": 3.7447105778798395e-05,
+          "pass": true
+        },
+        {
+          "seed": 2,
+          "outcome": "success",
+          "reason": "stable_released_in_box",
+          "physics_substeps_observed": 31300,
+          "lifted_above_100mm": true,
+          "worst_contact": {
+            "time_s": 13.79700000000537,
+            "geoms": [
+              "cube",
+              21
+            ],
+            "bodies": [
+              "task_cube",
+              "llink2"
+            ]
+          },
+          "minimum_carry_height_m": 0.05612266976704522,
+          "maximum_cube_penetration_mm": 0.09491423731250696,
+          "maximum_mimic_error_rad": 2.911863263782566e-05,
+          "pass": true
+        },
+        {
+          "seed": 3,
+          "outcome": "success",
+          "reason": "stable_released_in_box",
+          "physics_substeps_observed": 31300,
+          "lifted_above_100mm": true,
+          "worst_contact": {
+            "time_s": 13.979500000005594,
+            "geoms": [
+              "cube",
+              "bin_bottom"
+            ],
+            "bodies": [
+              "task_cube",
+              "target_box"
+            ]
+          },
+          "minimum_carry_height_m": 0.056125387542014994,
+          "maximum_cube_penetration_mm": 0.12090519239955418,
+          "maximum_mimic_error_rad": 2.8360497120238914e-05,
+          "pass": true
+        }
+      ]
+    }
+  ],
+  "resources": {
+    "profile": "so101_pick_place_sim",
+    "measurements": [
+      {
+        "environments": 1,
+        "vectorization": "sequential native Gym environments",
+        "construction_seconds": 0.24060887499945238,
+        "physics_steps_per_second": 321.80156616497686,
+        "step_seconds_p50_p95_max": [
+          0.0030987559985078406,
+          0.003185939847753616,
+          0.0032470009973621927
+        ],
+        "camera_cold_seconds": 0.30773522699746536,
+        "camera_seconds_p50_p95_max": [
+          0.0020852464986091945,
+          0.004848250706345428,
+          0.00888561199826654
+        ],
+        "rss_bytes": 698494976,
+        "available_memory_bytes": 3176644608
+      },
+      {
+        "environments": 2,
+        "vectorization": "sequential native Gym environments",
+        "construction_seconds": 0.31549913300113985,
+        "physics_steps_per_second": 321.43207460676484,
+        "step_seconds_p50_p95_max": [
+          0.0030956834998505656,
+          0.003198508798232069,
+          0.0037279789976309985
+        ],
+        "camera_cold_seconds": 0.2595419029967161,
+        "camera_seconds_p50_p95_max": [
+          0.002362472499953583,
+          0.003581906998442719,
+          0.003694633996929042
+        ],
+        "rss_bytes": 945197056,
+        "available_memory_bytes": 2870325248
+      },
+      {
+        "environments": 4,
+        "vectorization": "sequential native Gym environments",
+        "construction_seconds": 0.48831033500027843,
+        "physics_steps_per_second": 317.9750730481281,
+        "step_seconds_p50_p95_max": [
+          0.0031278609967557713,
+          0.0032327545959560666,
+          0.004894263001915533
+        ],
+        "camera_cold_seconds": 0.25411590799922124,
+        "camera_seconds_p50_p95_max": [
+          0.002200929997343337,
+          0.0026501054999243947,
+          0.004230173995892983
+        ],
+        "rss_bytes": 1095860224,
+        "available_memory_bytes": 2681106432
+      }
+    ]
+  },
+  "browser_scene": {
+    "real_browser": true,
+    "real_mujoco": true,
+    "profile": "so101",
+    "open_move_pause_reset": "PASS",
+    "record_save": "PASS",
+    "variation_switch": "PASS",
+    "training_started": false,
+    "internet_requests": [],
+    "console_errors": []
+  },
+  "browser_demonstration": {
+    "actual_browser": true,
+    "actual_mujoco": true,
+    "scripted_hold_place_release": "PASS",
+    "stop_no_auto_resume": "PASS",
+    "training_started": false,
+    "frames": 477,
+    "model": {
+      "upstream": "google-deepmind/mujoco_menagerie/robotstudio_so101",
+      "revision": "370c43965323c0944b433b202aac5058b5f907a9",
+      "license": "Apache-2.0 (upstream model LICENSE)",
+      "presentation": {
+        "renderer": "native MuJoCo/Studio",
+        "style": "laboratory-v1",
+        "checker_cell_m": 0.1,
+        "reference": "Menagerie robotstudio_so101/scene.xml (Apache-2.0)",
+        "policy_camera": "same physical scene, no object coordinates or debug overlays"
+      },
+      "calibration": "uncalibrated_to_local_robot",
+      "extension": "free cube + open bin + dwell success",
+      "xml_sha256": "359f9ac06b0ff45ac8be60af93ec2a5715060d29d1f135e02ca7cd3eae9a9285",
+      "numerical_contact": {
+        "timestep_s": 0.0005,
+        "solref": [
+          0.001,
+          1
+        ],
+        "solimp": [
+          0.95,
+          0.99,
+          0.001,
+          0.5,
+          2
+        ],
+        "iterations": 100,
+        "purpose": "bound numerical interpenetration, not fitted material compliance"
+      },
+      "assets_sha256": "7cbc01943a6a459554f35fe9b5b9c6ca5d88acf5693917179b29f36e475fc5be"
+    },
+    "errors": [],
+    "external": []
+  },
+  "regression": {
+    "main_tests": 62,
+    "main_subtests": 2,
+    "simulation_tests": 13
+  },
+  "limits": [
+    "scripted trajectory is not a learned skill",
+    "uncalibrated physical dynamics",
+    "sequential CPU environment benchmark, not GPU/training throughput"
+  ]
+}

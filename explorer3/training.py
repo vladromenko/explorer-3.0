@@ -59,6 +59,12 @@ def run_job(path: Path):
     cfg = json.loads(path.read_text())
     work = DATA/'jobs'/path.stem
     work.mkdir(exist_ok=True)
+    if cfg.get('kind') == 'sim_evaluate':
+        subprocess.run([str(ROOT/'.venv-sim/bin/python'),'-m','explorer3.sim.evaluate',cfg['checkpoint'],
+            str(work/'result.json'),'--profile',cfg['profile'],'--count',str(cfg['episodes']),
+            '--expected-model-sha256',cfg['expected_model_hash']],
+            check=True,env={**offline_environment(),'MUJOCO_GL':'egl'})
+        return
     if cfg.get('kind') == 'sim_ppo':
         subprocess.run([str(ROOT/'.venv-sim/bin/python'),'-m','explorer3.sim.ppo','--job',str(path)],
                        check=True,env=offline_environment())
@@ -139,6 +145,7 @@ def run_job(path: Path):
                     'initial_checkpoint':cfg.get('initial_checkpoint'),'resume_checkpoint':resume}))
             elif resume or 'out of memory' not in log_path.read_text().lower() or batch == 1:
                 raise RuntimeError(f'Trainer failed: {log_path}')
+    if not done:raise RuntimeError('Обучение не завершилось в разрешённом размере batch; см. журнал задания')
 
 
 if __name__ == '__main__':

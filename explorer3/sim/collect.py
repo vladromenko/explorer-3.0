@@ -17,11 +17,15 @@ def collect(seeds,profile="so101_pick_place_sim"):
             expert=EXPERTS[profile](env)
             capture=SimCapture(env,seed,'scripted_expert')
             finished=False
-            while not finished:
-                action=expert.action()
-                capture.add(env,action)
-                _,_,terminated,truncated,info=env.step(action)
-                finished=terminated or truncated
+            try:
+                while not finished:
+                    action=expert.action()
+                    capture.add(env,action)
+                    _,_,terminated,truncated,info=env.step(action)
+                    finished=terminated or truncated
+            except Exception as exc:
+                capture.finish('aborted',f'technical_error:{type(exc).__name__}:{exc}')
+                raise
             root=capture.finish(info['outcome'],info['termination_reason'])
             subprocess.run([str(ROOT/'.venv/bin/python'),'-m','explorer3.sim.import_episode',str(root)],
                            check=True,env=offline_environment())

@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/BerkeleyAutomation/ifl_benchmark",
+  "commit": "d35f0f896348c9e73a26047853300dd34e17caab",
+  "files": {
+    "iflb/allocations/base_allocation.py": "958b2079a7892cf39972ac9484dc052c59596138d366b26a407a193ebe8bf1f2",
+    "iflb/allocations/random_allocation.py": "010c0b4ea3b9c8fd5306712da73d1eb93956183ed1f6d5d6340814a7f476da65",
+    "iflb/allocations/TD_allocation.py": "8fc97fb76e56937e04a5f1685659917a49dffb6ace0a590f2ca83612555338eb",
+    "LICENSE": "b27a56cbee3d5b0eb3661e6d5e0638ecedb94c71c4c25ed393dde226528d565e",
+    "iflb/parallel_experiment.py": "c1aadfdf4ef2388b23990b8d958c45b0093afa05610092e4e0c1bd46af81ef25"
+  },
+  "assignment": "verbatim method extraction; imports/other methods omitted; single operator only in adapter"
+}

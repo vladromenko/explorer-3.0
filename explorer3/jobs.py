@@ -36,22 +36,46 @@ class Jobs:
         self.cancel_requested = threading.Event()
         self.lock = threading.RLock()
 
-    def enqueue(self, name, policy, smoke=True):
+    def enqueue(self, name, policy, smoke=True, sim_model_hash=None):
         profile(name)
         if policy not in {'act', 'smolvla'}:
             raise ValueError('Unknown trainer')
         if policy == 'smolvla' and (name != 'so101_pick_place' or not (DATA/'validation/smolvla-pass.json').exists()):
             raise ValueError('SmolVLA проверена только для SO-101')
-        plan_id, _ = freeze(name, smoke)
-        return self._insert(name, policy, {'kind': 'train', 'profile': name, 'policy': policy,
-            'smoke': bool(smoke), 'plan_id': plan_id, 'seed': 1000})
+        plan_id, _ = freeze(name, smoke,sim_model_hash=sim_model_hash)
+        cfg={'kind': 'train', 'profile': name, 'policy': policy,
+            'smoke': bool(smoke), 'plan_id': plan_id, 'seed': 1000}
+        if profile(name).get('domain')=='sim' and not smoke:
+            recipe=json.loads((ROOT/'configs/sim-budgets.json').read_text())[name]['act']
+            cfg.update(steps=recipe['steps'],batch_size=recipe['batch_size'],device=recipe['device'],seed=recipe['seed'])
+        return self._insert(name,policy,cfg)
 
-    def sim_ppo(self, name):
-        if name!='so101_pick_place_sim':
+    def sim_ppo(self, name, sim_model_hash=None,variation='nominal'):
+        if name not in {'so101_pick_place_sim','rosmaster_pick_place_sim','rosmaster_dock_sim','tank_dock_sim'}:
             raise ValueError('Среда ещё не принята')
+        if variation not in {'nominal','varied'}:raise ValueError('Unknown scene conditions')
         budget=json.loads((ROOT/'configs/sim-budgets.json').read_text())[name]['pick_place_ppo']
         return self._insert(name,'ppo',{'kind':'sim_ppo','profile':name,'steps':budget['timesteps'],
-            'seed':budget['seed'],'device':'cpu','domain':'sim'})
+            'seed':budget['seed'],'device':'cpu','domain':'sim','expected_model_hash':sim_model_hash,'variation':variation})
+
+    def sim_evaluate(self, job_id):
+        source=self.get(job_id)
+        if source['status']!='completed' or source['policy']!='act' or not source['checkpoint']:
+            raise ValueError('Выберите завершённое обучение ACT')
+        if profile(source['profile']).get('domain')!='sim':
+            raise ValueError('Нужен симуляционный профиль')
+        from .datasets import load_plan,select_simulation_revision
+        config=json.loads(source['config'])
+        if config.get('plan_id'):
+            split=load_plan(config['plan_id'])['splits']
+        else:
+            split=json.loads((DATA/'jobs'/job_id/'split.json').read_text())
+        _,model_hash=select_simulation_revision([e for group in split.values() for e in group])
+        if model_hash is None:raise ValueError('Нет версии физики обучающего набора')
+        return self._insert(source['profile'],'act',{'kind':'sim_evaluate','profile':source['profile'],
+            'source_job':job_id,'checkpoint':source['checkpoint'],'device':'cpu',
+            'expected_model_hash':model_hash,
+            'episodes':3 if json.loads(source['config']).get('smoke') else 20})
 
     def evaluate(self, job_id, partition="validation"):
         if partition not in {"validation","test"}:raise ValueError("Unknown evaluation split")
@@ -96,8 +120,9 @@ class Jobs:
                 raise ValueError('Возобновляется только остановленное задание')
             cfg = json.loads(job['config'])
             if cfg.get('kind')=='sim_ppo':
-                checkpoint=DATA/'jobs'/ident/'latest.zip'
-                if not checkpoint.is_file():raise ValueError('Нет сохранённого PPO checkpoint')
+                from .sim.checkpoints import latest
+                try:checkpoint=latest(DATA/'jobs'/ident)
+                except (OSError,ValueError) as exc:raise ValueError('Нет согласованной пары PPO и нормировки для продолжения') from exc
                 cfg['resume_checkpoint']=str(checkpoint)
                 with catalog.connect() as db:
                     db.execute("UPDATE jobs SET config=?,status='queued',error=NULL WHERE id=?",(json.dumps(cfg),ident))
@@ -132,7 +157,7 @@ class Jobs:
                         if self.cancel_requested.is_set():
                             return
                         with catalog.connect() as db:
-                            db.execute("UPDATE jobs SET status='running' WHERE id=?", (ident,))
+                            db.execute("UPDATE jobs SET status='running',error=NULL WHERE id=?", (ident,))
                         self.process = subprocess.Popen([sys.executable, '-m', 'explorer3.training', '--job', str(path)],
                             cwd=ROOT, env=offline_environment(), stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
                     code = self.process.wait()

@@ -43,9 +43,12 @@ class ACTClient:
         self.log.close()
 
 
-def evaluate(checkpoint,output,seeds,profile='so101_pick_place_sim'):
+def evaluate(checkpoint,output,seeds,profile='so101_pick_place_sim',expected_model=None):
     output=Path(output);output.parent.mkdir(parents=True,exist_ok=True)
     env=make(profile,images=True)
+    if expected_model is not None and env.manifest['xml_sha256']!=expected_model:
+        env.close()
+        raise ValueError('Физика сцены изменилась после записи обучающего набора. Нужны новые показы; перенос между моделями требует отдельного эксперимента')
     cfg=profile_config(profile)
     client=ACTClient(checkpoint,output.with_suffix('.inference.log'))
     trials=[];latencies=[]
@@ -76,4 +79,5 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('checkpoint',type=Path);parser.add_argument('output',type=Path)
     parser.add_argument('--start',type=int,default=10000);parser.add_argument('--count',type=int,default=3)
     parser.add_argument('--profile',default='so101_pick_place_sim')
-    args=parser.parse_args();evaluate(args.checkpoint,args.output,range(args.start,args.start+args.count),args.profile)
+    parser.add_argument('--expected-model-sha256')
+    args=parser.parse_args();evaluate(args.checkpoint,args.output,range(args.start,args.start+args.count),args.profile,args.expected_model_sha256)

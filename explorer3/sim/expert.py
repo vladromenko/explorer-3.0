@@ -12,6 +12,8 @@ class ScriptedSO101:
         self.cube = env.data.body('task_cube').xpos.copy()
         self.box = env.data.body('target_box').xpos.copy()
         self.phase = 'approach'
+        self.command=env.observation()['state'].astype(float).copy()
+        self.targets={}
 
     def solve(self, xyz, gripper):
         m,d = self.env.model,self.scratch
@@ -50,14 +52,19 @@ class ScriptedSO101:
             target=self.box+[0,0,.065]; grip=.9; self.phase='release'
         else:
             target=self.box+[0,0,.16]; grip=.9; self.phase='withdraw'
-        return self.solve(target,grip)
+        if self.phase not in self.targets:
+            self.targets[self.phase]=self.solve(target,grip)
+        speed=20 if self.phase in {'transfer','lower'} else 50
+        maximum=np.array([speed]*5+[90])*self.env.dt
+        self.command+=np.clip(self.targets[self.phase]-self.command,-maximum,maximum)
+        return self.command.copy()
 
 
 class ScriptedRosmaster:
     """The existing console's IK, used only as a privileged simulation teacher."""
     def __init__(self,env):
         from .vendor_rosmaster.arm_model import ArmModel
-        self.env=env;self.arm=ArmModel()
+        self.env=env;self.arm=ArmModel(tcp_offset=float(env.model.site('gripperframe').pos[2]))
         self.cube=env.data.body('task_cube').xpos.copy()
         self.box=env.data.body('target_box').xpos.copy()
         self.phase='approach';self.targets={}
@@ -81,6 +88,7 @@ class ScriptedRosmaster:
                 raise RuntimeError(f'Existing ROSMASTER IK cannot reach {phase}')
             self.targets[phase]=np.r_[solution,grip]
         # The physical console also interpolates poses; a position jump would throw the object.
-        maximum=np.array([50,50,50,50,50,90])*self.env.dt
+        speed=20 if phase in {'transfer','lower'} else 50
+        maximum=np.array([speed]*5+[90])*self.env.dt
         self.command+=np.clip(self.targets[phase]-self.command,-maximum,maximum)
         return self.command.copy()

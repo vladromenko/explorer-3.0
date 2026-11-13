@@ -50,11 +50,31 @@ def grouped_split(episodes, seed=1000):
             [('test', groups[:hold]), ('validation', groups[hold:2*hold]), ('train', groups[2*hold:])]}
 
 
-def freeze(name, smoke, seed=1000):
+def simulation_model_hash(episode):
+    provenance=json.loads((Path(episode['dataset'])/'provenance.json').read_text())
+    value=provenance.get('hardware',{}).get('model',{}).get('xml_sha256')
+    if not isinstance(value,str) or len(value)!=64:
+        raise ValueError('У симуляционной записи отсутствует версия физической модели')
+    return value
+
+
+def select_simulation_revision(episodes, expected=None):
+    """Never pool old proxy geometry and corrected contact dynamics implicitly."""
+    versions={e['id']:simulation_model_hash(e) for e in episodes}
+    selected=[e for e in episodes if expected is None or versions[e['id']]==expected]
+    revisions={versions[e['id']] for e in selected}
+    if len(revisions)>1:
+        raise ValueError('Записи относятся к разным версиям физики. Выберите одну версию модели')
+    return selected, next(iter(revisions),expected)
+
+
+def freeze(name, smoke, seed=1000, sim_model_hash=None):
     domain=profile(name).get('domain','real')
     episodes = eligible(name)
+    if domain=='sim':episodes,sim_model_hash=select_simulation_revision(episodes,sim_model_hash)
+    elif sim_model_hash is not None:raise ValueError('Версия симулятора не относится к физическим данным')
     if len(episodes) < (3 if smoke else 50):
-        raise ValueError('Нужно минимум 3 показа для smoke или 50 для основного рецепта')
+        raise ValueError('Нужно минимум 3 показа для проверки или 50 для обучения, для одной версии модели')
     for episode in episodes:
         root = Path(episode['dataset'])
         provenance = json.loads((root / 'provenance.json').read_text())
@@ -74,7 +94,7 @@ def freeze(name, smoke, seed=1000):
         episode['sha256'] = digest
     splits = {'train': episodes, 'validation': [], 'test': []} if smoke else grouped_split(episodes, seed)
     plan = {'version': 1, 'domain':domain, 'profile': name, 'profile_contract': profile(name), 'smoke': bool(smoke),
-            'seed': seed, 'statistics': 'train_only', 'splits': splits,
+            'seed': seed, 'statistics': 'train_only', 'splits': splits,'sim_model_hash':sim_model_hash,
             'limitation': 'Smoke использует все показы; это не независимая оценка качества' if smoke else
                           'Split заморожен; test не используется для выбора модели'}
     blob = json.dumps(plan, sort_keys=True, ensure_ascii=False, indent=2)

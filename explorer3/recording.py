@@ -88,7 +88,7 @@ class EpisodeWriter:
                       battery_voltage=sample.get('battery_voltage'),battery_source=sample.get('battery_source','unavailable'),
                       camera={k:v for k,v in image.items() if k not in {'rgb','bgr','image'}},
                       camera_source_timestamp=image.get('source_timestamp_ns'),
-                      camera_source_timestamp_status='driver_timestamp' if 'source_timestamp_ns' in image else 'unavailable',
+                      camera_source_timestamp_status=('simulation_clock' if self.domain=='sim' else 'driver_timestamp') if 'source_timestamp_ns' in image else 'unavailable',
                       clock_domain='simulation_monotonic_ns' if self.domain=='sim' else 'fixture' if self.domain=='fixture' else 'homebrain_monotonic_ns')
         self.sidecar.write(json.dumps(record)+'\n')
         self.frames+=1

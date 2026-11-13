@@ -1,0 +1,70 @@
+{
+  "model": "Hiwonder MentorPi T1 Advanced",
+  "variant_id": 41789241655383,
+  "product_url": "https://www.hiwonder.com/products/mentorpi-t1?variant=41789241655383",
+  "user_confirmed": "2026-11-13",
+  "catalog_variant": "MentorPi T1 Advanced / Without Raspberry Pi 5",
+  "installed_computer": {
+    "model": "Raspberry Pi 5 Model B Rev 1.1",
+    "ram_class_gb": 8,
+    "reported_memory_kib": 8384512,
+    "cpu_count": 4,
+    "evidence": "validation/tank-incident/previous-kernel.jsonl",
+    "evidence_sha256": "cbe40d6b52a683ebc50356e9b4ce3728fb01cdbfa92e7b09c3c22f498b263682",
+    "kernel_messages": [
+      "Machine model: Raspberry Pi 5 Model B Rev 1.1",
+      "Memory: 7896288K/8384512K available (13376K kernel code, 2222K rwdata, 4288K rodata, 5056K init, 1213K bss, 160544K reserved, 327680K cma-reserved)",
+      "smp: Brought up 1 node, 4 CPUs"
+    ],
+    "live_rechecked": false,
+    "available_memory_now": null,
+    "thermal_headroom_now": null
+  },
+  "manufacturer_specs": {
+    "dimensions_m": [
+      0.278,
+      0.195,
+      0.182
+    ],
+    "mass_kg": 1.88,
+    "battery_nominal_v": 7.4,
+    "battery_capacity_mah": 2200,
+    "battery_discharge_c": 10,
+    "controller": "RRC Lite",
+    "camera": "Aurora930 Pro",
+    "lidar": "COIN-D6",
+    "source": "https://www.hiwonder.com/products/mentorpi-t1",
+    "scope": "Published depth-camera model; mass not a measurement of user-added Pi/accessories"
+  },
+  "installed_camera": {
+    "driver": "deptrum-ros-driver-aurora930",
+    "rgb_shape": [
+      400,
+      640,
+      3
+    ],
+    "evidence": "docs/TANK.md and validation/tank-handoff-before.json"
+  },
+  "unknown": [
+    "current available RAM and temperature",
+    "actual total mass with user accessories",
+    "track contact/slip coefficients",
+    "motor torque and inertia",
+    "sensor extrinsics/intrinsics not yet copied",
+    "installed lidar hardware revision"
+  ],
+  "simulation_model_status": "Official T1 URDF described in docs but missing from public T1 branch; do not substitute M1/A1 meshes",
+  "compute_placement": {
+    "Homebrain": [
+      "simulation",
+      "training",
+      "policy inference",
+      "research"
+    ],
+    "Tank": [
+      "camera/telemetry transport",
+      "native motor bridge",
+      "local command expiry"
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-"""Provisional ROSMASTER model with the saved native six-channel servo contract."""
+"""Original Yahboom ROSMASTER geometry with the saved native six-channel servo contract."""
 import numpy as np
 from .environment import SO101PickPlace
 from .models import rosmaster_arm_model
@@ -15,14 +15,22 @@ class RosmasterPickPlace(SO101PickPlace):
     def from_radians(self,q):
         result=np.rad2deg(np.asarray(q)).copy()+90
         result[0]=90-np.rad2deg(q[0])
-        result[5]=125-q[5]/.055*95
+        result[5]=30+q[5]/self.manifest['gripper_closed_rad']*95
         return result
 
     def to_radians(self,servo):
         q=np.deg2rad(np.asarray(servo)-90)
         q[0]=np.deg2rad(90-servo[0])
-        q[5]=(125-servo[5])/95*.055
+        q[5]=(servo[5]-30)/95*self.manifest['gripper_closed_rad']
         return q
 
     def gripper_is_open(self):
-        return self.data.qpos[5]>.025
+        return self.data.qpos[5]>.5*self.manifest['gripper_closed_rad']
+
+    def reset(self,*,seed=None,options=None):
+        observation,info=super().reset(seed=seed,options=options)
+        # Match the source URDF's five mimic constraints at initialization.
+        self.data.qpos[6:11]=self.data.qpos[5]*np.array([1,1,-1,-1,1])
+        import mujoco
+        mujoco.mj_forward(self.model,self.data)
+        return self.observation(),self.info()

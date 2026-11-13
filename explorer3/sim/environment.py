@@ -16,12 +16,15 @@ class SO101PickPlace(gym.Env):
     model_builder=staticmethod(so101_model)
     home_native=np.array([-11.00079,-15.01149,14.49583,64.74423,4.54356,50.76047])
 
-    def __init__(self, *, images=False, deadline_s=20., render_mode=None):
+    def __init__(self, *, images=False, deadline_s=20., render_mode=None,variation='nominal'):
         xml, self.manifest = self.model_builder()
         self.model = mujoco.MjModel.from_xml_string(xml)
         self.data = mujoco.MjData(self.model)
+        from .variation import EpisodeVariation
+        self.variation=EpisodeVariation(self.model,self.camera_name);self.variation_mode=variation
         self.images = images
         self.renderer = None
+        self.physics_observer = None  # optional measurement after EVERY physics substep
         self.render_mode = render_mode
         self.dt = 1/self.fps
         self.deadline_s = deadline_s
@@ -29,7 +32,7 @@ class SO101PickPlace(gym.Env):
         self.ranges = self.model.actuator_ctrlrange.copy()
         low, high = self.from_radians(self.ranges[:,0]), self.from_radians(self.ranges[:,1])
         self.action_space = gym.spaces.Box(np.minimum(low,high).astype(np.float32), np.maximum(low,high).astype(np.float32))
-        features = {'state': self.action_space}
+        features = {'state': gym.spaces.Box(-np.inf,np.inf,(6,),dtype=np.float32)}
         if images:
             features['rgb'] = gym.spaces.Box(0,255,(480,640,3),dtype=np.uint8)
         self.observation_space = gym.spaces.Dict(features)
@@ -63,6 +66,8 @@ class SO101PickPlace(gym.Env):
         self.lag_s = float(self.np_random.uniform(.025,.06))
         self.policy_state = {'chunk':[], 'index':0}
         self.sensor_queue = []
+        self.variation_mode=(options or {}).get('variation',self.variation_mode)
+        self.episode_parameters=self.variation.apply(int(self.np_random.integers(0,2**31)),self.variation_mode)
         mujoco.mj_forward(self.model,self.data)
         return self.observation(), self.info()
 
@@ -73,10 +78,19 @@ class SO101PickPlace(gym.Env):
             result['rgb'] = self.render()
         return result
 
+    def neutral_action(self):
+        return self.observation()['state'].tolist()
+
+    def applied_command(self):
+        return self.from_radians(self.data.ctrl).tolist()
+
     def teacher_state(self):
-        return np.concatenate([self.data.qpos[:6],self.data.qvel[:6],
-            self.data.body('task_cube').xpos,self.data.site('gripperframe').xpos,
-            self.data.body('target_box').xpos,self.filtered,[self.elapsed/self.deadline_s]]).astype(np.float32)
+        # Privileged PPO only: cube orientation/velocity and transport/filter
+        # state matter to the next transition; ACT never receives this vector.
+        return np.concatenate([self.data.qpos,self.data.qvel,
+            self.data.site('gripperframe').xpos,self.data.body('target_box').xpos,
+            self.filtered,self.pending,[self.lag_s,self.stable,self.elapsed/self.deadline_s,
+            self.model.body_mass[self.model.body('task_cube').id],self.model.geom_friction[self.model.geom('cube').id,0]]]).astype(np.float32)
 
     def gripper_is_open(self):
         return self.data.qpos[5]>.45
@@ -91,7 +105,7 @@ class SO101PickPlace(gym.Env):
         return {'domain':'sim','profile':self.profile,'model':self.manifest,
                 'phase':self.phase,'inside_box':bool(inside),'released':bool(released),
                 'stationary':bool(stationary),'stable_s':self.stable,'success':self.stable>=.5,
-                'elapsed_s':self.elapsed, 'calibration':'uncalibrated'}
+                'elapsed_s':self.elapsed, 'calibration':'uncalibrated','variation':self.episode_parameters}
 
     def step(self, action):
         a = np.asarray(action,dtype=float)
@@ -104,6 +118,8 @@ class SO101PickPlace(gym.Env):
             self.filtered += min(1.,self.model.opt.timestep/self.lag_s)*(self.pending-self.filtered)
             self.data.ctrl[:] = self.filtered
             mujoco.mj_step(self.model,self.data)
+            if self.physics_observer is not None:
+                self.physics_observer(self.model,self.data)
         self.pending = target  # one command-period transport delay
         self.steps += 1
         self.elapsed = self.data.time
@@ -117,7 +133,7 @@ class SO101PickPlace(gym.Env):
         reward = -float(np.linalg.norm(ee-cube)) + float(lifted)*.5 - float(np.linalg.norm(cube-target_xyz))
         info = self.info()
         success = info['success']
-        deadline = self.elapsed>=self.deadline_s
+        deadline = self.steps*self.dt+1e-9>=self.deadline_s
         fallen = cube[2]<-.02 or np.linalg.norm(cube[:2])>1
         terminated = success or fallen
         truncated = deadline and not terminated
@@ -135,6 +151,7 @@ class SO101PickPlace(gym.Env):
                   'elapsed':self.elapsed,'stable':self.stable,'phase':self.phase,'steps':self.steps,
                   'lag_s':self.lag_s,'policy_state':copy.deepcopy(self.policy_state),
                   'sensor_queue':copy.deepcopy(self.sensor_queue),'model_manifest':self.manifest.copy()}
+        result['episode_variation']=self.variation.snapshot()
         # Torch is optional in physics-only processes, but capture it when the policy uses it.
         import sys
         if 'torch' in sys.modules:
@@ -147,6 +164,9 @@ class SO101PickPlace(gym.Env):
     def restore(self, snapshot):
         if snapshot['model_manifest'] != self.manifest:
             raise ValueError('Snapshot model mismatch')
+        self.variation.restore(snapshot['episode_variation'])
+        self.episode_parameters=copy.deepcopy(self.variation.realization)
+        self.variation_mode=self.episode_parameters['mode']
         mujoco.mj_setState(self.model,self.data,snapshot['physics'],mujoco.mjtState.mjSTATE_INTEGRATION)
         self.np_random.bit_generator.state = copy.deepcopy(snapshot['rng'])
         random.setstate(snapshot['python_rng']); np.random.set_state(snapshot['numpy_rng'])
@@ -176,7 +196,7 @@ class StateTeacher(gym.Wrapper):
     def __init__(self, env):
         super().__init__(env)
         self.observation_space = gym.spaces.Box(-np.inf,np.inf,env.teacher_state().shape,dtype=np.float32)
-        self.action_space = gym.spaces.Box(-1.,1.,(6,),dtype=np.float32)
+        self.action_space = gym.spaces.Box(-1.,1.,env.action_space.shape,dtype=np.float32)
 
     def reset(self,**kwargs):
         _,info = self.env.reset(**kwargs)
