@@ -560,4 +560,4 @@ app.on_shutdown(fleet_service.shutdown)
 app.timer(.1,control.watchdog)
 app.timer(2,jobs.tick)
 ui.run(host=os.environ.get('EXPLORER3_HOST','127.0.0.1'),port=int(os.environ.get('EXPLORER3_PORT','8030')),title='Explorer 3.0',
-       reload=False,show=False,tailwind=False,language='ru',favicon='🧭')
+       reload=False,show=False,tailwind=False,language='ru',favicon='🧭',timeout_graceful_shutdown=3)

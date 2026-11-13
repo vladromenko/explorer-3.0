@@ -29,9 +29,29 @@ async def scenario():
             sessions=[r['value'] for r in get(AGENT+'/_requests')[n:] if r['kind']=='session']
             assert sessions and sessions[-1]['profile']==profile,sessions
             await page.locator('button.stop.big').click();await page.wait_for_timeout(500);checked.append(profile)
+        # STOP followed by explicit enable works repeatedly without page reload.
+        for _ in range(3):
+            n=len(get(AGENT+'/_requests'))
+            await page.get_by_role('button',name='▶ Я рядом — включить').click()
+            await page.wait_for_timeout(700)
+            assert get(AGENT+'/health')['armed']
+            await page.locator('button.stop.big').click();await page.wait_for_timeout(500)
+            assert not get(AGENT+'/health')['armed']
+            assert any(r['kind']=='stop' for r in get(AGENT+'/_requests')[n:])
+        await page.get_by_role('button',name='▶ Я рядом — включить').click();await page.wait_for_timeout(700)
+        n=len([r for r in get(AGENT+'/_requests') if r['kind']=='session'])
+        # Emulate a half-open transport: readyState stays OPEN, but data ceases.
+        await page.evaluate('ws.onmessage=()=>{};ws.send=()=>{}')
+        await page.wait_for_timeout(4000)
+        assert not get(AGENT+'/health')['armed']
+        assert len([r for r in get(AGENT+'/_requests') if r['kind']=='session'])==n
+        await page.get_by_role('button',name='▶ Я рядом — включить').click();await page.wait_for_timeout(1000)
+        assert get(AGENT+'/health')['armed']
+        await page.locator('button.stop.big').click();await page.wait_for_timeout(500)
         assert not errors
         await browser.close()
-        return {'domain':'fixture','physical_robot_access':False,'cold_open_no_acquire':True,'profiles':checked,'errors':errors}
+        return {'domain':'fixture','physical_robot_access':False,'cold_open_no_acquire':True,'profiles':checked,
+                'stop_reenable_cycles':3,'half_open_recovery_without_resume':True,'http_stop':True,'errors':errors}
 def main():
     OUT.mkdir(exist_ok=True);data=Path(tempfile.mkdtemp(prefix='explorer3-profile-check-'));(data/'configs').mkdir()
     (data/'configs/workflow.json').write_text(json.dumps({'stage':'B','allowed_robots':['rosmaster']}))

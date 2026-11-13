@@ -41,6 +41,13 @@ def console():
     return (Path(__file__).parent/'static/rosmaster-console.html').read_text()
 
 
+@app.post('/api/rosmaster/stop')
+async def stop_http():
+    """Independent STOP path when the browser's WebSocket has stalled."""
+    await asyncio.to_thread(operator.stop,'Браузер: кнопка STOP (HTTP)')
+    return {'armed':False,'notice':operator.error,'physical_stop_confirmed':False}
+
+
 JOINT_NAMES=('shoulder_pan','shoulder_lift','elbow_flex','wrist_flex','wrist_roll')
 
 

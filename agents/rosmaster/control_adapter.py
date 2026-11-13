@@ -8,12 +8,35 @@ import math
 import numpy as np
 
 
+class ManualCartesianModel:
+    """Reuse native IK with position-first jogging; reject sideways singular steps.
+
+    Native IK's 10 mm grasp tolerance and strong pitch preference are too loose
+    for sub-millimetre jog steps. This only adapts manual XYZ, not mirror or poses.
+    """
+    def __init__(self,model):self.model=model
+    def __getattr__(self,name):return getattr(self.model,name)
+    def ik(self,target,pitch,seed,**kwargs):
+        start=self.model.tcp_position(seed)
+        requested=np.asarray(target)-start;length=float(np.linalg.norm(requested))
+        if length>1e-6:
+            kwargs.update(pitch_weight=.015,stay_weight=0.)
+        sol,error=self.model.ik(target,pitch,seed,**kwargs)
+        if sol is not None and length>1e-6:
+            step=self.model.tcp_position([*sol[:5],seed[5]])-start
+            direction=requested/length;along=float(np.dot(step,direction))
+            sideways=float(np.linalg.norm(step-along*direction))
+            # Numerical tolerance 0.1 mm; beyond that, at least 85% axial motion.
+            if along<=0 or sideways>max(.0001,.15*along):return None,error
+        return sol,error
+
+
 class NativeControls:
     def __init__(self, io, cfg, arm_model, mirror_cfg, log=lambda message: None):
         from cubebot.arm_control import CartesianJog
         from cubebot.mirror import MirrorMapper
         self.io, self.cfg, self.arm, self.log = io, cfg, arm_model, log
-        self.jog = CartesianJog(arm_model, cfg, io.arm_command())
+        self.jog = CartesianJog(ManualCartesianModel(arm_model), cfg, io.arm_command())
         self.mirror = MirrorMapper(arm_model, cfg['arm'], mirror_cfg, io.arm_command())
         self.original_scale = list(mirror_cfg['scale'])
         self.input = dict(drive=[0,0,0], arm=[0,0,0], pitch=0, roll=0, grip=0, slow=False)

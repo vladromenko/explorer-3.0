@@ -37,6 +37,31 @@ def test_constructor_inert_and_base_does_not_require_arm_feedback():
     with pytest.raises(PermissionError):c.set_input({'drive':[1,0,0]},.7)
 
 
+@pytest.mark.parametrize('axis,sign',[(0,-1),(0,1),(1,-1),(1,1),(2,-1)])
+def test_xyz_jog_does_not_drift_diagonally_from_operator_pose(axis,sign):
+    import numpy as np
+    io,c=create();pose=[100,77,90,77,90,31];c.jog.reset(pose)
+    start=c.arm.tcp_position(pose);move=[0,0,0];move[axis]=sign
+    sent=None
+    for _ in range(30):
+        cmd=c.jog.step(.033,move,slow=True)
+        if cmd is not None:sent=cmd
+    assert sent is not None
+    delta=c.arm.tcp_position(sent)-start
+    # Near full extension +X legitimately reaches its boundary after a few mm;
+    # it must stop there rather than gain reach by descending diagonally.
+    assert delta[axis]*sign>(.003 if (axis,sign)==(0,1) else .015)
+    assert np.linalg.norm(np.delete(delta,axis))<.003
+
+
+def test_upright_sideways_singularity_is_not_replaced_with_forward_motion():
+    import numpy as np
+    io,c=create();start=c.arm.tcp_position(c.jog.servo)
+    for _ in range(30):c.jog.step(.033,[0,1,0],slow=True)
+    delta=c.arm.tcp_position(c.jog.servo)-start
+    assert np.linalg.norm(delta)<.0005  # below one physical servo-degree step
+
+
 def test_arm_cannot_invent_feedback_or_move_base():
     io,c=create();io.feedback=None
     with pytest.raises(ValueError):c.enable('rosmaster_pick_place',0)
@@ -49,7 +74,7 @@ def test_copied_methods_match_recorded_hashes():
     from pathlib import Path
     import agents.rosmaster.control_adapter as module
     source=Path(module.__file__).read_text();lines=source.splitlines(keepends=True)
-    cls=next(n for n in ast.parse(source).body if isinstance(n,ast.ClassDef))
+    cls=next(n for n in ast.parse(source).body if isinstance(n,ast.ClassDef) and n.name=='NativeControls')
     expected=json.loads((Path(module.__file__).parent/'control-adapter-provenance.json').read_text())
     for name,digest in expected['methods'].items():
         method=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name==name)
