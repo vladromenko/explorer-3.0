@@ -1,0 +1,10 @@
+{
+  "actual_browser": true,
+  "yoloe": "Найдено объектов: 0 · расчёт 0.68 с · загрузка модели 3.06 с",
+  "sam3": "Найдено объектов: 1 · расчёт 1.76 с · загрузка модели 12.56 с",
+  "training_started": false,
+  "motor_commands": false,
+  "ground_truth": false,
+  "errors": [],
+  "external": []
+}

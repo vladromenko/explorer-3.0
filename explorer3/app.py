@@ -108,6 +108,10 @@ from . import sim_pages
 sim_pages.install(stop_all,CSS,jobs)
 from . import fleet_pages
 fleet_pages.install(stop_all,CSS)
+from . import vision_pages
+vision_pages.install(CSS,jobs)
+from . import branching_pages
+branching_pages.install(CSS,jobs)
 
 @ui.page('/')
 def index():

@@ -77,6 +77,60 @@ class Jobs:
             'expected_model_hash':model_hash,
             'episodes':3 if json.loads(source['config']).get('smoke') else 20})
 
+    def compare_sim_branches(self,name,*,source_job=None,seed=14,warmup_s=.5,delay_s=.5,correction_s=5.,horizon_s=15.):
+        from .branching_config import validate_config
+        if profile(name).get('domain')!='sim':raise ValueError('Только симуляция')
+        cfg={'kind':'sim_branches','profile':name,'seed':int(seed),'warmup_s':float(warmup_s),
+            'delay_s':float(delay_s),'correction_s':float(correction_s),'horizon_s':float(horizon_s),
+            'repeats':2,'device':'cpu','capture_correction':True,'render_preview':True}
+        validate_config(cfg)
+        policy='diagnostic_hold'
+        if source_job:
+            source=self.get(source_job)
+            if source['profile']!=name or source['status']!='completed' or not source['checkpoint']:
+                raise ValueError('Нужен завершённый checkpoint выбранного профиля')
+            if source['policy'] not in {'act','smolvla','diffusion'}:raise ValueError('Неподдерживаемая политика')
+            from .datasets import load_plan,select_simulation_revision
+            plan=json.loads(source['config']).get('plan_id')
+            if not plan:raise ValueError('Нет зафиксированного плана обучающих данных')
+            groups=load_plan(plan)['splits']
+            _,model_hash=select_simulation_revision([e for group in groups.values() for e in group])
+            if model_hash is None:raise ValueError('Нет версии модели обучающих данных')
+            cfg.update(source_job=source_job,checkpoint=source['checkpoint'],expected_model_hash=model_hash)
+            policy=source['policy']
+        return self._insert(name,policy,cfg)
+
+    def accept_sim_correction(self,source_job,reviewed=False):
+        if reviewed is not True:raise ValueError('Сначала проверьте кадры и результат исправления')
+        from .branch_corrections import candidate,source_hash
+        source=self.get(source_job)
+        if source['status']!='completed' or json.loads(source['config']).get('kind')!='sim_branches':
+            raise ValueError('Нужен завершённый отчёт сравнения')
+        report=json.loads((DATA/'jobs'/source_job/'result.json').read_text())
+        root,meta=candidate(report)
+        review={'decision':'accept_sim_scripted_correction','source_sha256':source_hash(root),
+            'source_job':source_job,'lineage':report['lineage'],'snapshot_sha256':report['snapshot_sha256'],
+            'recorded_wall_unix_s':time.time(),'source':'scripted_expert','human_demonstration':False}
+        return self._insert(source['profile'],'dataset',{'kind':'sim_correction_import',
+            'profile':source['profile'],'spool':str(root),'review':review,'device':'cpu'})
+
+    def inspect_image(self,image,method,prompt,source):
+        import base64,io
+        from PIL import Image
+        if method not in {'yoloe','sam3'} or not isinstance(prompt,str) or not 1<=len(prompt.strip())<=200:
+            raise ValueError('Выберите модель и короткое название объекта')
+        raw=base64.b64decode(image,validate=True)
+        if len(raw)>8_000_000:raise ValueError('Изображение слишком большое')
+        frame=Image.open(io.BytesIO(raw))
+        if frame.width*frame.height>4096*4096:raise ValueError('Изображение слишком большое')
+        frame.load()
+        root=DATA/'vision'/uuid.uuid4().hex;root.mkdir(parents=True)
+        frame.convert('RGB').save(root/'input.png')
+        (root/'source.json').write_text(json.dumps({'source':source,'captured_monotonic_ns':time.monotonic_ns(),
+            'domain':'sim' if source in {'individual_sim','fleet_sim'} else 'uploaded','ground_truth':False}))
+        return self._insert('vision',method,{'kind':'vision','method':method,'image':str(root/'input.png'),
+            'prompt':prompt.strip(),'device':'cuda' if method=='sam3' else 'cpu'})
+
     def prepare_support(self,job_id):
         from .act_support import source_plan
         source=self.get(job_id);source_plan(source)
@@ -154,7 +208,7 @@ class Jobs:
         ident = job['id']
         try:
             cfg=json.loads(job['config'])
-            gpu=cfg.get('kind','train') in {'train','evaluate','benchmark'} and cfg.get('device','cuda').startswith('cuda')
+            gpu=cfg.get('kind','train') in {'train','evaluate','benchmark','vision'} and cfg.get('device','cuda').startswith('cuda')
             with ResourceLease('compute'), (ExistingTrainingLease() if gpu else contextlib.nullcontext()):
                 path = DATA/'jobs'/f'{ident}.json'
                 path.write_text(job['config'])

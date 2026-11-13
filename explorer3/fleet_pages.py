@@ -62,6 +62,7 @@ def install(stop_real,css):
             ui.button('STOP',icon='stop_circle',color='negative',on_click=pause).props('size=lg')
         with ui.row().classes('w-full justify-between items-center'):
             ui.link('← Отдельные задачи','/sim')
+            ui.link('Зрение · YOLOE / SAM 3','/sim/vision')
             ui.label('СИМУЛЯЦИЯ · без подключения роботов').classes('sim-badge')
         with ui.element('div').classes('sim-layout'):
             with ui.column().classes('sim-panel'):

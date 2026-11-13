@@ -113,6 +113,8 @@ def install(stop_real,css,jobs):
         with ui.row().classes('w-full items-center justify-between'):
             ui.link('← Реальные роботы','/').classes('muted')
             ui.link('Общий стенд · три робота →','/sim/fleet')
+            ui.link('Зрение · YOLOE / SAM 3','/sim/vision')
+            ui.link('Сравнить помощь','/sim/branches')
             profile_select=ui.select({'so101_pick_place_sim':'SO-101 · Menagerie','rosmaster_pick_place_sim':'ROSMASTER · рука','rosmaster_dock_sim':'ROSMASTER · шасси','tank_dock_sim':'Tank · шасси'},
                 value=initial_profile,label='Робот в симуляции',on_change=select_profile).style('min-width:300px')
             variation_select=ui.select({'nominal':'Базовая сцена · сетка 10 см','varied':'Вариации для обучения'},

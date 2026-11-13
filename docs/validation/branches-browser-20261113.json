@@ -1,0 +1,12 @@
+{
+  "actual_browser": true,
+  "lineage": "ff9844d50e004e4f80e0fd24df6dffac",
+  "table": "Вариант\tРезультат\tВремя симуляции, с\tПомощь, с\nПродолжить\tВремя сравнения закончилось\t15\t0\nПодождать без помощи\tВремя сравнения закончилось\t15\t0\nПодождать и исправить\tУспех\t6.4\t5",
+  "reviewed_import": "Исправление сохранено · проверка чтения PASS · 84ceebb3",
+  "dataset_context": "isolated software acceptance, scripted expert only",
+  "training_started": false,
+  "physical_robot_access": false,
+  "replay_verified": true,
+  "errors": [],
+  "external": []
+}

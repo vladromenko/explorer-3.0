@@ -633,3 +633,19 @@ T1: через GitHub code search найден полный пакет `gongyizh
 ACT support preparation использует официальный dataset reader, frozen checkpoint features и proposals, отдельные train/validation и проверяемый cache; тестовый smoke не выдаётся за calibrated monitor. ACTClient выделен в общий PolicyClient. Добавлены SmolVLA и Diffusion рецепты/выбор в sim UI, единый evaluator с snapshot очередей и RNG. SmolVLA existing synthetic checkpoint загрузился на GPU, 6 finite outputs, restore следующих действий точно совпал, cold chunk 1,784 с. CPU первая попытка превысила 30 с и была завершена; это ограничение не скрыто. Никакого optimizer/learn в этой работе. Исправлен duplicate policy.path при SmolVLA fine-tune.
 
 Регрессия основного окружения после этих изменений: 68 tests + 2 subtests PASS, 1 native-only test deselected; остальные native tests проверяются в .venv-sim. Существующий старый trainer PID164059 при поздней инвентаризации уже отсутствовал; команд его остановки не выполнялось. SmolVLA/SAM3 GPU probes проходят, но PyTorch2.11/cu130 печатает предупреждение поддержки SM8.7: конкретные успешные probes не подтверждают все будущие training kernels.
+
+### 2026-11-13 — передача ROSMASTER отдельному диалогу
+
+По прямому указанию пользователя основная работа Homebrain приостановлена; подготовлено задание `docs/handoffs/ROSMASTER_NEXT_DIALOG_RU.md`. Это передача направления, не завершение этапа A и не аппаратный допуск. На момент передачи HEAD 2561828, незавершённые изменения восприятия сохранены без отката/коммита. Роботы в этой передаче не подключались, workflow A/hardware_connections=false не изменён. Результат соседнего диалога ожидается в `docs/handoffs/ROSMASTER_RESULT_RU.md`; перед возобновлением сверить его, git diff и фактическое развёртывание.
+
+### 2026-11-13 — Homebrain возобновлён, ROSMASTER остаётся соседнему диалогу
+
+Прямое указание пользователя: продолжить Homebrain, ROSMASTER не трогать, обучение не запускать. Только локальные изменения; workflow и аппаратные допуски этим диалогом не менялись. Соседние ROSMASTER-коммиты/изменения сохранены отдельно, не откатывались.
+
+Завершён `/sim/vision`: реальные YOLOE26s и SAM3 по кадру/тексту, результаты и маски, исходные SHA и pinned manifests; offline браузер PASS. На проверочном кадре YOLOE 0 объектов, SAM3 1 кубик — без выдуманной точности. Hash-check всех весов перед inference; explicit cache downloader. Никакого управления по маскам.
+
+Добавлен R5_protocol_adaptation_v1: полное состояние среды/контроллера/RNG и frozen policy queues, типизированный JSON без pickle, три matched ветви и два повтора, full initial hash и сравнение траекторий ≤1e-9. Одинаковая граница сброса chunks у hold/correction; inference time отдельно, censored не failure. Один lineage для всех ветвей. Диагностический Tank (hold вместо политики) в браузере: помощь 5 с после 0.5 с ожидания → успех за 6.4 с; остальные не завершились за15 с. Это не learned-policy результат. UI `/sim/branches`, отчёт/кадры/история; успешное scripted correction после явной проверки → official LeRobot 100 кадров/20Hz/readback PASS в изолированном тестовом DATA. Никакого обучения.
+
+Diffusion: обнаружена отсутствовавшая зависимость, установлен официальный diffusers0.38.0 (+ importlib_metadata/lazy-importer/zipp), main pip check PASS, lock обновлён. Компактный upstream Diffusion со случайными весами: save/new-process reload/10 actions через границу chunk/snapshot+RNG restore точное совпадение, cold CPU0.123с. Optimizer/backward не выполнялись. Проверка не подтверждает полный training recipe или навык.
+
+Новые native/lineage/review тесты 5 PASS; затронутые основные contracts/workflows/recipe tests12 PASS; браузерные vision и branches без внешней сети/page errors. Подробности `docs/VISION_AND_BRANCHES.md`. A остаётся открытым: learned fleet + online R3, полный ручной fine-tune workflow и остаток fault-матрицы; новые обученные политики появятся только после разрешённого пользователем запуска.

@@ -8,16 +8,21 @@ from explorer3.recording import EpisodeWriter
 from explorer3.validation import validate
 
 
-def ingest(root):
+def ingest(root,review=None):
     root=Path(root).resolve()
     if not root.is_relative_to(DATA/'staging/sim'):
         raise ValueError('Not an Explorer simulation spool')
-    if (root/'imported.json').exists():
-        return json.loads((root/'imported.json').read_text())
     meta=json.loads((root/'manifest.json').read_text())
     if meta['domain']!='sim' or meta['frames']<1:
         raise ValueError('Empty or invalid simulation capture')
-    writer=EpisodeWriter(meta['profile'],meta['session'],meta['scene'],domain='sim')
+    if meta.get('segment_role')=='bounded_correction':
+        from explorer3.branch_corrections import validate_review
+        validate_review(root,review or {})
+        meta.update(training_eligible=True,review=review)
+    if (root/'imported.json').exists():
+        return json.loads((root/'imported.json').read_text())
+    writer=EpisodeWriter(meta['profile'],meta['session'],meta['scene'],
+                         category='correction' if meta.get('segment_role')=='bounded_correction' else 'demonstration',domain='sim')
     for line in (root/'samples.jsonl').read_text().splitlines():
         sample=json.loads(line)
         filename=(root/sample.pop('image_path')).resolve()

@@ -60,6 +60,21 @@ def run_job(path: Path):
     cfg = json.loads(path.read_text())
     work = DATA/'jobs'/path.stem
     work.mkdir(exist_ok=True)
+    if cfg.get('kind')=='sim_correction_import':
+        from .sim.import_episode import ingest
+        result=ingest(cfg['spool'],review=cfg['review'])
+        (work/'result.json').write_text(json.dumps({**result,'training_started':False,'review':cfg['review']},indent=2))
+        return
+    if cfg.get('kind')=='sim_branches':
+        subprocess.run([str(ROOT/'.venv-sim/bin/python'),'-m','explorer3.sim.branching',str(path),str(work)],
+                       check=True,env={**offline_environment(),'MUJOCO_GL':'egl'})
+        return
+    if cfg.get('kind')=='vision':
+        interpreter=ROOT/('.venv-sim/bin/python' if cfg['method']=='yoloe' else '.venv/bin/python')
+        subprocess.run([str(interpreter),'-m','explorer3.perception',cfg['image'],str(work),
+            '--method',cfg['method'],'--prompt',cfg['prompt'],'--device',cfg['device']],
+            check=True,env={**offline_environment(),'YOLO_AUTOINSTALL':'false'})
+        return
     if cfg.get('kind')=='support_calibration':
         from .act_support import prepare
         prepare(cfg['source_job'],work)

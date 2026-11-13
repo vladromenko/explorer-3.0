@@ -42,7 +42,7 @@ class SimCapture:
                 'command_source':self.meta['command_source'],'image_path':filename,
                 'camera':{'timestamp_ns':timestamp,'source_timestamp_ns':timestamp,'sequence':self.count},
                 'applied_command':env.applied_command(),
-                'task_phase':env.phase,'seed':self.meta['seed'],'lineage':self.ident}
+                'task_phase':env.phase,'seed':self.meta['seed'],'lineage':self.meta['lineage']}
         self.rows.write(json.dumps(sample)+'\n')
         self.count+=1
 

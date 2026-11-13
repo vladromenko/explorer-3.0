@@ -1,0 +1,21 @@
+{
+  "policy": {
+    "ready": true,
+    "policy_id": "d0e57989d513cad54e7bcf1d43e99947149efc2e91f8a2ce942d102b441c8ccc",
+    "policy_type": "diffusion",
+    "features": null,
+    "chunk_size": 16
+  },
+  "cold_action_seconds": 0.12338798199925805,
+  "replayed_actions": 10,
+  "snapshot_restore_exact": true,
+  "new_process_reload": true,
+  "training_started": false,
+  "random_weights": true,
+  "compact_fixture": true,
+  "skill_verified": false,
+  "limitations": [
+    "Reduced architecture only; full recipe performance not measured",
+    "No optimizer, backward or learning performed"
+  ]
+}

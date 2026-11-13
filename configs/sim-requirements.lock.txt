@@ -1,5 +1,8 @@
 absl-py==2.5.1
 attrs==26.1.0
+certifi==2026.10.23
+charset-normalizer==3.5.2
+clip @ git+https://github.com/ultralytics/CLIP.git@7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40
 cloudpickle==3.1.2
 colorama==0.4.6
 contourpy==1.4.0
@@ -14,6 +17,7 @@ Farama-Notifications==0.0.6
 filelock==4.2.10
 fonttools==4.68.0
 fsspec==2026.9.0
+ftfy==6.3.1
 gdm_robotics==1.0.2
 gitdb==4.0.12
 GitPython==3.2.1
@@ -21,6 +25,7 @@ glfw==2.11.0
 greenlet==3.5.6
 grpcio==1.85.1
 gymnasium==1.4.0
+idna==3.20
 ImageIO==2.38.1
 imageio-ffmpeg==0.8.1
 immutabledict==4.3.1
@@ -58,13 +63,15 @@ nvidia-nvtx==13.0.85
 onnx==1.23.2
 onnx-ir==1.1.0
 onnxscript==0.7.2
-opencv-python-headless==5.0.0.93
+opencv-python @ file:///home/jetsonnx/.local/share/explorer3/cache/wheels/opencv_python-5.0.0.93-cp37-abi3-manylinux_2_28_aarch64.whl#sha256=08d5d91d967b58d6db86073b2ad3eaef88ca4ebdfd45c9059bf59f5ded0c7ad2
 packaging==26.3
 pillow==13.0.0
 playground==1.0.1
 playwright==1.65.1
 plotly==7.1.0
 pluggy==1.7.0
+polars==1.36.1
+polars-runtime-32==1.36.1
 protobuf==7.36.2
 psutil==7.2.2
 Pygments==2.21.0
@@ -76,6 +83,8 @@ pyvers==0.2.3
 PyYAML==6.0.3
 reaf==1.1.2
 reaf-sim==1.0.1
+regex==2025.11.3
+requests==2.32.5
 rsl-rl-lib==5.4.2
 scipy==1.18.1
 setuptools==81.0.0
@@ -90,10 +99,15 @@ tensorboardX==2.6.5
 tensordict==0.15.6
 torch==2.11.0
 torchvision==0.26.0
+tqdm==4.67.1
 triton==3.6.0
 typing_extensions==4.16.0
 tzdata==2026.6
+ultralytics==8.4.14
+ultralytics-thop==2.0.18
+urllib3==2.8.0
 warp-lang==1.18.0
+wcwidth==0.2.14
 websockets==17.4
 Werkzeug==3.1.9
 wrapt==2.5.2
