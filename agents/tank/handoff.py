@@ -45,7 +45,7 @@ def owners():
             for fd in (proc/'fd').iterdir():
                 try:
                     device=os.readlink(fd)
-                    if device=='/dev/ttyACM0' or device.startswith('/dev/bus/usb/'):
+                    if device.startswith('/dev/ttyACM') or device.startswith('/dev/bus/usb/'):
                         hits.append(device)
                 except FileNotFoundError:pass  # Descriptor closed during inspection.
             if hits:found.append({'pid':int(proc.name),'devices':sorted(set(hits)),

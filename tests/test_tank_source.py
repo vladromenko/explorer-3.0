@@ -107,3 +107,14 @@ def test_handoff_after_reboot_preserves_history_and_captures_current_services(tm
     assert result['boot_id']=='current' and not any(result['services'].values())
     assert json.loads((tmp_path/'handoff-previous-previous.json').read_text())==previous
     assert markers==[True]
+
+
+def test_failed_stop_blocks_future_homebrain_sessions(tmp_path,monkeypatch):
+    monkeypatch.setattr(tank,'DATA',tmp_path)
+    monkeypatch.setattr(tank,'client',lambda:httpx.Client(base_url='http://test',transport=httpx.MockTransport(
+        lambda request:httpx.Response(409,json={'detail':'STOP not delivered: serial EIO'}))))
+    src=tank.TankSource(SimpleNamespace())
+    errors=src.close()
+    assert 'Выключите питание' in errors[0]
+    saved=json.loads((tmp_path/'validation/tank-motion-incident.json').read_text())
+    assert saved['blocked'] and saved['physical_stop_confirmed'] is False

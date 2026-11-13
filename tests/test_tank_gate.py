@@ -9,6 +9,27 @@ from agents.tank.agent import Hardware
 from agents.tank.serial_guard import CheckedSerial
 
 class TankGateTests(unittest.TestCase):
+    def test_serial_loss_latches_incident_and_never_claims_a_neutral_write(self):
+        class BrokenBoard:
+            process=None
+            def command(self,*args):raise OSError(5,'Input/output error')
+            def stop(self):raise OSError(5,'Input/output error')
+            def close(self):raise RuntimeError('Neutral write failed during close')
+        with tempfile.TemporaryDirectory() as directory,patch('agents.tank.agent.ROOT',Path(directory)):
+            h=Hardware();h.done.set();h.watchdog.join(timeout=1)
+            h.board=BrokenBoard();h.armed=True;h.lease='live';h.expires=time.monotonic()+10
+            h.last_action=[.2,-.5]
+            with self.assertRaisesRegex(RuntimeError,'STOP не доставлен'):h.command('live',1,.2,0.)
+            self.assertFalse(h.armed)
+            self.assertFalse(h.neutral_written)
+            self.assertEqual(h.last_action,[.2,-.5])
+            self.assertFalse(h.status()['physical_stop_confirmed'])
+            self.assertTrue((Path(directory)/'incident-block.json').exists())
+            with self.assertRaises(PermissionError):h.command('live',2,0.,0.)
+            with self.assertRaises(RuntimeError):h.close()
+            self.assertIsNone(h.board)
+            with self.assertRaises(RuntimeError):h.start()
+
     def test_bench_permission_expires_and_keeps_incident_block(self):
         from agents.tank.motion_permission import bench_authorized,limited_command
         with tempfile.TemporaryDirectory() as directory:
