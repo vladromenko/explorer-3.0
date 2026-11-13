@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "declared_before_full_training": true,
+  "so101_pick_place_sim": {
+    "demonstration_seeds": [1, 21],
+    "split": "session_scene_group",
+    "act": {"steps": 2000, "batch_size": 4, "device": "cuda", "seed": 1000},
+    "upstream_pickcube_ppo": {"iterations": 256, "steps_per_environment": 32, "nworld": 1, "device": "cpu", "seed": 1000},
+    "pick_place_ppo": {"timesteps": 16384, "nworld": 1, "device": "cpu", "seed": 1000},
+    "evaluation_seeds": [10000, 10020],
+    "success_criterion": {"minimum_success_fraction": 0.8, "episodes": 20},
+    "deadline_s": 20,
+    "interpretation": "Finite initial pilot budget, not a promise of convergence. Deadline is failure. Upstream pickcube is not pick-place success."
+  }
+}

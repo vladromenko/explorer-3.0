@@ -1,4 +1,5 @@
 """One managed compute worker, fixed commands only, explicit resume after interruption."""
+import contextlib
 import json
 import os
 import signal
@@ -12,7 +13,7 @@ from . import catalog
 from .datasets import freeze
 from .paths import DATA, ROOT, offline_environment
 from .profiles import profile
-from .resources import ResourceLease, ResourceBusy
+from .resources import ResourceLease, ResourceBusy, ExistingTrainingLease
 
 
 def resumable_checkpoint(ident):
@@ -44,6 +45,13 @@ class Jobs:
         plan_id, _ = freeze(name, smoke)
         return self._insert(name, policy, {'kind': 'train', 'profile': name, 'policy': policy,
             'smoke': bool(smoke), 'plan_id': plan_id, 'seed': 1000})
+
+    def sim_ppo(self, name):
+        if name!='so101_pick_place_sim':
+            raise ValueError('Среда ещё не принята')
+        budget=json.loads((ROOT/'configs/sim-budgets.json').read_text())[name]['pick_place_ppo']
+        return self._insert(name,'ppo',{'kind':'sim_ppo','profile':name,'steps':budget['timesteps'],
+            'seed':budget['seed'],'device':'cpu','domain':'sim'})
 
     def evaluate(self, job_id, partition="validation"):
         if partition not in {"validation","test"}:raise ValueError("Unknown evaluation split")
@@ -87,6 +95,13 @@ class Jobs:
             if job['status'] not in {'failed', 'cancelled', 'interrupted'}:
                 raise ValueError('Возобновляется только остановленное задание')
             cfg = json.loads(job['config'])
+            if cfg.get('kind')=='sim_ppo':
+                checkpoint=DATA/'jobs'/ident/'latest.zip'
+                if not checkpoint.is_file():raise ValueError('Нет сохранённого PPO checkpoint')
+                cfg['resume_checkpoint']=str(checkpoint)
+                with catalog.connect() as db:
+                    db.execute("UPDATE jobs SET config=?,status='queued',error=NULL WHERE id=?",(json.dumps(cfg),ident))
+                return
             if cfg.get('kind', 'train') != 'train':
                 raise ValueError('Для диагностики создайте новое задание')
             cfg['resume_checkpoint'] = str(resumable_checkpoint(ident))
@@ -107,7 +122,9 @@ class Jobs:
     def _run(self, job):
         ident = job['id']
         try:
-            with ResourceLease('compute'):
+            cfg=json.loads(job['config'])
+            gpu=cfg.get('kind','train') in {'train','evaluate','benchmark'} and cfg.get('device','cuda').startswith('cuda')
+            with ResourceLease('compute'), (ExistingTrainingLease() if gpu else contextlib.nullcontext()):
                 path = DATA/'jobs'/f'{ident}.json'
                 path.write_text(job['config'])
                 with (DATA/'logs'/f'{ident}.log').open('a') as log:
@@ -127,8 +144,9 @@ class Jobs:
                     db.execute('UPDATE jobs SET status=?,error=?,checkpoint=? WHERE id=?',
                         (status, None if result else f'Process exit={code}; см. журнал',
                          result.get('checkpoint') if result else None, ident))
-        except ResourceBusy:
-            pass  # Leave queued. A recording or another compute process owns the resource.
+        except ResourceBusy as exc:
+            with catalog.connect() as db:
+                db.execute("UPDATE jobs SET error=? WHERE id=? AND status='queued'",(str(exc),ident))
         except Exception as exc:
             catalog.event('error', f'Job {ident}: {exc}')
             with catalog.connect() as db:

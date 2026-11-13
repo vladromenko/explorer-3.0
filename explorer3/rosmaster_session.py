@@ -2,8 +2,8 @@
 
 The operator drives in the control panel; this module only samples the agent at the profile
 rate. Each sample is taken atomically on the robot (camera frame first, then the control
-state), so observation k pairs with the command in force at the next sample k+1, which was
-decided after observation k. Robot times are mapped to the Homebrain clock with a measured
+state). Observation k pairs with the command in force at sample k+1. This is a held-command
+snapshot, not proof that the command was decided after observation k or a measurement of send duration. Robot times are mapped to the Homebrain clock with a measured
 midpoint offset; they are never treated as a shared clock.
 """
 import json
@@ -180,7 +180,9 @@ class RosmasterSession:
                     raise InterruptedError(self.operator.error or 'Управление остановлено')
                 now = time.monotonic()
                 if self.plan and now-started > self.plan['max_duration_s']:
-                    raise InterruptedError('Лимит времени испытания')
+                    self.outcome='failure'
+                    provenance['termination_reason']='task_deadline'
+                    break
                 sample = self.sample(http, clock)
                 if self.study and decision is None and now-started >= self.study['decision_after_s'] and history:
                     decision_ns = time.monotonic_ns()
@@ -238,7 +240,8 @@ class RosmasterSession:
                     segment['writer'].add(frame)
                     segment['frames'] += 1
                     history.append({**{k: frame[k] for k in ('observation_timestamp_ns', 'action_send_start_ns', 'action_send_end_ns',
-                                                             'action', 'measured_response_kind', 'camera_ns_mapped')
+                                                             'action', 'measured_response_kind', 'camera_ns_mapped',
+                                                             'action_time_kind','action_available_ns','action_effective_ns')
                                        if k in frame},
                                     'observation.state': previous['base_measured'] if name == 'rosmaster_dock' else frame['observation.state'],
                                     'state_valid': True, 'camera': {'timestamp_ns': previous['camera_ns']}})
@@ -319,7 +322,8 @@ class RosmasterSession:
 
     def frame(self, name, cfg, current, following, len_frames):
         state, action = state_and_action(name, current, following)
-        action_ns = following['observation_ns']
+        sent_agent_ns=following['base_sent_ns'] if name=='rosmaster_dock' else following['arm_sent_ns']
+        effective_ns=(sent_agent_ns+following['observation_ns']-following['agent_monotonic_ns']) if sent_agent_ns is not None else None
         if following['command_source'] == 'policy':
             source = 'policy'
         else:
@@ -334,8 +338,10 @@ class RosmasterSession:
             'frame_id': len_frames, 'images': {cfg['camera']: image},
             'observation.state': state, 'action': action,
             'observation_timestamp_ns': current['observation_ns'],
-            # The command in force at the next sample: decided after this observation.
-            'action_send_start_ns': action_ns, 'action_send_end_ns': action_ns,
+            # The next snapshot proves command availability, not its serial write duration.
+            'action_send_start_ns': None, 'action_send_end_ns': None,
+            'action_available_ns':following['homebrain_received_ns'],
+            'action_effective_ns':effective_ns,
             'action_time_kind': 'command_in_force_at_next_agent_snapshot', 'action_acknowledged': False,
             'command_source': source, 'teleoperation_phase': 'trial' if source == 'policy' else 'following',
             'measured_response_kind': 'wheel_encoder_velocity' if base else 'servo_position_readback',

@@ -10,6 +10,7 @@ import numpy as np
 from . import catalog
 from .paths import DATA
 from .profiles import profile
+from .timing import action_available_ns, validate_timing, send_latency_s
 
 FEATURES = ('command_change', 'response_change', 'tracking_error', 'observation_age_s',
             'camera_age_s', 'send_latency_s', 'progress', 'assigned_delay_s')
@@ -21,7 +22,7 @@ MEASURED_KINDS = {'measured_joint_position', 'servo_position_readback', 'wheel_e
 def features(history, decision_ns, scales, delay_s=0., progress=None):
     """Only values received before decision time; no outcome or robot ID features."""
     rows = [r for r in history if decision_ns-3_000_000_000 <= r['observation_timestamp_ns'] <= decision_ns
-            and r['action_send_end_ns'] <= decision_ns]
+            and action_available_ns(r) <= decision_ns]
     if not rows:
         raise ValueError('No past observations at the decision time')
     scale = np.asarray(scales, dtype=float)
@@ -30,9 +31,8 @@ def features(history, decision_ns, scales, delay_s=0., progress=None):
     actions = np.asarray([r['action'] for r in rows], dtype=float)
     if actions.shape[1:] != scale.shape or not np.isfinite(actions).all():
         raise ValueError('Action channels do not match physical scales')
-    if any(not r['observation_timestamp_ns'] <= r['action_send_start_ns'] <= r['action_send_end_ns'] for r in rows):
-        raise ValueError('Noncausal telemetry')
-    dt=np.diff([r['action_send_end_ns'] for r in rows])/1e9
+    for row in rows:validate_timing(row)
+    dt=np.diff([action_available_ns(r) for r in rows])/1e9
     if (dt<=0).any():raise ValueError('Nonmonotonic command history')
     last = rows[-1]
     measured = [r for r in rows if r.get('state_valid') is True
@@ -45,7 +45,7 @@ def features(history, decision_ns, scales, delay_s=0., progress=None):
             if (state_dt<=0).any():raise ValueError('Nonmonotonic measured history')
             response = float(np.abs(np.diff(states, axis=0)/scale/state_dt[:,None]).mean())
             # Compare current measured state with a command sent BEFORE it was observed.
-            prior = [r for r in rows if r['action_send_end_ns'] < last['observation_timestamp_ns']]
+            prior = [r for r in rows if action_available_ns(r) < last['observation_timestamp_ns']]
             if prior:
                 residual = float(np.abs((states[-1]-np.asarray(prior[-1]['action']))/scale).mean())
     camera_ns = last.get('camera', {}).get('timestamp_ns')
@@ -54,7 +54,7 @@ def features(history, decision_ns, scales, delay_s=0., progress=None):
         raise ValueError('Online progress must be bounded; never use final outcome')
     return dict(zip(FEATURES, [float(np.abs(np.diff(actions, axis=0)/scale/dt[:,None]).mean()) if len(actions)>1 else None,
         response, residual, (decision_ns-last['observation_timestamp_ns'])/1e9, camera_age,
-        (last['action_send_end_ns']-last['action_send_start_ns'])/1e9, progress, float(delay_s)]))
+        send_latency_s(last), progress, float(delay_s)]))
 
 
 def initialize():
@@ -298,44 +298,56 @@ def report(artifact, rows, seed=1000):
             'limitation': 'Intention-to-treat prediction; no observed individual counterfactual. Missing timing is not zero measured cost. CI unavailable for one independent session/scene group.'}
 
 
-def analyze(output):
-    """Freeze a local decision snapshot and compare transfer budgets without control actions."""
+def analyze(output, *, scope='all', source_profiles=None, target_profile=None):
+    """Local, chosen-pair or leave-one-profile-out analysis, with frozen grouped splits."""
     from .datasets import grouped_split
-    output = Path(output)
-    output.mkdir(parents=True, exist_ok=True)
-    rows = [r for r in records() if r['outcome'] in {'success','failure'}]
-    if not rows:
+    if scope not in {'local','pair','all'}:
+        raise ValueError('Unknown research scope')
+    rows=[r for r in records() if r['outcome'] in {'success','failure'}]
+    available=sorted({r['profile'] for r in rows})
+    if not available:
         raise ValueError('Нет завершённых рандомизированных эпизодов; показы не являются данными эффекта помощи')
-    snapshot = json.dumps(rows, sort_keys=True, indent=2)
+    if scope!='all' and target_profile not in available:
+        raise ValueError('Нет данных выбранного целевого профиля')
+    sources=list(source_profiles or [])
+    if scope=='pair' and (not sources or target_profile in sources or set(sources)-set(available)):
+        raise ValueError('Выберите существующие разные source и target профили')
+    selected=available if scope=='all' else [target_profile]+(sources if scope=='pair' else [])
+    rows=[r for r in rows if r['profile'] in selected]
+    output=Path(output);output.mkdir(parents=True,exist_ok=True)
+    snapshot=json.dumps(rows,sort_keys=True,indent=2)
     (output/'decisions.json').write_text(snapshot)
-    split = grouped_split([dict(r,id=r['episode_id']) for r in rows])
+    split=grouped_split([dict(r,id=r['episode_id']) for r in rows])
     (output/'split.json').write_text(json.dumps({k:[r['episode_id'] for r in v] for k,v in split.items()},indent=2))
-    source = [r for r in split['train'] if r['profile'] in {'so101_pick_place','tank_dock'}]
-    target = sorted([r for r in split['train'] if r['profile'].startswith('rosmaster')],key=lambda r:r['episode_id'])
-    held_out = [r for r in split['test'] if r['profile'].startswith('rosmaster')]
-    if {r['profile'] for r in source} != {'so101_pick_place','tank_dock'} or not held_out:
-        raise ValueError('Нужны обе исходные платформы и отдельные тестовые эпизоды ROSMASTER')
-    results = {}
-    for budget in (0,10,20):
-        for physical in (False,True):
-            for transfer in (True,False):
-                if transfer or budget:
-                    name=f"{'transfer' if transfer else 'target-only'}-{budget}-{'physical' if physical else 'commands'}"
-                    if len(target)<budget:
-                        results[name]={'status':'insufficient_target_budget'}
-                    else:
-                        train=(source if transfer else [])+target[:budget]
-                        try:
-                            model=fit(train,output/(name+'.joblib'),include_physical=physical,
-                                      source_only=budget==0,minimum_per_arm=20 if budget==0 else 2)
-                            results[name]={'status':'completed','source_episodes':len(source) if transfer else 0,
-                                           'target_episodes':budget,'report':report(model,held_out),
-                                           'small_target_budget':budget in {10,20}}
-                        except ValueError as exc:
-                            results[name]={'status':'insufficient_data','reason':str(exc)}
-    result={'snapshot_sha256':hashlib.sha256(snapshot.encode()).hexdigest(),'variants':results,
-            'physical_skill_verified':False,'causal_effect_proven':False,
-            'common_sensor_baseline':'commands variant masks out all measured response features',
-            'scheduler_experiment':'not performed; random/fifo/risk/gain selectors prepared, policies not executed'}
+    results={}
+    for target_name in (available if scope=='all' else [target_profile]):
+        source_names=[p for p in selected if p!=target_name] if scope=='all' else sources
+        target=sorted([r for r in split['train'] if r['profile']==target_name],key=lambda r:r['episode_id'])
+        source=[r for r in split['train'] if r['profile'] in source_names]
+        held_out=[r for r in split['test'] if r['profile']==target_name]
+        variants=[('local',len(target),target)] if scope=='local' or not source else []
+        if source:
+            for budget in (0,10,20):
+                variants.append(('transfer',budget,source+target[:budget]))
+                if budget:variants.append(('target-only',budget,target[:budget]))
+        for variant,budget,train in variants:
+            for physical in (False,True):
+                name=f"{target_name}-{variant}-{budget}-{'physical' if physical else 'commands'}"
+                if len(target)<budget or not held_out:
+                    results[name]={'status':'insufficient_target_budget_or_holdout'}
+                else:
+                    try:
+                        model=fit(train,output/(name+'.joblib'),include_physical=physical,
+                            source_only=variant=='transfer' and budget==0,
+                            minimum_per_arm=20 if budget==0 else 2)
+                        results[name]={'status':'completed','source_profiles':source_names if variant=='transfer' else [],
+                            'target_profile':target_name,'target_episodes':budget,'report':report(model,held_out),
+                            'small_target_budget':budget in {10,20}}
+                    except ValueError as exc:
+                        results[name]={'status':'insufficient_data','reason':str(exc)}
+    result={'scope':scope,'profiles':selected,'snapshot_sha256':hashlib.sha256(snapshot.encode()).hexdigest(),
+        'variants':results,'physical_skill_verified':False,'causal_effect_proven':False,
+        'common_sensor_baseline':'commands variant masks out all measured response features',
+        'scheduler_experiment':'not performed by this report; predictive diagnostics are not empirical policy value'}
     (output/'result.json').write_text(json.dumps(result,indent=2,ensure_ascii=False))
     return result

@@ -22,13 +22,16 @@ def combine(episodes: list[dict], destination: Path, name: str):
                           concatenate_videos=False,concatenate_data=False)
 
 
-def train_command(dataset: Path, output: Path, policy='act',steps=50,batch=8,seed=1000):
+def train_command(dataset: Path, output: Path, policy='act',steps=50,batch=8,seed=1000,device='cuda',initial_checkpoint=None):
     args=[sys.executable,'-m','lerobot.scripts.lerobot_train',f'--dataset.repo_id=local/{dataset.name}',
           f'--dataset.root={dataset}','--dataset.video_backend=pyav','--dataset.use_imagenet_stats=false',
-          f'--policy.type={policy}','--policy.device=cuda','--policy.push_to_hub=false',
+          f'--policy.type={policy}',f'--policy.device={device}','--policy.push_to_hub=false',
           '--wandb.enable=false',f'--output_dir={output}',f'--steps={steps}',f'--batch_size={batch}',
           '--num_workers=0','--persistent_workers=false',f'--seed={seed}','--env_eval_freq=0',
           '--log_freq=10',f'--save_freq={min(steps,5000)}']
+    if initial_checkpoint:
+        args.remove(f'--policy.type={policy}')
+        args.append(f'--policy.path={initial_checkpoint}')
     if policy=='smolvla':
         base=next((DATA/'cache/huggingface/hub/models--lerobot--smolvla_base/snapshots').iterdir())
         args.remove('--policy.type=smolvla')
@@ -56,6 +59,10 @@ def run_job(path: Path):
     cfg = json.loads(path.read_text())
     work = DATA/'jobs'/path.stem
     work.mkdir(exist_ok=True)
+    if cfg.get('kind') == 'sim_ppo':
+        subprocess.run([str(ROOT/'.venv-sim/bin/python'),'-m','explorer3.sim.ppo','--job',str(path)],
+                       check=True,env=offline_environment())
+        return
     if cfg.get('kind') == 'benchmark':
         from .benchmark import run
         run(cfg['source_job'],work/'result.json')
@@ -97,19 +104,23 @@ def run_job(path: Path):
     if not (work/'train').exists():
         combine(splits['train'], work/'train', cfg['profile'])
     steps = TRAINING[cfg['policy']].get('smoke_steps', 50) if cfg['smoke'] else TRAINING[cfg['policy']].get('steps', 100000)
+    if cfg.get('steps') is not None:
+        steps=int(cfg['steps'])
     resume = cfg.get('resume_checkpoint')
+    if resume and cfg.get('initial_checkpoint'):
+        raise ValueError('Fine-tuning and optimizer resume are different jobs')
     if resume:
         saved = json.loads((Path(resume)/'train_config.json').read_text())
         batches = (saved['batch_size'],)
     else:
-        batches = (1,) if cfg['policy']=='smolvla' else (8,4,2,1)
+        batches = (int(cfg['batch_size']),) if cfg.get('batch_size') else (1,) if cfg['policy']=='smolvla' else (8,4,2,1)
     done = False
     for batch in batches:
         if not done:
             output = DATA/'checkpoints'/f'{path.stem}-b{batch}'
             command = ([sys.executable, '-m', 'lerobot.scripts.lerobot_train',
                         f'--config_path={resume}/train_config.json', '--resume=true'] if resume else
-                       train_command(work/'train', output, cfg['policy'], steps, batch, cfg['seed']))
+                       train_command(work/'train', output, cfg['policy'], steps, batch, cfg['seed'],cfg.get('device','cuda'),cfg.get('initial_checkpoint')))
             (work/f'command-b{batch}.json').write_text(json.dumps(command, indent=2))
             log_path = work/f'trainer-b{batch}.log'
             with log_path.open('a') as log:
@@ -117,14 +128,15 @@ def run_job(path: Path):
             if result.returncode == 0:
                 done = True
                 checkpoint = output/'checkpoints/last/pretrained_model'
-                subprocess.run([sys.executable, '-m', 'explorer3.reload_check', str(checkpoint), str(work/'train')],
+                subprocess.run([sys.executable, '-m', 'explorer3.reload_check', str(checkpoint), str(work/'train'),cfg.get('device','cuda')],
                                env=offline_environment(), check=True)
                 if splits['validation']:
                     subprocess.run(evaluation_command(checkpoint, [e['dataset'] for e in splits['validation']],
                                    work/'evaluation.json', 'held_out_validation'), env=offline_environment(), check=True)
                 (work/'result.json').write_text(json.dumps({'checkpoint': str(checkpoint), 'effective_batch': batch,
                     'seed': cfg['seed'], 'smoke': cfg['smoke'], 'steps': steps, 'plan_id': cfg.get('plan_id'),
-                    'physical_skill_verified': False, 'test_used': False}))
+                    'physical_skill_verified': False, 'test_used': False,'domain':profile(cfg['profile']).get('domain','real'),
+                    'initial_checkpoint':cfg.get('initial_checkpoint'),'resume_checkpoint':resume}))
             elif resume or 'out of memory' not in log_path.read_text().lower() or batch == 1:
                 raise RuntimeError(f'Trainer failed: {log_path}')
 

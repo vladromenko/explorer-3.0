@@ -9,3 +9,8 @@ __pycache__/
 *.pth
 *.pt
 runtime/
+
+.venv-sim/
+.playwright/
+
+MUJOCO_LOG.TXT

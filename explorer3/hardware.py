@@ -400,7 +400,8 @@ class HardwareSource:
         if not all(math.isfinite(v) for v in state): raise RuntimeError('Не конечная позиция суставов')
         return {'timestamp_ns':read_end,'observation_timestamp_ns':read_end,
                 'state_timestamp_ns':read_end,'state_read_start_ns':read_start,'state_read_end_ns':read_end,
-                'observation.state':state,'images':images,'state_valid':True,'source':'hardware'}
+                'observation.state':state,'images':images,'state_valid':True,'source':'hardware',
+                'measured_response_kind':'measured_joint_position'}
 
     def begin_episode(self):
         """Frames intentionally ignored during an inter-episode pause are not capture drops."""

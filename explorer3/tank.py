@@ -12,6 +12,8 @@ from .paths import DATA
 def config():return json.loads((DATA/'configs/tank-agent.json').read_text())
 
 def client():
+    from .local_work import homebrain_only
+    if homebrain_only():raise PermissionError('Этап A: только Homebrain')
     cfg=config()
     return httpx.Client(base_url=f"http://{cfg['host']}:{cfg['port']}",headers={'X-Explorer-Token':cfg['token']},
                         trust_env=False,timeout=.25)

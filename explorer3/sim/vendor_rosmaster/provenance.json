@@ -1,0 +1,11 @@
+{
+  "source": "local runtime/provenance/rosmaster-console/cubebot; user-selected console 8090",
+  "upstream_commit": "unknown",
+  "license": "user-provided project code; no external license inferred",
+  "changes": "none to arm_model.py and geometry.py",
+  "purpose": "existing FK/IK and geometric transforms only; no device code",
+  "sha256": {
+    "arm_model.py": "2329f86e6d8f20115aa7809ed18a357f505e916a8b4d9ed415a35498853a1fa3",
+    "geometry.py": "62848674267c7b0a5d61267630ca3a9b6a13b47d5fecf1aa2884f621453b9739"
+  }
+}

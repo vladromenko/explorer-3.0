@@ -60,3 +60,23 @@ class ResourceLease:
             fcntl.flock(self.file,fcntl.LOCK_UN)
             self.file.close()
             self.file=None
+
+class ExistingTrainingLease:
+    """Coordinate with an existing lab lock without modifying its file or process."""
+    def __init__(self):
+        self.file=None
+
+    def __enter__(self):
+        path=Path.home()/'Projects/so101_ai_learning/runtime/locks/gpu-heavy.lock'
+        if path.exists():
+            self.file=path.open('r')
+            try:
+                fcntl.flock(self.file,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                self.file.close();self.file=None
+                raise ResourceBusy('GPU занят обучением прежнего проекта; Explorer ожидает') from exc
+        return self
+
+    def __exit__(self,*args):
+        if self.file:
+            fcntl.flock(self.file,fcntl.LOCK_UN);self.file.close();self.file=None

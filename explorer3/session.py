@@ -130,7 +130,9 @@ class Session:
             while not self.control.expired():
                 if provider:
                     if time.monotonic()-trial_start>self.trial_plan['max_duration_s']:
-                        self.control.stop('Лимит времени испытания');break
+                        self.outcome='failure'
+                        provenance['termination_reason']='task_deadline'
+                        self.control.stop('Задача не завершена к сроку испытания');break
                     observation=source.observe()
                     command_source='policy'
                     if self.pilot:

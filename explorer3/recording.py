@@ -6,6 +6,7 @@ import numpy as np
 from .paths import DATA
 from .profiles import profile
 from . import catalog
+from .timing import validate_timing
 
 def code_version():
     import subprocess
@@ -13,10 +14,24 @@ def code_version():
     return subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
 
 
+def source_snapshot():
+    import hashlib
+    from .paths import ROOT
+    files={}
+    for folder in ('explorer3','configs'):
+        for path in sorted((ROOT/folder).rglob('*')):
+            if path.is_file() and path.suffix in {'.py','.json','.txt'}:
+                files[str(path.relative_to(ROOT))]=hashlib.sha256(path.read_bytes()).hexdigest()
+    return {'files':files,'sha256':hashlib.sha256(json.dumps(files,sort_keys=True).encode()).hexdigest()}
+
+
 class EpisodeWriter:
-    def __init__(self, name: str, session: str, scene: str, category='demonstration'):
+    def __init__(self, name: str, session: str, scene: str, category='demonstration', *, domain='real'):
         from lerobot.datasets.lerobot_dataset import LeRobotDataset
         cfg=profile(name)
+        if domain not in {'real','sim','fixture'} or cfg.get('domain','real') != ('sim' if domain=='fixture' else domain):
+            raise ValueError('Profile/domain mismatch')
+        self.domain=domain
         if cfg['channels'] is None:
             raise RuntimeError('Feature contract unavailable')
         if category not in {'demonstration','rollout','correction'}:
@@ -24,7 +39,7 @@ class EpisodeWriter:
         self.id=uuid.uuid4().hex
         self.name,self.session,self.scene,self.category=name,session,scene,category
         self.cfg=cfg
-        self.root=DATA/'datasets'/name/self.id
+        self.root=DATA/'datasets'/name/self.id if domain=='real' else DATA/'datasets'/domain/name/self.id
         self.frames=0
         channels=cfg['channels']
         self.camera=cfg['camera']
@@ -47,15 +62,16 @@ class EpisodeWriter:
     def add(self, sample: dict):
         image=sample['images'][self.camera]
         command_source=sample.get('command_source','policy' if self.category=='rollout' else 'human')
-        if command_source not in {'human','policy','safety'}:
+        if command_source not in ({'human','policy','safety'} if self.domain=='real' else {'human','policy','safety','scripted_expert','ppo_expert'}):
             raise ValueError('Unknown command source')
         if self.command_source is not None and self.command_source!=command_source:
             raise ValueError('Finish the segment before changing command source; action chunks cannot cross it')
         self.command_source=command_source
         if self.initial_state is None:self.initial_state=list(sample['observation.state'])
         timestamp=sample['observation_timestamp_ns']
-        if timestamp<=self.last_observation or sample['action_send_start_ns']<timestamp:
+        if timestamp<=self.last_observation:
             raise ValueError('Noncausal observation/action sequence')
+        validate_timing(sample)
         self.last_observation=timestamp
         state=sample['observation.state'];action=sample['action']
         if len(state)!=len(self.cfg.get('state_channels',self.cfg['channels'])) or len(action)!=len(self.cfg['channels']):
@@ -66,18 +82,20 @@ class EpisodeWriter:
                            'action':np.asarray(sample['action'],dtype=np.float32),
                            'observation.images.'+self.camera:rgb,'task':self.cfg['task']})
         record={k:v for k,v in sample.items() if k!='images'}
-        record.update(episode_id=self.id,frame_index=self.frames,robot_id=self.robot_id,task_id=self.name,
+        record.update(domain=self.domain,episode_id=self.id,frame_index=self.frames,robot_id=self.robot_id,task_id=self.name,
                       session_id=self.session,scene_id=self.scene,command_source=command_source,
-                      measured_response_kind=sample.get('measured_response_kind','measured_joint_position'),
+                      measured_response_kind=sample.get('measured_response_kind','unknown'),
                       battery_voltage=sample.get('battery_voltage'),battery_source=sample.get('battery_source','unavailable'),
                       camera={k:v for k,v in image.items() if k not in {'rgb','bgr','image'}},
                       camera_source_timestamp=image.get('source_timestamp_ns'),
                       camera_source_timestamp_status='driver_timestamp' if 'source_timestamp_ns' in image else 'unavailable',
-                      clock_domain='homebrain_monotonic_ns')
+                      clock_domain='simulation_monotonic_ns' if self.domain=='sim' else 'fixture' if self.domain=='fixture' else 'homebrain_monotonic_ns')
         self.sidecar.write(json.dumps(record)+'\n')
         self.frames+=1
 
     def finish(self, outcome: str, provenance: dict):
+        if self.domain=='sim' and not all(key in provenance for key in ('model','seed','controller','lineage')):
+            raise ValueError('Simulation provenance incomplete')
         if outcome not in {'success','failure','aborted'}:
             raise ValueError('Unknown outcome')
         self.sidecar.flush()
@@ -86,9 +104,9 @@ class EpisodeWriter:
             self.ds.save_episode()
             self.ds.finalize()
             (self.root/'provenance.json').write_text(json.dumps({'hardware':provenance,'profile':self.cfg,'outcome':outcome,
-                'category':self.category,'synthetic':False,'closed_at':time.time(),
+                'category':self.category,'domain':self.domain,'synthetic':self.domain!='real','closed_at':time.time(),
                 'session_id':self.session,'scene_id':self.scene,'initial_state':self.initial_state,
-                'code_version':code_version(),'command_source':self.command_source},indent=2))
+                'code_version':code_version(),'source_snapshot':source_snapshot(),'command_source':self.command_source},indent=2))
             catalog.add_episode(dict(id=self.id,profile=self.name,dataset=str(self.root),episode_index=0,
                 session=self.session,scene=self.scene,category=self.category,outcome=outcome,frames=self.frames))
         else:

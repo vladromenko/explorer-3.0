@@ -40,6 +40,7 @@ def inventory():
             for k,v in DEVICE_PATHS.items()}
 
 def current_stage():
+    if local_work.homebrain_only():return 'A'
     if (DATA/'validation/stage-b-pass.json').exists():
         return 'C'
     return 'B' if control.authorized() else 'A'
@@ -98,6 +99,9 @@ async def stop_all():
     if rosmaster_control.operator.lease is not None:
         await asyncio.to_thread(rosmaster_control.operator.stop,'Главный STOP Explorer')
 
+from . import sim_pages
+sim_pages.install(stop_all,CSS,jobs)
+
 @ui.page('/')
 def index():
     owner=ui.context.client.id
@@ -140,6 +144,8 @@ def index():
             ui.html('<h1>Explorer 3.0</h1>')
             ui.label('Показы → обучение → проверяемые испытания').classes('muted')
         ui.button('STOP · всё управление Explorer',icon='stop_circle',color='negative',on_click=stop_all).props('size=lg')
+    ui.link('Симуляция MuJoCo · Homebrain', '/sim')
+    ui.label('РЕАЛЬНЫЕ РОБОТЫ').classes('kicker')
     stage_label=ui.label('Этап A · программная подготовка. Движение не разрешено. Запись и физические испытания ещё не проверены.').classes('notice')
     ready=ui.label('').classes('muted')
     fleet_labels={}
@@ -524,6 +530,8 @@ def index():
 app.on_startup(lambda:catalog.event('info','Explorer 3.0 запущен без открытия аппаратуры'))
 app.on_shutdown(lambda:control.stop('Служба останавливается'))
 app.on_shutdown(lambda:jobs.cancel())
+from . import sim_service
+app.on_shutdown(sim_service.shutdown)
 app.timer(.1,control.watchdog)
 app.timer(2,jobs.tick)
 ui.run(host=os.environ.get('EXPLORER3_HOST','127.0.0.1'),port=int(os.environ.get('EXPLORER3_PORT','8030')),title='Explorer 3.0',

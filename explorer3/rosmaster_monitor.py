@@ -10,6 +10,8 @@ from .paths import DATA
 
 async def fetch(path):
     try:
+        from .local_work import homebrain_only
+        if homebrain_only():raise ValueError('Этап A: только Homebrain')
         cfg = json.loads((DATA/'configs/rosmaster-agent.json').read_text())
         if cfg.get('observation_enabled') is not True:
             raise ValueError('Наблюдение ROSMASTER отключено')

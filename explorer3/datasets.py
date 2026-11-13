@@ -51,28 +51,29 @@ def grouped_split(episodes, seed=1000):
 
 
 def freeze(name, smoke, seed=1000):
+    domain=profile(name).get('domain','real')
     episodes = eligible(name)
     if len(episodes) < (3 if smoke else 50):
         raise ValueError('Нужно минимум 3 показа для smoke или 50 для основного рецепта')
     for episode in episodes:
         root = Path(episode['dataset'])
         provenance = json.loads((root / 'provenance.json').read_text())
-        if provenance.get('synthetic') is not False:
+        if provenance.get('domain','real')!=domain or provenance.get('synthetic') is not (domain!='real'):
             raise ValueError('Синтетические данные запрещены в физическом наборе')
         validation = DATA / 'validation' / f"episode-{episode['id']}.json"
         digest = fingerprint(root)
         checked = json.loads(validation.read_text()) if validation.exists() else {}
         if checked.get('readback') != 'PASS' or checked.get('dataset_sha256') != digest:
             from .validation import validate
-            checked = validate(episode['id'])
+            checked = validate(episode['id'],domain=domain)
             if checked['dataset_sha256'] != digest:
                 raise ValueError('Dataset changed during validation')
         sources = set(json.loads(line)['command_source'] for line in (root / 'research.jsonl').read_text().splitlines())
-        if sources != {'human'}:
+        if not sources or not sources.issubset({'human'} if domain=='real' else {'human','scripted_expert','ppo_expert'}):
             raise ValueError('Behavior cloning принимает только отдельные сегменты human без границ переключения')
         episode['sha256'] = digest
     splits = {'train': episodes, 'validation': [], 'test': []} if smoke else grouped_split(episodes, seed)
-    plan = {'version': 1, 'profile': name, 'profile_contract': profile(name), 'smoke': bool(smoke),
+    plan = {'version': 1, 'domain':domain, 'profile': name, 'profile_contract': profile(name), 'smoke': bool(smoke),
             'seed': seed, 'statistics': 'train_only', 'splits': splits,
             'limitation': 'Smoke использует все показы; это не независимая оценка качества' if smoke else
                           'Split заморожен; test не используется для выбора модели'}

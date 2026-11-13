@@ -13,7 +13,10 @@ def test_recording_writes_valid_causal_episode(tmp_path, name):
     assert result['frames'] >= 25 and result['status']['phase'] == 'idle'
     rows = [json.loads(l) for l in next(tmp_path.glob('datasets/*/*/research.jsonl')).read_text().splitlines()]
     first = rows[0]
-    assert first['action_send_start_ns'] >= first['observation_timestamp_ns'] > first['camera']['timestamp_ns']
+    assert first['action_send_start_ns'] is None and first['action_send_end_ns'] is None
+    assert first['action_available_ns'] >= first['observation_timestamp_ns'] > first['camera']['timestamp_ns']
+    from explorer3.timing import send_latency_s
+    assert send_latency_s(first) is None
     assert len(first['observation.state']) == (6 if name.endswith('dock') else 6)
     assert len(first['action']) == (3 if name.endswith('dock') else 6)
     assert first['measured_response_kind'] == ('wheel_encoder_velocity' if name.endswith('dock') else 'servo_position_readback')

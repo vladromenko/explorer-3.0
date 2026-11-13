@@ -25,7 +25,7 @@ def test_local_mode_blocks_trial_before_loading_hardware(monkeypatch):
 
 def test_recording_rejects_source_switch_before_writing_frame():
     writer=object.__new__(EpisodeWriter)
-    writer.camera='wrist';writer.category='rollout';writer.command_source='policy'
+    writer.camera='wrist';writer.category='rollout';writer.command_source='policy';writer.domain='real'
     sample={'images':{'wrist':{}},'command_source':'human'}
     with pytest.raises(ValueError,match='segment'):
         writer.add(sample)

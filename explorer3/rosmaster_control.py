@@ -15,12 +15,16 @@ ZERO={'drive':[0,0,0],'arm':[0,0,0],'pitch':0,'roll':0,'grip':0,'slow':False}
 
 
 def connection(timeout=2):
+    from .local_work import homebrain_only
+    if homebrain_only():raise PermissionError('Этап A: только Homebrain')
     cfg=json.loads((DATA/'configs/rosmaster-agent.json').read_text())
     return httpx.Client(base_url=f"http://{cfg['host']}:{cfg['port']}",
                         headers={'X-Explorer-Token':cfg['token']},timeout=timeout,trust_env=False)
 
 
 def enabled():
+    from .local_work import homebrain_only
+    if homebrain_only():return False
     path=DATA/'configs/rosmaster-agent.json'
     return path.exists() and json.loads(path.read_text()).get('manual_control_enabled') is True
 

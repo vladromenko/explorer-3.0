@@ -1,0 +1,191 @@
+{
+  "so101_pick_place_sim": {
+    "robot": "so101",
+    "fps": 30,
+    "version": 1,
+    "task": "Pick up the cube, place it in the box, and withdraw the arm.",
+    "policy": "act",
+    "camera": "wrist",
+    "channels": [
+      "shoulder_pan",
+      "shoulder_lift",
+      "elbow_flex",
+      "wrist_flex",
+      "wrist_roll",
+      "gripper"
+    ],
+    "units": [
+      "degrees",
+      "degrees",
+      "degrees",
+      "degrees",
+      "degrees",
+      "percent_calibrated_range"
+    ],
+    "schema_status": "simulation_uncalibrated",
+    "recording_status": "not_verified",
+    "training_status": "not_verified",
+    "physical_skill_status": "not_applicable",
+    "domain": "sim",
+    "real_profile": "so101_pick_place",
+    "model_status": "upstream_uncalibrated"
+  },
+  "tank_dock_sim": {
+    "robot": "tank",
+    "fps": 20,
+    "version": 1,
+    "task": "Approach the visible target and stop inside the marked zone.",
+    "policy": "act",
+    "camera": "front",
+    "channels": [
+      "forward_velocity",
+      "yaw_velocity"
+    ],
+    "units": [
+      "m/s",
+      "rad/s"
+    ],
+    "schema_status": "simulation_uncalibrated",
+    "recording_status": "not_verified",
+    "training_status": "not_verified",
+    "physical_skill_status": "not_applicable",
+    "state_channels": [
+      "previous_forward_command",
+      "previous_yaw_command"
+    ],
+    "image_shape": [
+      400,
+      640,
+      3
+    ],
+    "manual_control_status": "operator_verified",
+    "state_provenance": "previous transmitted velocity command; wheel feedback unavailable",
+    "action_provenance": "accepted native controller velocity after factory limits; UART write verified, MCU acknowledgement unavailable",
+    "feature_scales": [
+      0.2,
+      0.5
+    ],
+    "domain": "sim",
+    "real_profile": "tank_dock",
+    "model_status": "not_implemented"
+  },
+  "rosmaster_dock_sim": {
+    "robot": "rosmaster",
+    "fps": 20,
+    "version": 3,
+    "task": "Approach the visible target and stop inside the marked zone.",
+    "policy": "act",
+    "camera": "front",
+    "channels": [
+      "forward_velocity",
+      "lateral_velocity",
+      "yaw_velocity"
+    ],
+    "units": [
+      "m/s",
+      "m/s",
+      "rad/s"
+    ],
+    "schema_status": "simulation_uncalibrated",
+    "recording_status": "not_verified",
+    "training_status": "not_verified",
+    "physical_skill_status": "not_applicable",
+    "state_channels": [
+      "measured_forward_velocity",
+      "measured_lateral_velocity",
+      "measured_yaw_velocity",
+      "previous_forward_command",
+      "previous_lateral_command",
+      "previous_yaw_command"
+    ],
+    "state_provenance": "controller wheel-encoder velocity (measured) + previous command sent to the controller",
+    "camera_status": "orbbec_rgb_on_arm_480x640",
+    "image_shape": [
+      480,
+      640,
+      3
+    ],
+    "state_units": [
+      "m/s",
+      "m/s",
+      "rad/s",
+      "m/s",
+      "m/s",
+      "rad/s"
+    ],
+    "action_provenance": "base command sent to the controller after native speed caps, lidar guard and shaping",
+    "arm_rule": "arm stays still (agent profile refuses arm input)",
+    "feature_scales": [
+      0.3,
+      0.25,
+      0.8
+    ],
+    "domain": "sim",
+    "real_profile": "rosmaster_dock",
+    "model_status": "not_implemented"
+  },
+  "rosmaster_pick_place_sim": {
+    "robot": "rosmaster",
+    "fps": 20,
+    "version": 3,
+    "task": "Pick up the cube and place it in the box with the base stationary.",
+    "policy": "act",
+    "camera": "front",
+    "channels": [
+      "base_rotation",
+      "shoulder",
+      "elbow",
+      "wrist_pitch",
+      "wrist_roll",
+      "gripper"
+    ],
+    "units": [
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees"
+    ],
+    "schema_status": "simulation_uncalibrated",
+    "recording_status": "not_verified",
+    "training_status": "not_verified",
+    "physical_skill_status": "not_applicable",
+    "state_channels": [
+      "measured_base_rotation",
+      "measured_shoulder",
+      "measured_elbow",
+      "measured_wrist_pitch",
+      "measured_wrist_roll",
+      "measured_gripper"
+    ],
+    "state_provenance": "servo position readback through the controller (all six joints, fresh <0.6 s)",
+    "camera_status": "orbbec_rgb_on_arm_480x640",
+    "image_shape": [
+      480,
+      640,
+      3
+    ],
+    "state_units": [
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees"
+    ],
+    "action_provenance": "arm target in force at the controller (measured pose at enable, then each sent command)",
+    "base_rule": "base stays still (agent profile refuses drive input)",
+    "feature_scales": [
+      90.0,
+      90.0,
+      90.0,
+      90.0,
+      90.0,
+      90.0
+    ],
+    "domain": "sim",
+    "real_profile": "rosmaster_pick_place",
+    "model_status": "not_implemented"
+  }
+}
