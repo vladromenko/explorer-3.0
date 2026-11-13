@@ -15,3 +15,8 @@
 - EXPIRED на ARM/ARM_ENABLE считается тем же переходным состоянием отмены, что NOT_READY; время (1.5 с) и частота (30/10 с) по-прежнему ограничены, прочие отказы (RANGE и т.д.) отключают сессию.
 - Новый тест test_arm_expired_rejection_is_transient_like_not_ready; scripts/rosmaster_robot_tests.sh — воспроизводимый прогон тестов агента на роботе (FakeBoard, без приводов): 27 PASS.
 - Установлено в ~/explorer3 (агент не запускался), резерв maintenance/backup-20261113-165119.
+
+## 2026-11-13 17:20 — запись: причины окончания и происхождение (§8, §9)
+Уже было исправлено основным диалогом и проверено: таймаут испытания → failure/task_deadline; неизвестный measured_response_kind → unknown; для кадров ROSMASTER (action_time_kind=command_in_force_at_next_agent_snapshot) send_latency = null, а не 0 (explorer3/timing.py).
+Добавлено в explorer3/rosmaster_session.py: termination_reason различает operator_success/operator_failure/operator_abort, operator_stop (STOP, скрытая вкладка, потеря heartbeat), robot_stop (агент сам остановил), hardware_or_network_error, emergency (не перезаписывается последующим обрывом), task_deadline; в provenance каждого сегмента domain=real, source=human|policy, agent_code_sha256 четырёх файлов агента. Тест tests/test_rosmaster_recording.py проверяет эти поля (fake agent, 7 PASS вместе с test_rosmaster_operator).
+Исследовательская запись ROSMASTER идёт только через собственный агент (/sample.jpg); explorer3/leader8090.py — отдельная совместимость с Console 8090, rosmaster_session её не импортирует.

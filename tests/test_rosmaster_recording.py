@@ -20,6 +20,9 @@ def test_recording_writes_valid_causal_episode(tmp_path, name):
     assert len(first['observation.state']) == (6 if name.endswith('dock') else 6)
     assert len(first['action']) == (3 if name.endswith('dock') else 6)
     assert first['measured_response_kind'] == ('wheel_encoder_velocity' if name.endswith('dock') else 'servo_position_readback')
+    provenance = json.loads(next(tmp_path.glob('datasets/*/*/provenance.json')).read_text())['hardware']
+    assert provenance['termination_reason'] == 'operator_success' and provenance['domain'] == 'real'
+    assert provenance['source'] == 'human' and len(provenance['agent_code_sha256']) == 4
 
 
 def test_pilot_assignment_hold_correction_and_segments(tmp_path):

@@ -66,6 +66,14 @@ def state_and_action(name, current, following):
     return [float(v) for v in current['arm_measured']], [float(v) for v in following['arm_target']]
 
 
+def agent_code_hashes():
+    """SHA256 of the agent sources in this checkout (deployed copies are verified to match before use)."""
+    import hashlib
+    from .paths import ROOT
+    return {name: hashlib.sha256((ROOT/'agents/rosmaster'/name).read_bytes()).hexdigest()
+            for name in ('agent.py', 'runtime.py', 'leased_core.py', 'control_adapter.py')}
+
+
 class RosmasterSession:
     """One recording/trial at a time; the trainer cannot run concurrently (compute lease)."""
 
@@ -112,6 +120,7 @@ class RosmasterSession:
         self.stop_event.clear()
         self.outcome = 'aborted'
         self.emergency = False
+        self.termination = None
         self.correction_done = threading.Event()
         self.plan = plan
         self.study = study
@@ -127,6 +136,7 @@ class RosmasterSession:
             raise ValueError('Исход: success, failure или aborted')
         self.outcome = outcome
         self.emergency = self.emergency or bool(emergency)
+        self.termination = 'emergency' if emergency else 'operator_'+('abort' if outcome == 'aborted' else outcome)
         self.stop_event.set()
 
     def end_correction(self):
@@ -261,10 +271,14 @@ class RosmasterSession:
             provenance['clock_mapping_end'] = clock.probe(3)
         except InterruptedError as exc:
             self.outcome = 'aborted'
+            # Separate a robot-side stop from an operator STOP / lost tab; both keep their text.
+            if self.termination != 'emergency':
+                self.termination = 'robot_stop' if str(exc).startswith('Робот') else 'operator_stop'
             with self.lock:
                 self.state['error'] = str(exc)
         except Exception as exc:
             self.outcome = 'aborted'
+            self.termination = 'hardware_or_network_error'
             with self.lock:
                 self.state['error'] = f'{type(exc).__name__}: {exc}'
             catalog.event('error', 'ROSMASTER запись: '+self.state['error'])
@@ -287,7 +301,10 @@ class RosmasterSession:
                 except Exception as exc:catalog.event('error', 'ROSMASTER пустой сегмент: '+str(exc))
             for index, segment in enumerate(segments):
                 try:
+                    provenance.setdefault('termination_reason', getattr(self, 'termination', None) or 'unknown')
                     provenance.update(stop_reason=self.state.get('error') or 'operator marked outcome',
+                                      domain='real', source=('policy' if segment['source'] == 'policy' else 'human'),
+                                      agent_code_sha256=agent_code_hashes(),
                                       segment_index=index, segments=len(segments), command_source=segment['source'],
                                       emergency_intervention=self.emergency)
                     segment['writer'].finish(self.outcome, provenance)
