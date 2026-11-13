@@ -32,3 +32,9 @@
 
 ## 2026-11-13 18:00 — допуск этапа для ROSMASTER
 Найдено: панель ROSMASTER не проверяла глобальный допуск (stage=A, hardware_connections=false) и могла забрать робот/включить управление. Исправлено: действия acquire/enable/prepare/mirror_on/leader/record_start/trial_start/preset/pair_capture проверяют local_work.hardware_allowed('rosmaster'); при этапе A — понятный отказ, STOP и чтение состояния не блокируются. Исключение только для ROSMASTER: configs/rosmaster-hardware-enabled.json {"enabled": true} (Tank/SO-101 им не открываются; tests/test_rosmaster_gating.py). Проверено вживую после перезапуска UI (без активных заданий/управления): «Включить» → отказ этапа A, агент на роботе остался inactive. Исключение НЕ создано — ждёт согласия пользователя.
+
+## 2026-11-13 18:20 — браузерная приёмка панели (fixture, без робота)
+scripts/check_rosmaster_browser.py: настоящий Chromium (Playwright из .venv-sim), изолированный Explorer на 127.0.0.1:8036 с временным EXPLORER3_DATA, поддельный агент scripts/fake_rosmaster_agent.py на 8041 (записывает каждый запрос). Реальный робот и Leader не задействуются. Результат docs/handoffs/rosmaster-browser-acceptance.json, скриншот rosmaster-panel.png:
+1 холодное открытие — ни acquire, ни session: PASS; 2 «▶ Я рядом — включить» → acquire+session: PASS; 3 удержание W → drive>0, отпускание → 0: PASS; 4 скрытие вкладки → STOP: PASS; 5 запись rosmaster_pick_place → «✓ Успех» → эпизод в каталоге (42 кадра, success): PASS; 6 кнопка STOP: PASS; ошибок страницы нет.
+Найдено и исправлено по ходу: этап A закрывал ROSMASTER ещё в трёх местах (connection(), enabled(), monitor.fetch) без учёта исключения — теперь везде local_work.hardware_allowed('rosmaster'). Без исключения поведение прежнее (этап A — закрыто; local-only — закрыто).
+Не проверено этим тестом: зеркало Leader (использовало бы реальный Leader), физические STOP/feedback — только с пользователем.

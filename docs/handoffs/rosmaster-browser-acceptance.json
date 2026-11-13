@@ -1,0 +1,21 @@
+{
+  "domain": "fixture",
+  "robot_touched": false,
+  "data": "/tmp/explorer3-rosmaster-browser-wrzua89v",
+  "1_cold_open_no_motor_open": true,
+  "2_enable_acquires_and_opens_session": true,
+  "3_hold_W_drives_forward": true,
+  "3_release_zero": true,
+  "4_hidden_tab_stops": true,
+  "5_record_state_text": "нет · последняя: success",
+  "6_stop_button": true,
+  "page_errors": [],
+  "5_episode_saved": [
+    {
+      "id": "1d3b70b91f644ed795d262a201fe5fef",
+      "profile": "rosmaster_pick_place",
+      "outcome": "success",
+      "frames": 42
+    }
+  ]
+}
