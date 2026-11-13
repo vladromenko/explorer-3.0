@@ -470,7 +470,11 @@ class Runtime:
                 'motion_commands_sent':core.motion_commands_sent,'clock_resyncs':core.clock_resyncs}
 
     def begin_pose(self,target,measured,now):
-        self.pose_target=[float(v) for v in target];self.pose_cmd=[float(v) for v in measured]
+        # After power-off the arm can rest outside the commandable range (seen: elbow -49).
+        # Start from the nearest commandable pose; prepare_step gives that first move enough time.
+        from cubebot.arm_model import SERVO_LIMITS
+        self.pose_target=[float(v) for v in target]
+        self.pose_cmd=[float(min(hi,max(lo,v))) for v,(lo,hi) in zip(measured,SERVO_LIMITS)]
         distance=max(abs(a-b) for a,b in zip(self.pose_target,self.pose_cmd))
         self.prepare_started=now;self.pose_deadline=now+distance/self.POSE_DEG_S+4.
         self.preparing=True
@@ -493,7 +497,11 @@ class Runtime:
             limit=self.POSE_DEG_S*min(dt,.1)
             self.pose_cmd=[c+max(-limit,min(limit,t-c)) for c,t in zip(self.pose_cmd,self.pose_target)]
         command=[float(round(v)) for v in self.pose_cmd]
-        with self.core_lock:self.core.on_arm(command,self.POSE_STEP_MS)
+        # The controller refuses targets it cannot reach in the given time (RANGE); scale the
+        # duration with the real distance so a folded arm moves at POSE_DEG_S instead of jumping.
+        gap=max(abs(c-m) for c,m in zip(command,measured))
+        runtime_ms=int(min(5000,max(self.POSE_STEP_MS,gap/self.POSE_DEG_S*1000)))
+        with self.core_lock:self.core.on_arm(command,runtime_ms)
         self.last_arm_command=list(command);self.last_arm_at=now
 
     def stop(self,reason='Operator STOP'):

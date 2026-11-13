@@ -57,8 +57,9 @@ class LeasedCore(BridgeCore):
         self.stop_reason = None
 
     def heartbeat(self):
-        if self.clock()>=self.operator_until:self.disarm('Operator heartbeat expired')
-        if not self.permitted:raise PermissionError('Session stopped; explicit enable required')
+        # Only a live session can expire; an already stopped one keeps its first reason.
+        if self.permitted and self.clock()>=self.operator_until:self.disarm('Operator heartbeat expired')
+        if not self.permitted:raise PermissionError('Session stopped: '+str(self.stop_reason))
         self.operator_until = self.clock()+self.OPERATOR_TIMEOUT_S
 
     def cancel_arm(self):
@@ -138,7 +139,10 @@ class LeasedCore(BridgeCore):
                 # cancellation; the runtime bounds that state (time and count) and logs it.
                 if result==NOT_READY and op in (L.ARM,L.ARM_ENABLE):
                     self.arm_not_ready+=1
-                else:self.disarm('Controller rejected command: '+str(op)+' / '+str(result))
+                else:
+                    names={L.BASE:'BASE',L.ARM:'ARM',L.ARM_ENABLE:'ARM_ENABLE'}
+                    why=L.RESULT_NAMES[result] if result<len(L.RESULT_NAMES) else str(result)
+                    self.disarm(f'Controller rejected {names.get(op,op)}: {why}')
 
     def measured_arm(self, max_age=.25):
         now=self.clock()

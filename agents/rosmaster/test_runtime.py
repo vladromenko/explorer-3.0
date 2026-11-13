@@ -177,7 +177,7 @@ def test_prepare_streams_short_steps_and_never_runs_far_ahead(tmp_path):
     for _ in range(10):
         clock[0]+=.05;runtime.prepare_step(clock[0],.05)
     commands=[c for c,ms in runtime.core.sent]
-    assert all(ms==runtime.POSE_STEP_MS for c,ms in runtime.core.sent)
+    assert all(runtime.POSE_STEP_MS<=ms<=600 for c,ms in runtime.core.sent)  # short steps, scaled by distance
     assert commands[0][1]==147. and abs(commands[-1][1]-148.)==10.  # held at the 10 degree lead
     runtime.core.measured=[90.]*6
     clock[0]+=.05;runtime.prepare_step(clock[0],.05)
@@ -311,3 +311,13 @@ def test_a_fault_in_one_step_ends_the_session_but_not_the_agent(tmp_path):
         for i in range(3):runtime.command(session['lease'],i,{'drive':[0,0,0]});time.sleep(.05)
         assert runtime.armed
     finally:runtime.close();board.close()
+
+
+def test_folded_arm_starts_from_nearest_commandable_pose_with_long_enough_move(tmp_path):
+    runtime,clock=stub_runtime(tmp_path)
+    runtime.core.measured=[92.,135.,-49.,31.,90.,27.]
+    runtime.begin_pose([90]*6,runtime.core.measured,clock[0])
+    clock[0]+=.05;runtime.prepare_step(clock[0],.05)
+    command,ms=runtime.core.sent[-1]
+    assert command[2]==0. and command[5]==30.     # nearest commandable values, not -49 / 27
+    assert ms>=2400                                # 49 degrees at 20 deg/s, not a 160 ms jump

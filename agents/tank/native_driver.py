@@ -9,6 +9,7 @@ import math
 import os
 from pathlib import Path
 import signal
+import struct
 import sys
 import threading
 import time
@@ -76,8 +77,12 @@ def build(verification=False):
             self.latched=False
             self.reason=None
             self.done=threading.Event()
+            self.publisher_stopped=threading.Event()
             super().__init__('ros_robot_controller')  # Includes native motor type, voltage and servo offsets.
             self.guard=threading.Thread(target=self.watch,daemon=True);self.guard.start()
+        def pub_callback(self):
+            try:super().pub_callback()
+            finally:self.publisher_stopped.set()
         def neutral(self,reason):
             with self.command_lock:
                 self.latched=True;self.reason=reason
@@ -127,9 +132,14 @@ def build(verification=False):
     try:chassis=Controller('odom_publisher')
     finally:rclpy.init=original_init
     publisher=chassis.motor_pub
+    command_context=threading.local()
     class Forward:
         def publish(self,msg):
             with board.command_lock:
+                # Native ROS subscriptions must not create a new command lease.
+                # Only this process's validated HTTP dispatch may reach the SDK.
+                if not getattr(command_context,'active',False):
+                    board.neutral('Unsolicited ROS velocity command');return
                 board.expected=[[int(item.id),float(item.rps)] for item in msg.data]
             publisher.publish(msg)
     chassis.motor_pub=Forward()
@@ -153,7 +163,9 @@ def build(verification=False):
                         raise PermissionError('Fresh battery above existing threshold required')
                     previous=board.sequence
                     msg=Twist();msg.linear.x=float(v);msg.angular.z=float(w)
-                    chassis.app_cmd_vel_callback(msg)  # Actual native clamp, corrections and kinematics.
+                    command_context.active=True
+                    try:chassis.app_cmd_vel_callback(msg)  # Actual native clamp, corrections and kinematics.
+                    finally:command_context.active=False
                     action=[chassis.linear_x,chassis.angular_z]
                     deadline=time.monotonic()+.2
                     while board.sequence==previous and not board.latched and time.monotonic()<deadline:
@@ -164,13 +176,23 @@ def build(verification=False):
         def stop(self):
             board.neutral('Explicit STOP')
             return self.status()
+        def verify_unsolicited(self):
+            if not verification:raise PermissionError('In-memory verification only')
+            msg=Twist();msg.linear.x=.1
+            chassis.app_cmd_vel_callback(msg)
         def close(self):
             try:board.neutral('Native driver closing')
             finally:
                 board.done.set();board.running=False
+                board.guard.join(timeout=1)
+                if not board.publisher_stopped.wait(1):raise RuntimeError('Native telemetry publisher did not stop')
                 executor.shutdown(timeout_sec=1)
+                thread.join(timeout=1)
+                if thread.is_alive():raise RuntimeError('Native ROS executor did not stop')
                 board.board.closing=True
                 board.board.port.close()
+                chassis.destroy_node();board.destroy_node()
+                if rclpy.ok():rclpy.shutdown()
                 journal.close()
     return Driver()
 
@@ -194,7 +216,7 @@ def make_app(driver):
 def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--verify-no-hardware',action='store_true')
-    parser.add_argument('--verification-case',choices=('timeout','stop'),default='timeout')
+    parser.add_argument('--verification-case',choices=('timeout','stop','unsolicited'),default='timeout')
     args,ros_args=parser.parse_known_args()
     sys.argv=[sys.argv[0],*ros_args]
     os.environ['MACHINE_TYPE']='MentorPi_Tank'
@@ -212,11 +234,17 @@ def main():
                 for v,w in ((.1,0.),(0.,.3),(.1,0.)):
                     response=api.post('/command',json={'v':v,'w':w});response.raise_for_status();results.append(response.json())
                 if args.verification_case=='stop':api.post('/stop').raise_for_status()
+                elif args.verification_case=='unsolicited':driver.verify_unsolicited()
                 else:time.sleep(.5)
                 assert driver.status()['latched']
+                motor_packets=[p for p in CaptureSerial.packets if len(p)==27 and p[:6]==b'\xaa\x55\x03\x16\x01\x04']
+                assert motor_packets and all(struct.unpack_from('<f',motor_packets[-1],7+5*i)[0]==0. for i in range(4))
+                stopped_packets=len(CaptureSerial.packets)
                 assert api.post('/command',json={'v':.1,'w':0.}).status_code==409
+                assert len(CaptureSerial.packets)==stopped_packets
             result={'verification_no_hardware':True,'physical_acceptance':False,'case':args.verification_case,
-                    'commands':results,'latched':True,'reason':driver.status()['reason'],
+                    'commands':results,'latched':True,'neutral_packet_verified':True,
+                    'rejected_command_wrote_nothing':True,'reason':driver.status()['reason'],
                     'packets':[p.hex() for p in CaptureSerial.packets]}
             (ROOT/('native-verification-'+args.verification_case+'.json')).write_text(json.dumps(result,indent=2))
             print(json.dumps(result))
