@@ -20,3 +20,12 @@
 Уже было исправлено основным диалогом и проверено: таймаут испытания → failure/task_deadline; неизвестный measured_response_kind → unknown; для кадров ROSMASTER (action_time_kind=command_in_force_at_next_agent_snapshot) send_latency = null, а не 0 (explorer3/timing.py).
 Добавлено в explorer3/rosmaster_session.py: termination_reason различает operator_success/operator_failure/operator_abort, operator_stop (STOP, скрытая вкладка, потеря heartbeat), robot_stop (агент сам остановил), hardware_or_network_error, emergency (не перезаписывается последующим обрывом), task_deadline; в provenance каждого сегмента domain=real, source=human|policy, agent_code_sha256 четырёх файлов агента. Тест tests/test_rosmaster_recording.py проверяет эти поля (fake agent, 7 PASS вместе с test_rosmaster_operator).
 Исследовательская запись ROSMASTER идёт только через собственный агент (/sample.jpg); explorer3/leader8090.py — отдельная совместимость с Console 8090, rosmaster_session её не импортирует.
+
+## 2026-11-13 17:45 — параметры для симуляции (только чтение через прежний мост)
+Полностью: docs/handoffs/rosmaster_measured_params.json (раздельно измерено / опубликовано / предположено).
+- Камера Orbbec: 640×480 rgb8, 13.9 к/с; fx=fy=480.71, cx=322.3, cy=245.6; поле зрения 53.06° вертикаль / 67.4° горизонталь. В sim было 60° → исправлено на 53.06° в models.py и mobile.py (только ROSMASTER), тесты test_rosmaster_sim_contacts 2/2 PASS.
+- Камера на руке (arm4, DCW2_ON_ARM4) — sim совпадает с CubeBot; камера URDF производителя на шасси — у этого робота не используется.
+- Одометрия /odom_raw 49.7 Гц: скорость — измеренные энкодеры (только при encoder_measurement_valid); поза — интеграл измеренной скорости (дрейф), не интеграл команд.
+- IMU 100 Гц, батарея 2 Гц (12.2 В), лидары 2×6.1 Гц (666 точек, 12 м), обратная связь руки ~65 Гц на сустав, все 6 конечны.
+- Пределы суставов 1–5 URDF = калибровка контроллера; захват описан разными шкалами (URDF палец −88.2…0°, контроллер 30…170°).
+Не измерено (нужна разрешённая запись движения): динамика приводов и захвата, динамика mecanum, задержка команда→колесо/сустав.

@@ -1,0 +1,33 @@
+{
+  "measured_on": "2026-11-13, ROSMASTER explorer 192.168.0.177, read-only via the original rosmaster-bridge (no motion, no ownership change)",
+  "measured": {
+    "camera_color": {"topic": "/camera/color/image_raw", "frame_id": "camera_color_optical_frame", "size": [640, 480], "encoding": "rgb8",
+      "rate_hz": 13.87, "fx": 480.7079, "fy": 480.7113, "cx": 322.2906, "cy": 245.6415, "distortion_model": "rational_polynomial",
+      "d_first4": [-0.017748, 0.002433, 0.000284, -0.000394], "vertical_fov_deg": 53.06, "horizontal_fov_deg": 67.4},
+    "base_odometry": {"topic": "/odom_raw", "rate_hz": 49.66, "frame": "odom_raw -> base_footprint",
+      "velocity": "controller STATUS vx, vy, wz computed from measured wheel encoder speeds; published only when encoder_measurement_valid",
+      "pose": "host integration of the measured velocity (encoder dead reckoning with drift), NOT an integral of commands",
+      "units": ["m/s", "m/s", "rad/s"], "axes": "REP-103 base: x forward, y left, z up"},
+    "imu": {"topic": "/imu/data_raw", "rate_hz": 100.2, "scale": "accel raw*9.80665/2048, gyro radians(raw/16.4)"},
+    "battery": {"topic": "/battery", "rate_hz": 1.99, "value_v": 12.22},
+    "lidars": {"topics": ["/scan0", "/scan1"], "rate_hz": [6.12, 6.09], "angle_min_rad": 0.0, "angle_max_rad": 6.2738, "increment_rad": 0.0094342, "points": 666, "range_max_m": 12.0},
+    "arm_feedback": {"topic": "/arm_servo_state", "event_rate_hz": 389.7, "per_joint_rate_hz_approx": 65, "all_six_finite": true,
+      "rest_pose_servo_deg": [92.7, 193.2, -43.2, 15.7, 89.4, 33.0]},
+    "leader_upright_reference": {"leader_deg": {"pan": -4.4, "lift": 2.0, "elbow": -83.5, "wrist": -1.5, "roll": 2.2, "gripper": 0.9},
+      "rosmaster_servo_deg": [90, 90, 90, 90, 90], "note": "this Leader calibration only; mirror signs [1,-1,-1,-1,1]"}
+  },
+  "published_by_manufacturer": {
+    "urdf": "Yahboom M3Pro.urdf sha256 prefix 8046676e826b02f7 (see docs/SIM_MODELS.md)",
+    "joint_limits_deg": {"arm1..arm4": [-90, 90], "arm5": [-90, 180], "gripper_rlink1": [-88.2, 0]},
+    "urdf_camera": "Camera_Joint on base_link xyz [0.0909, 0.0002, 0.0935] — chassis camera of the stock robot, NOT the arm-mounted Orbbec used here"
+  },
+  "controller_calibration": {"joint_limits_deg_q": [[-90, 90], [-90, 90], [-90, 90], [-90, 90], [-90, 180], [30, 170]],
+    "servo_to_q": "joint1: 90 - servo; joints 2-5: servo - 90; joint6: radians(servo)", "matches_urdf_joints_1_5": true},
+  "assumed_or_unmeasured": [
+    "arm-mounted camera extrinsic DCW2_ON_ARM4 from the CubeBot arm model (consistent with sim front_cam), not re-measured",
+    "servo dynamics (gains, lag, torque, max speed) and gripper contact force — not identified",
+    "mecanum base dynamics (traction, acceleration, latency command->wheel) — not identified; requires a permitted motion log",
+    "Homebrain->agent->controller command latency on this robot — not measured in motion"
+  ],
+  "applied_to_sim": {"explorer3/sim/models.py front_cam fovy": "60 -> 53.06", "explorer3/sim/mobile.py ROSMASTER front_cam fovy": "60 -> 53.06"}
+}
