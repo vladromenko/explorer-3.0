@@ -1,0 +1,119 @@
+{
+  "retrieved_utc": "2026-11-13T22:12:00.945275+00:00",
+  "purpose": "reference only; no commands executed",
+  "scope": "all linked English T1 HTML chapters; external images/videos/downloads remain links",
+  "sources": [
+    {
+      "url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/1.getting_ready.html",
+      "resolved_url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/1.getting_ready.html",
+      "file": "1.getting_ready.html",
+      "bytes": 174543,
+      "sha256": "8d0f0424528c08c2612c26b056100dbf172b8ac536ff5ec647cfb91c47a076e5"
+    },
+    {
+      "url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/10.machine_learning.html",
+      "resolved_url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/10.machine_learning.html",
+      "file": "10.machine_learning.html",
+      "bytes": 207724,
+      "sha256": "29c8826b0b009ac9adb3fc00028589323da3a30a000a804a5a789f4fdf7de282"
+    },
+    {
+      "url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/11.autonomous_driving_lesson.html",
+      "resolved_url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/11.autonomous_driving_lesson.html",
+      "file": "11.autonomous_driving_lesson.html",
+      "bytes": 299989,
+      "sha256": "e8da84dbf97ce0e3f7c1d42be1beb6f5bea51858ac6b462c4ec98f5dd923b490"
+    },
+    {
+      "url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/12.master_slave_and_group_control.html",
+      "resolved_url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/12.master_slave_and_group_control.html",
+      "file": "12.master_slave_and_group_control.html",
+      "bytes": 78760,
+      "sha256": "4e54df931d17ccc9df116bd8622fb7b44d8db45d2cae8bceddab644c4fe57bf4"
+    },
+    {
+      "url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/13.robot_network_configuration.html",
+      "resolved_url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/13.robot_network_configuration.html",
+      "file": "13.robot_network_configuration.html",
+      "bytes": 87109,
+      "sha256": "b6c77deec097aa65c610cbf1ebd16002488ba32d7a98f8bde360c646e7f6d57b"
+    },
+    {
+      "url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/14.large_ai_model_course.html",
+      "resolved_url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/14.large_ai_model_course.html",
+      "file": "14.large_ai_model_course.html",
+      "bytes": 485403,
+      "sha256": "ef11d0f73fa1e8cc251317cb2d23b6eec458090846175a9fa4ec51214f1aa869"
+    },
+    {
+      "url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/2.remote_tool_installation_and_container_access.html",
+      "resolved_url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/2.remote_tool_installation_and_container_access.html",
+      "file": "2.remote_tool_installation_and_container_access.html",
+      "bytes": 117833,
+      "sha256": "78e4503e746384884ddb70eb6e5ba06ef9b96bf7ac23b2e59e22b32e527458f8"
+    },
+    {
+      "url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/3.motion_control_courses.html",
+      "resolved_url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/3.motion_control_courses.html",
+      "file": "3.motion_control_courses.html",
+      "bytes": 261505,
+      "sha256": "db16e629ca0fe77286dc9047cf9d77839da14ddffe49065b900992745b70bbe4"
+    },
+    {
+      "url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/4.lidar_lesson.html",
+      "resolved_url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/4.lidar_lesson.html",
+      "file": "4.lidar_lesson.html",
+      "bytes": 217585,
+      "sha256": "9040c8fae6219e93cde181d25bbb695d14c29d37ddef7933579724380e6eaf47"
+    },
+    {
+      "url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/5.depth_camera_basics_course.html",
+      "resolved_url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/5.depth_camera_basics_course.html",
+      "file": "5.depth_camera_basics_course.html",
+      "bytes": 57377,
+      "sha256": "3fecf34fe80843a3857cf997442639a69e6fb62bc1ea3ff33b5696b80167f6f1"
+    },
+    {
+      "url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/6.mapping_courses.html",
+      "resolved_url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/6.mapping_courses.html",
+      "file": "6.mapping_courses.html",
+      "bytes": 271111,
+      "sha256": "cde7782cff8bf50215a17c232443db3405a74ceb7313c5f66aa2790a7dd0564b"
+    },
+    {
+      "url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/7.navigation_lesson.html",
+      "resolved_url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/7.navigation_lesson.html",
+      "file": "7.navigation_lesson.html",
+      "bytes": 197955,
+      "sha256": "321f60861cbca2667645cc375d32ea6f65c936925dc56c60c5a1e0446f9d5291"
+    },
+    {
+      "url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/8.ros+opencv_lesson.html",
+      "resolved_url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/8.ros+opencv_lesson.html",
+      "file": "8.ros+opencv_lesson.html",
+      "bytes": 279515,
+      "sha256": "f7337918c38af9cfee2abad6bfa0c722cd3de4df2e978fa1c75879a47b22893c"
+    },
+    {
+      "url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/9.mediapipe_human_robot_interaction.html",
+      "resolved_url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/9.mediapipe_human_robot_interaction.html",
+      "file": "9.mediapipe_human_robot_interaction.html",
+      "bytes": 297745,
+      "sha256": "7403b4f9be699cab2ee3b7d51de89156170ec4779079d6af820229d1bccc34e7"
+    },
+    {
+      "url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/resources_download.html",
+      "resolved_url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/resources_download.html",
+      "file": "resources_download.html",
+      "bytes": 58720,
+      "sha256": "8a146d8927e082dd027037674907daed39f604bd58dd7b7c85c9d279d0d0817c"
+    }
+  ],
+  "errors": [
+    {
+      "url": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/11-.machine_learning.html",
+      "error": "HTTP Error 404: Not Found"
+    }
+  ],
+  "missing_navigation_pages": []
+}
