@@ -68,7 +68,12 @@ def mirror_check(s):
 
 REASONS={'Explicit enable required':'Управление выключено. Нажмите «▶ Я рядом — включить»',
          'Operator STOP':'Остановлено (STOP)','Operator heartbeat expired':'Связь с браузером прервалась — включите снова',
-         'Browser / Homebrain heartbeat lost':'Связь с браузером прервалась — включите снова'}
+         'Browser / Homebrain heartbeat lost':'Связь с браузером прервалась — включите снова',
+         'unreachable; try joints mode':'Граница досягаемости XYZ. Отпустите клавишу; измените позу в режиме «Суставы».',
+         'workspace/singularity; try joints mode':'В этой позе выбранное направление XYZ недоступно. Измените позу в режиме «Суставы».',
+         'arm tracking error; release controls':'Рука не успевает за командой — отпустите клавишу.',
+         'no fresh arm feedback':'Нет свежего измерения положения руки.',
+         'collision':'Дальнейшее движение пересекает пол или корпус по модели.'}
 
 
 def russian(text):
@@ -85,7 +90,7 @@ def telemetry(health,mode,notice):
         'notice':notice or russian(s.get('reason')) or ('Управление включено' if s.get('armed') else 'Нажмите «▶ Я рядом — включить»'),
         'mode':s.get('mode','manual'),'battery':{'soc':None,'minutes_left':None,'volts':s.get('battery_voltage',observation.get('battery_voltage'))},
         'battery_stale':False,'arm':[round(v,1) if v is not None else '?' for v in arm],
-        'arm_measured':measured,'tcp':s.get('tcp') or [],'jog_blocked':s.get('arm_blocked'),
+        'arm_measured':measured,'tcp':s.get('tcp') or [],'jog_blocked':russian(s.get('arm_blocked')),
         'mirror':{'on':s.get('mode')=='mirror','requested':bool(operator.mirror),'blocked':s.get('mirror_blocked') or operator.leader_error,'frames':operator.leader_count,
                   'leader':'ошибка' if operator.leader_error else 'подключён' if sample else 'не подключён',
                   'age':round(age,2) if age is not None else None,'target':s.get('mirror_target') or []},

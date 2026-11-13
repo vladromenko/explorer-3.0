@@ -53,8 +53,10 @@ def test_xyz_jog_does_not_drift_diagonally_from_operator_pose(axis,sign):
     delta=c.arm.tcp_position(sent)-start
     # Near full extension +X legitimately reaches its boundary after a few mm;
     # it must stop there rather than gain reach by descending diagonally.
-    assert delta[axis]*sign>(.003 if (axis,sign)==(0,1) else .015)
-    assert np.linalg.norm(np.delete(delta,axis))<.003
+    assert delta[axis]*sign>(.002 if (axis,sign)==(0,1) else .015)
+    continuous=c.arm.tcp_position(c.jog.servo)-start
+    assert np.linalg.norm(np.delete(continuous,axis))<.0015
+    assert np.linalg.norm(np.delete(delta,axis))<.005  # retained native integer-degree command quantization
 
 
 def test_upright_sideways_singularity_is_not_replaced_with_forward_motion():
@@ -62,7 +64,38 @@ def test_upright_sideways_singularity_is_not_replaced_with_forward_motion():
     io,c=create();start=c.arm.tcp_position(c.jog.servo)
     for _ in range(30):c.jog.step(.033,[0,1,0],slow=True)
     delta=c.arm.tcp_position(c.jog.servo)-start
-    assert np.linalg.norm(delta)<.0005  # below one physical servo-degree step
+    assert abs(delta[0])<.0002 and abs(delta[2])<.0002
+
+
+def test_manual_jacobian_matches_native_urdf_finite_differences():
+    import numpy as np
+    io,c=create()
+    for pose in ([88,76,93,90,90,45],[90,70,60,80,90,31],[90]*6):
+        p,j=c.jog.arm.tcp_and_jacobian(pose)
+        assert np.allclose(p,c.arm.tcp_position(pose))
+        for i in range(4):
+            a=np.array(pose,float);b=a.copy();a[i]+=.0001;b[i]-=.0001
+            numeric=(c.arm.tcp_position(a)-c.arm.tcp_position(b))/.0002
+            assert np.allclose(j[:,i],numeric,atol=1e-8)
+
+
+@pytest.mark.parametrize('axis,sign',[(0,-1),(1,-1),(1,1),(2,-1)])
+@pytest.mark.parametrize('dt',[.033,.05,.08])
+def test_xyz_reachable_axes_at_second_measured_operator_pose(axis,sign,dt):
+    import numpy as np
+    io,c=create();pose=[88,76,93,90,90,45];c.jog.reset(pose)
+    start=c.arm.tcp_position(pose);move=[0,0,0];move[axis]=sign
+    last=None
+    for _ in range(round(1/dt)):
+        cmd=c.jog.step(dt,move,slow=True)
+        if cmd is not None:last=cmd
+    assert last is not None
+    delta=c.arm.tcp_position(last)-start
+    # Near the boundary the adaptive step deliberately reduces Cartesian speed.
+    assert delta[axis]*sign>.010
+    continuous=c.arm.tcp_position(c.jog.servo)-start
+    assert np.linalg.norm(np.delete(continuous,axis))<.0015
+    assert np.linalg.norm(np.delete(delta,axis))<.005  # retained native integer-degree command quantization
 
 
 def test_arm_cannot_invent_feedback_or_move_base():

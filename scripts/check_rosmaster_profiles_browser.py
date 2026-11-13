@@ -35,6 +35,22 @@ async def scenario():
             await page.wait_for_timeout(2500)
             sessions=[r['value'] for r in get(AGENT+'/_requests')[n:] if r['kind']=='session']
             assert sessions and sessions[-1]['profile']==profile,sessions
+            assert await page.evaluate("document.activeElement.id!=='control-profile'")
+            # Inputs for the inactive component are ignored, not sent to end the session.
+            start=len(get(AGENT+'/_requests'))
+            key='KeyW' if profile=='rosmaster_pick_place' else 'ArrowUp'
+            await page.keyboard.down(key);await page.wait_for_timeout(250);await page.keyboard.up(key)
+            packets=[r['value'] for r in get(AGENT+'/_requests')[start:] if r['kind']=='command']
+            assert packets
+            channel='drive' if profile=='rosmaster_pick_place' else 'arm'
+            assert all(not any(p[channel]) for p in packets)
+            if profile=='rosmaster_pick_place':assert await page.locator('button.hold').first.is_disabled()
+            start=len(get(AGENT+'/_requests'))
+            key='ArrowUp' if profile=='rosmaster_pick_place' else 'KeyW'
+            await page.keyboard.down(key);await page.wait_for_timeout(250);await page.keyboard.up(key)
+            packets=[r['value'] for r in get(AGENT+'/_requests')[start:] if r['kind']=='command']
+            channel='arm' if profile=='rosmaster_pick_place' else 'drive'
+            assert any(p[channel][0]>0 for p in packets)
             await page.locator('button.stop.big').click();await page.wait_for_timeout(500);checked.append(profile)
         # STOP followed by explicit enable works repeatedly without page reload.
         for _ in range(3):
@@ -45,6 +61,15 @@ async def scenario():
             await page.locator('button.stop.big').click();await page.wait_for_timeout(500)
             assert not get(AGENT+'/health')['armed']
             assert any(r['kind']=='stop' for r in get(AGENT+'/_requests')[n:])
+        await page.get_by_role('button',name='▶ Я рядом — включить').click();await page.wait_for_timeout(700)
+        await page.keyboard.down('KeyW');await page.wait_for_timeout(250)
+        await page.locator('button.stop.big').click();await page.wait_for_timeout(500)
+        n=len(get(AGENT+'/_requests'))
+        await page.get_by_role('button',name='▶ Я рядом — включить').click();await page.wait_for_timeout(700)
+        assert get(AGENT+'/health')['armed']
+        assert all(not any(r['value']['drive']) for r in get(AGENT+'/_requests')[n:] if r['kind']=='command')
+        await page.keyboard.up('KeyW')
+        await page.locator('button.stop.big').click();await page.wait_for_timeout(500)
         await page.get_by_role('button',name='▶ Я рядом — включить').click();await page.wait_for_timeout(700)
         n=len([r for r in get(AGENT+'/_requests') if r['kind']=='session'])
         # Emulate a half-open transport: readyState stays OPEN, but data ceases.
@@ -59,7 +84,8 @@ async def scenario():
         await browser.close()
         return {'domain':'fixture','physical_robot_access':False,'cold_open_no_acquire':True,'profiles':checked,
                 'stop_reenable_cycles':3,'half_open_recovery_without_resume':True,'http_stop':True,
-                'stop_cancels_pending_acquire_enable':True,'errors':errors}
+                'stop_cancels_pending_acquire_enable':True,'wrong_profile_inputs_ignored':True,
+                'intended_inputs_received':True,'held_key_not_replayed_after_stop':True,'errors':errors}
 def main():
     OUT.mkdir(exist_ok=True);data=Path(tempfile.mkdtemp(prefix='explorer3-profile-check-'));(data/'configs').mkdir()
     (data/'configs/workflow.json').write_text(json.dumps({'stage':'B','allowed_robots':['rosmaster']}))

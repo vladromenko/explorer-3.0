@@ -27,7 +27,7 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
 <span class="grow"></span><span id="bat" class="pill">батарея …</span><button onclick="send({action:'use8090'});setTimeout(()=>window.open('http://192.168.0.177:8090','_blank'),8000)" title="Отдать робот старой консоли CubeBot">Консоль 8090 ↗</button><a href="/" style="color:var(--acc);font-size:13px">Explorer</a></header>
 <nav class="bar1">
  <a href="/rosmaster/preparation" style="color:var(--acc)">Подготовка без робота</a>
- <label class="help">Управлять <select id="control-profile" aria-label="Что управляем" onchange="send({action:'stop'})"><option value="rosmaster_manual">рукой и шасси</option><option value="rosmaster_pick_place">только рукой</option><option value="rosmaster_dock">только шасси</option></select></label>
+ <label class="help">Управлять <select id="control-profile" aria-label="Что управляем" onchange="profileChanged()"><option value="rosmaster_manual">рукой и шасси</option><option value="rosmaster_pick_place">только рукой</option><option value="rosmaster_dock">только шасси</option></select></label>
  <button class="go big" onclick="send({action:'enable',profile:$('control-profile').value,observing:true})" title="Нажимая, вы подтверждаете, что вы рядом и место свободно. Сложенная рука сначала поднимается автоматически.">▶ Я рядом — включить</button>
  <button class="stop big" onclick="send({action:'stop'})">■ STOP <small>(пробел)</small></button>
  <b id="notice" style="color:var(--warn)">Управление выключено</b></nav>
@@ -47,6 +47,7 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
      <div class="help"><kbd>,</kbd><kbd>.</kbd> кисть · <kbd>[</kbd><kbd>]</kbd> поворот кисти · <kbd>N</kbd><kbd>M</kbd> клешня · <b>Shift</b> — медленно</div></div>
    </div>
    <div class="row" style="margin-top:8px"><label class="help"><input type="checkbox" id="slowc"> всегда медленно</label><b id="gmsg" style="color:var(--warn);font-size:13px"></b></div>
+   <div class="help" id="profilehelp"></div>
   </div>
 </section>
 <aside style="display:grid;gap:12px;align-content:start">
@@ -93,6 +94,18 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
 <script>
 const $=id=>document.getElementById(id);let ws,keys={},lockedKeys=new Set(),padBlocked=true,viewActive=true,lastReply=0,reconnectTimer=null,stopPending=false;
 function clearControls(){for(const k in keys)lockedKeys.add(k);keys={};padBlocked=true;}
+function profileChanged(){
+ send({action:'stop'});$('control-profile').blur();
+ try{localStorage.setItem('explorerManualProfile',$('control-profile').value)}catch(e){}
+ profileControls();
+}
+function profileControls(){
+ const p=$('control-profile').value;
+ document.querySelectorAll('button.hold').forEach(b=>{b.disabled=p==='rosmaster_pick_place'});
+ $('profilehelp').textContent=p==='rosmaster_pick_place'?'Только рука: кнопки колёс и W/A/S/D отключены.':p==='rosmaster_dock'?'Только шасси: стрелки клавиатуры и клавиши руки отключены.':'W/A/S/D — шасси; стрелки и R/F — рука.';
+}
+try{const p=localStorage.getItem('explorerManualProfile');if(['rosmaster_manual','rosmaster_pick_place','rosmaster_dock'].includes(p))$('control-profile').value=p}catch(e){}
+profileControls();
 function stopHttp(){
  clearControls();if(stopPending)return;stopPending=true;
  $('notice').textContent='Останавливаю…';
@@ -157,7 +170,7 @@ function render(s){
 const map={w:['d',0,1],s:['d',0,-1],a:['d',1,1],d:['d',1,-1],q:['d',2,1],e:['d',2,-1],i:['a',0,1],k:['a',0,-1],j:['a',1,1],l:['a',1,-1],r:['a',2,1],f:['a',2,-1]};
 // Only text entry swallows keys. A focused checkbox/button must not (Safari keeps focus on the
 // last clicked checkbox, which silently disabled all driving/arm keys).
-function typing(t){return t&&(t.tagName==='TEXTAREA'||t.isContentEditable||(t.tagName==='INPUT'&&!['checkbox','radio','button','submit','range'].includes((t.type||'').toLowerCase())))}
+function typing(t){return t&&(t.tagName==='SELECT'||t.tagName==='TEXTAREA'||t.isContentEditable||(t.tagName==='INPUT'&&!['checkbox','radio','button','submit','range'].includes((t.type||'').toLowerCase())))}
 document.addEventListener('change',e=>{if(e.target&&e.target.type==='checkbox')e.target.blur()});
 document.addEventListener('click',e=>{const t=e.target.closest&&e.target.closest('button');if(t)t.blur()});
 function physical(e){const c=e.code;return {ArrowUp:'i',ArrowDown:'k',ArrowLeft:'j',ArrowRight:'l',Comma:',',Period:'.',BracketLeft:'[',BracketRight:']',ShiftLeft:'shift',ShiftRight:'shift'}[c]||(c&&c.startsWith('Key')?c.slice(3).toLowerCase():c);}
@@ -181,7 +194,10 @@ function collect(){if(document.hidden||!viewActive||!ws||ws.readyState!==1)retur
   grip+=(p.buttons[7].value||0)-(p.buttons[6].value||0);
   const edge=(i,fn)=>{const on=p.buttons[i].pressed;if(on&&!prevBtn[i])fn();prevBtn[i]=on};
   edge(0,()=>act('preset','look'));edge(2,()=>act('preset','carry'));edge(1,()=>send({action:'stop',reason:'кнопка B джойстика'}));if(padBlocked)return {drive:[0,0,0],arm:[0,0,0],pitch:0,roll:0,grip:0,slow:false};}
- const c=v=>Math.max(-1,Math.min(1,v));return{drive:d.map(c),arm:a.map(c),pitch:c(pitch),roll:c(roll),grip:c(grip),free:!!($('freec')&&$('freec').checked),slow:!!(keys['shift'])||($('slowc')&&$('slowc').checked)}}
+ const profile=$('control-profile').value;
+ if(profile==='rosmaster_pick_place')d.fill(0);
+ if(profile==='rosmaster_dock'){a.fill(0);pitch=roll=grip=0;}
+ const c=v=>Math.max(-1,Math.min(1,v));return{drive:d.map(c),arm:a.map(c),pitch:c(pitch),roll:c(roll),grip:c(grip),slow:!!(keys['shift'])||($('slowc')&&$('slowc').checked)}}
 document.querySelectorAll('button.hold').forEach(b=>{const k=b.dataset.k,on=e=>{e.preventDefault();if(!lockedKeys.has(k))keys[k]=true},off=()=>{delete keys[k];lockedKeys.delete(k)};
  b.addEventListener('pointerdown',on);['pointerup','pointerleave','pointercancel'].forEach(t=>b.addEventListener(t,off))});
 setInterval(()=>{if(!document.hidden)send(document.hasFocus()?collect():{drive:[0,0,0],arm:[0,0,0],pitch:0,roll:0,grip:0,slow:false})},33);connect();

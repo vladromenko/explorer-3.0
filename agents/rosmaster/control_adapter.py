@@ -1,34 +1,68 @@
 """Explorer adapter over the selected CubeBot controls; no ROS or device construction.
 
 _manual_step and _mirror_step are verbatim copies from the rollback snapshot of
-Console 8090. The wrapper only validates input, separates profiles and expires a
-session. Native CartesianJog/MirrorMapper and their calibration are unchanged.
+Console 8090. The wrapper validates input, separates profiles and expires a
+session. Manual XYZ adapts the grasp IK objective using native geometry and
+SciPy; native CartesianJog/MirrorMapper and calibration remain copied sources.
 """
 import math
 import numpy as np
 
 
 class ManualCartesianModel:
-    """Reuse native IK with position-first jogging; reject sideways singular steps.
+    """Native URDF/FK and SciPy position-first jogging; native IK for pitch only.
 
     Native IK's 10 mm grasp tolerance and strong pitch preference are too loose
     for sub-millimetre jog steps. This only adapts manual XYZ, not mirror or poses.
     """
     def __init__(self,model):self.model=model
     def __getattr__(self,name):return getattr(self.model,name)
+    def tcp_and_jacobian(self,servo):
+        from cubebot.arm_model import CHAIN
+        fk=self.model.fk(servo);point=fk['tcp'][:3,3]
+        columns=[]
+        for i,frame in enumerate(fk['frames'][:4]):
+            axis=np.asarray(CHAIN[i][2],float);axis/=np.linalg.norm(axis)
+            world_axis=frame[:3,:3]@axis
+            columns.append(np.cross(world_axis,point-frame[:3,3])*math.pi/180*(-1 if i==0 else 1))
+        return point,np.column_stack(columns)
     def ik(self,target,pitch,seed,**kwargs):
         start=self.model.tcp_position(seed)
         requested=np.asarray(target)-start;length=float(np.linalg.norm(requested))
-        if length>1e-6:
-            kwargs.update(pitch_weight=.015,stay_weight=0.)
-        sol,error=self.model.ik(target,pitch,seed,**kwargs)
-        if sol is not None and length>1e-6:
-            step=self.model.tcp_position([*sol[:5],seed[5]])-start
+        if length<=1e-6:return self.model.ik(target,pitch,seed,**kwargs)
+        from scipy.optimize import least_squares
+        from cubebot.arm_model import SERVO_LIMITS
+        seed4=np.asarray(seed[:4],float);step_limit=kwargs['max_step_deg']
+        lo=np.maximum(np.array(SERVO_LIMITS[:4])[:,0],seed4-step_limit)
+        hi=np.minimum(np.array(SERVO_LIMITS[:4])[:,1],seed4+step_limit)
+        roll=kwargs.get('roll_servo',seed[4])
+        goal=np.asarray(target)
+        cache=[None,None]
+        def geometry(joints):
+            key=tuple(joints)
+            if key!=cache[0]:cache[:]=[key,self.tcp_and_jacobian([*joints,roll,seed[5]])]
+            return cache[1]
+        def residual(joints):
+            # Millimetres keep the optimizer's gradient tolerance meaningful for
+            # sub-millimetre jog requests. A small posture cost selects the local
+            # solution; tool pitch is free during XYZ translation.
+            return np.r_[1000*(geometry(joints)[0]-goal),.01*(joints-seed4)]
+        def jacobian(joints):return np.vstack([1000*geometry(joints)[1],.01*np.eye(4)])
+        for scale in (1.,.5,.25,.125):
+            # Near full extension the Cartesian step may need more joint travel
+            # than this tick permits. Reduce speed, never relax joint rate limits.
+            goal=start+requested*scale
+            fit=least_squares(residual,np.clip(seed4,lo,hi),bounds=(lo,hi),jac=jacobian,
+                max_nfev=10,ftol=1e-9,xtol=1e-9,gtol=1e-9)
+            sol=np.r_[fit.x,roll]
+            step=self.model.tcp_position([*sol,seed[5]])-start
+            error=float(np.linalg.norm(step-requested))
+            if not self.model.collision_free([*sol,seed[5]]):continue
             direction=requested/length;along=float(np.dot(step,direction))
             sideways=float(np.linalg.norm(step-along*direction))
-            # Numerical tolerance 0.1 mm; beyond that, at least 85% axial motion.
-            if along<=0 or sideways>max(.0001,.15*along):return None,error
-        return sol,error
+            # Do not accumulate lateral motion over many small/shortened steps.
+            if along>0 and sideways<=max(.00001,.05*along):return sol,error
+        return None,error
 
 
 class NativeControls:
