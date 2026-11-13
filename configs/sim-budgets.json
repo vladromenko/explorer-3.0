@@ -35,7 +35,19 @@
       "episodes": 20
     },
     "deadline_s": 20,
-    "interpretation": "Finite initial pilot budget, not a promise of convergence. Deadline is failure. Upstream pickcube is not pick-place success."
+    "interpretation": "Finite initial pilot budget, not a promise of convergence. Deadline is failure. Upstream pickcube is not pick-place success.",
+    "smolvla": {
+      "steps": 2000,
+      "batch_size": 1,
+      "device": "cuda",
+      "seed": 1000
+    },
+    "diffusion": {
+      "steps": 2000,
+      "batch_size": 2,
+      "device": "cuda",
+      "seed": 1000
+    }
   },
   "rosmaster_pick_place_sim": {
     "demonstration_seeds": [
@@ -64,7 +76,19 @@
       "episodes": 20
     },
     "deadline_s": 20,
-    "interpretation": "Finite initial pilot budget, not a promise of convergence. Deadline is failure. Upstream pickcube is not pick-place success."
+    "interpretation": "Finite initial pilot budget, not a promise of convergence. Deadline is failure. Upstream pickcube is not pick-place success.",
+    "smolvla": {
+      "steps": 2000,
+      "batch_size": 1,
+      "device": "cuda",
+      "seed": 1000
+    },
+    "diffusion": {
+      "steps": 2000,
+      "batch_size": 2,
+      "device": "cuda",
+      "seed": 1000
+    }
   },
   "rosmaster_dock_sim": {
     "demonstration_seeds": [
@@ -93,7 +117,19 @@
       "episodes": 20
     },
     "deadline_s": 20,
-    "interpretation": "Finite initial pilot budget, not a promise of convergence. Deadline is failure. Upstream pickcube is not pick-place success."
+    "interpretation": "Finite initial pilot budget, not a promise of convergence. Deadline is failure. Upstream pickcube is not pick-place success.",
+    "smolvla": {
+      "steps": 2000,
+      "batch_size": 1,
+      "device": "cuda",
+      "seed": 1000
+    },
+    "diffusion": {
+      "steps": 2000,
+      "batch_size": 2,
+      "device": "cuda",
+      "seed": 1000
+    }
   },
   "tank_dock_sim": {
     "demonstration_seeds": [
@@ -122,6 +158,18 @@
       "episodes": 20
     },
     "deadline_s": 20,
-    "interpretation": "Finite initial pilot budget, not a promise of convergence. Deadline is failure. Upstream pickcube is not pick-place success."
+    "interpretation": "Finite initial pilot budget, not a promise of convergence. Deadline is failure. Upstream pickcube is not pick-place success.",
+    "smolvla": {
+      "steps": 2000,
+      "batch_size": 1,
+      "device": "cuda",
+      "seed": 1000
+    },
+    "diffusion": {
+      "steps": 2000,
+      "batch_size": 2,
+      "device": "cuda",
+      "seed": 1000
+    }
   }
 }

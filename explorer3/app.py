@@ -106,6 +106,8 @@ async def stop_all():
 
 from . import sim_pages
 sim_pages.install(stop_all,CSS,jobs)
+from . import fleet_pages
+fleet_pages.install(stop_all,CSS)
 
 @ui.page('/')
 def index():
@@ -537,6 +539,8 @@ app.on_shutdown(lambda:control.stop('Служба останавливается
 app.on_shutdown(lambda:jobs.cancel())
 from . import sim_service
 app.on_shutdown(sim_service.shutdown)
+from .fleet_service import service as fleet_service
+app.on_shutdown(fleet_service.shutdown)
 app.timer(.1,control.watchdog)
 app.timer(2,jobs.tick)
 ui.run(host=os.environ.get('EXPLORER3_HOST','127.0.0.1'),port=int(os.environ.get('EXPLORER3_PORT','8030')),title='Explorer 3.0',

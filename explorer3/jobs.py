@@ -38,15 +38,15 @@ class Jobs:
 
     def enqueue(self, name, policy, smoke=True, sim_model_hash=None):
         profile(name)
-        if policy not in {'act', 'smolvla'}:
+        if policy not in {'act', 'smolvla','diffusion'}:
             raise ValueError('Unknown trainer')
-        if policy == 'smolvla' and (name != 'so101_pick_place' or not (DATA/'validation/smolvla-pass.json').exists()):
-            raise ValueError('SmolVLA проверена только для SO-101')
+        from .policy_catalog import validate_recipe
+        validate_recipe(policy,name)
         plan_id, _ = freeze(name, smoke,sim_model_hash=sim_model_hash)
         cfg={'kind': 'train', 'profile': name, 'policy': policy,
             'smoke': bool(smoke), 'plan_id': plan_id, 'seed': 1000}
         if profile(name).get('domain')=='sim' and not smoke:
-            recipe=json.loads((ROOT/'configs/sim-budgets.json').read_text())[name]['act']
+            recipe=json.loads((ROOT/'configs/sim-budgets.json').read_text())[name][policy]
             cfg.update(steps=recipe['steps'],batch_size=recipe['batch_size'],device=recipe['device'],seed=recipe['seed'])
         return self._insert(name,policy,cfg)
 
@@ -60,8 +60,8 @@ class Jobs:
 
     def sim_evaluate(self, job_id):
         source=self.get(job_id)
-        if source['status']!='completed' or source['policy']!='act' or not source['checkpoint']:
-            raise ValueError('Выберите завершённое обучение ACT')
+        if source['status']!='completed' or source['policy'] not in {'act','smolvla','diffusion'} or not source['checkpoint']:
+            raise ValueError('Выберите завершённое обучение политики')
         if profile(source['profile']).get('domain')!='sim':
             raise ValueError('Нужен симуляционный профиль')
         from .datasets import load_plan,select_simulation_revision
@@ -72,10 +72,16 @@ class Jobs:
             split=json.loads((DATA/'jobs'/job_id/'split.json').read_text())
         _,model_hash=select_simulation_revision([e for group in split.values() for e in group])
         if model_hash is None:raise ValueError('Нет версии физики обучающего набора')
-        return self._insert(source['profile'],'act',{'kind':'sim_evaluate','profile':source['profile'],
+        return self._insert(source['profile'],source['policy'],{'kind':'sim_evaluate','profile':source['profile'],
             'source_job':job_id,'checkpoint':source['checkpoint'],'device':'cpu',
             'expected_model_hash':model_hash,
             'episodes':3 if json.loads(source['config']).get('smoke') else 20})
+
+    def prepare_support(self,job_id):
+        from .act_support import source_plan
+        source=self.get(job_id);source_plan(source)
+        return self._insert(source['profile'],'act',{'kind':'support_calibration','source_job':job_id,
+            'profile':source['profile'],'device':'cpu'})
 
     def evaluate(self, job_id, partition="validation"):
         if partition not in {"validation","test"}:raise ValueError("Unknown evaluation split")

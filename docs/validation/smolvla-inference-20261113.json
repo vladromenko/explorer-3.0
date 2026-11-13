@@ -1,0 +1,12 @@
+{
+  "official_policy": "smolvla",
+  "existing_synthetic_checkpoint": true,
+  "training_started": false,
+  "new_process_reload": "PASS",
+  "snapshot_restore_actions": "PASS",
+  "action_channels": 6,
+  "device": "cuda",
+  "cold_chunk_seconds": 1.7842001910030376,
+  "input": "black image + zero state + text task; infrastructure only",
+  "skill_verified": false
+}

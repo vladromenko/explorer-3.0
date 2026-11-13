@@ -33,9 +33,9 @@ def train_command(dataset: Path, output: Path, policy='act',steps=50,batch=8,see
         args.remove(f'--policy.type={policy}')
         args.append(f'--policy.path={initial_checkpoint}')
     if policy=='smolvla':
-        base=next((DATA/'cache/huggingface/hub/models--lerobot--smolvla_base/snapshots').iterdir())
-        args.remove('--policy.type=smolvla')
-        vlm=next((DATA/'cache/huggingface/hub/models--HuggingFaceTB--SmolVLM2-500M-Video-Instruct/snapshots').iterdir())
+        from .policy_catalog import smolvla_paths
+        base,vlm=smolvla_paths()
+        if not initial_checkpoint:args.remove('--policy.type=smolvla')
         info=json.loads((dataset/'meta/info.json').read_text())
         features={}
         for key,value in info['features'].items():
@@ -44,7 +44,8 @@ def train_command(dataset: Path, output: Path, policy='act',steps=50,batch=8,see
             elif key.startswith('observation.images.'):
                 shape=value['shape']
                 features[key]={'type':'VISUAL','shape':[shape[2],shape[0],shape[1]]}
-        args.extend([f'--policy.path={base}',f'--policy.vlm_model_name={vlm}',
+        if not initial_checkpoint:args.append(f'--policy.path={base}')
+        args.extend([f'--policy.vlm_model_name={vlm}',
                      '--policy.input_features='+json.dumps(features),
                      '--policy.output_features='+json.dumps({'action':{'type':'ACTION','shape':info['features']['action']['shape']}})])
     return args
@@ -59,6 +60,10 @@ def run_job(path: Path):
     cfg = json.loads(path.read_text())
     work = DATA/'jobs'/path.stem
     work.mkdir(exist_ok=True)
+    if cfg.get('kind')=='support_calibration':
+        from .act_support import prepare
+        prepare(cfg['source_job'],work)
+        return
     if cfg.get('kind') == 'sim_evaluate':
         subprocess.run([str(ROOT/'.venv-sim/bin/python'),'-m','explorer3.sim.evaluate',cfg['checkpoint'],
             str(work/'result.json'),'--profile',cfg['profile'],'--count',str(cfg['episodes']),

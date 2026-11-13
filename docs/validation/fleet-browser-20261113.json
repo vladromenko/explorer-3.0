@@ -1,0 +1,274 @@
+{
+  "actual_browser": true,
+  "actual_shared_mujoco": true,
+  "three_scripted_tasks": "PASS",
+  "snapshot_restore_paused": "PASS",
+  "single_operator_assignment": "PASS",
+  "training_started": false,
+  "physical_skill_verified": false,
+  "errors": [],
+  "external": [],
+  "model": {
+    "profile": "fleet_lab_sim",
+    "physics": "one MjModel / one integrated MjData",
+    "solver": {
+      "timestep": ".0005",
+      "integrator": "implicitfast",
+      "iterations": "100",
+      "ls_iterations": "20",
+      "cone": "elliptic",
+      "impratio": "10"
+    },
+    "zones": {
+      "so101": [
+        0.0,
+        -1.1,
+        0.0
+      ],
+      "rosmaster": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "tank": [
+        0.0,
+        1.1,
+        0.0
+      ]
+    },
+    "rosmaster_profile": "rosmaster_pick_place_sim",
+    "variation": "nominal only",
+    "xml_sha256": "e8e704e45eebfdd9ef15c7ae30c509344e5abec8c9c60cfe24832ba0ddb7fb73",
+    "limitations": [
+      "Tank uses original package CAD on an uncalibrated planar surrogate",
+      "no whole-body ROSMASTER control",
+      "separate work zones, no object handover",
+      "not calibrated to hardware"
+    ],
+    "tasks": {
+      "so101": {
+        "upstream": "google-deepmind/mujoco_menagerie/robotstudio_so101",
+        "revision": "370c43965323c0944b433b202aac5058b5f907a9",
+        "license": "Apache-2.0 (upstream model LICENSE)",
+        "presentation": {
+          "renderer": "native MuJoCo/Studio",
+          "style": "laboratory-v1",
+          "checker_cell_m": 0.1,
+          "reference": "Menagerie robotstudio_so101/scene.xml (Apache-2.0)",
+          "policy_camera": "same physical scene, no object coordinates or debug overlays"
+        },
+        "calibration": "uncalibrated_to_local_robot",
+        "extension": "free cube + open bin + dwell success",
+        "xml_sha256": "359f9ac06b0ff45ac8be60af93ec2a5715060d29d1f135e02ca7cd3eae9a9285",
+        "numerical_contact": {
+          "timestep_s": 0.0005,
+          "solref": [
+            0.001,
+            1
+          ],
+          "solimp": [
+            0.95,
+            0.99,
+            0.001,
+            0.5,
+            2
+          ],
+          "iterations": 100,
+          "purpose": "bound numerical interpenetration, not fitted material compliance"
+        },
+        "assets_sha256": "7cbc01943a6a459554f35fe9b5b9c6ca5d88acf5693917179b29f36e475fc5be"
+      },
+      "rosmaster": {
+        "source": "Yahboom official ROSMASTER M3 PRO code archive, orin/M3Pro_ws-0.0.1.zip",
+        "source_url": "https://drive.google.com/file/d/1WxZbB2ulfWldWYRKiT5zheso-8EtqfdV/view",
+        "archive_sha256": "7f9083d301fef50633445272505e9acb561a4b6abe362dd946d7deaaf4caff0f",
+        "srdf_sha256": "770c7df6680f2bfb379019223f52f80162423e1e6dc392c35dae46650b853d59",
+        "gripper_closed_rad": -0.8398,
+        "urdf_sha256": "8046676e826b02f7764d1db5cbf24ea3d82202d22837ae824f8b6a8ddd82b6aa",
+        "meshes_sha256": {
+          "base_link.STL": "82897ec12100b78d8f33800edd7be19f86de3ffbc3574ed446f1d2bf04079f4a",
+          "arm1.STL": "d12f701abb74171df8ed3179b3885d10c6af2863f29d13e52bcce2d0d8933643",
+          "arm2.STL": "6ec3d8c7b02106560f61035e03a034637b988d153319d87bb50994e96728271e",
+          "arm3.STL": "74e309203df8ed80e57962a5ccc871909163cb07c1b1f6db0628233684360a98",
+          "arm4.STL": "8f74b107bdaba930ea482c95e6685d5cf5dccb3923a1e6d8b9280b7986811cda",
+          "arm5.STL": "1a52a732e4664ac3b703968416446b76d67067a78632b520d33858a80a26a281",
+          "rlink1.STL": "9e3bb9c0d08d3d177e01a532d275f108f514eb4be13e857c0a596c61c32891a6",
+          "rlink2.STL": "ff22b15d51ff0d96cddcaa74b6056c9e5f88e1abe6886023a2a90ca80ec3230d",
+          "llink1.STL": "0acf2b0ea73e9eb63e3ef9fec5637f0a151dae108ac3eed58ffd98f0062a6c9d",
+          "llink2.STL": "e356dfad82f1468a6c80e20fe127df4b7b40c395398cf5cb85a1522d9691b31c",
+          "rlink3.STL": "bcf76ccbadf426c3e7ec6135f0fd09c0669b54735e7de91bbee92276b5404b25",
+          "llink3.STL": "81f1c9f5ab75d86362d7e227fda6018c87488db713bd9621f6eb761bbec3109d",
+          "Gripping.STL": "e35ed860419dad49687084f9c8493f43c81cfece5b421d7e63944d27d22d63f7",
+          "DCW2.STL": "085efb1ffed33d9440071886bf1c2ce769facda5e45fd7e1ab24d4d55298d1a1",
+          "Camera.STL": "12d7158cdf2fab1072f2bd3989726e854a20d1fe717206cb7edc114afe59fdbe",
+          "lwheel1.STL": "e629352d69aaef698c948505f046fb241b1d9a7e734f0417a06dfe2d383eacfd",
+          "lwheel2.STL": "f07f85985d6c189b71d839a0d44bf3e893eacfd76dccc4f954b63d247a78ae1b",
+          "rwheel1.STL": "7218e9bea1d0862cacd44b0a8a72e207085d367a022843bfd4e6be23f6786fff",
+          "rwheel2.STL": "f8daf44a79b1b3d5bdec95ef3885e8151f3a39f21f93c2bf2e8fcbf09d57c323",
+          "arm_base_Link.STL": "bbd67c0a59cdbb8fd02c567e8ddff62bde72d3cae753ee63da7681f98f29871c"
+        },
+        "geometry": "original URDF link transforms, visual/collision STL, gripper mimic constraints",
+        "inertias": "original manufacturer CAD values, not identified whole-robot mass",
+        "calibration": "manufacturer_geometry_unverified_local_dynamics",
+        "license": "package.xml says Apache 2.0 but retains TurtleBot metadata; assets cached locally, no redistribution",
+        "adaptations": [
+          "empty visual tags removed",
+          "camera pan and wheels fixed for arm task",
+          "MuJoCo native URDF import; balanceinertia enabled; manufacturer SRDF collision exclusions",
+          "duplicate collision geometry invisible, still active"
+        ],
+        "xml_sha256": "868986f6f9f8f5dce0ecd19330923995e6bf9cf52284dd7211aa61500e06e4b6",
+        "presentation": {
+          "renderer": "native MuJoCo/Studio",
+          "style": "laboratory-v1",
+          "checker_cell_m": 0.1,
+          "reference": "Menagerie robotstudio_so101/scene.xml (Apache-2.0)",
+          "policy_camera": "same physical scene, no object coordinates or debug overlays"
+        },
+        "numerical_contact": {
+          "timestep_s": 0.0005,
+          "solref": [
+            0.001,
+            1
+          ],
+          "solimp": [
+            0.95,
+            0.99,
+            0.001,
+            0.5,
+            2
+          ],
+          "iterations": 100,
+          "purpose": "bound numerical interpenetration, not fitted material compliance"
+        },
+        "controller_assumptions": [
+          "position servo gains/torque caps",
+          "lag",
+          "friction",
+          "servo-to-gripper alignment pending physical check",
+          "camera FOV pending intrinsics"
+        ],
+        "task_geometry": "simulated 32mm cube and bin; not a measurement of user objects"
+      },
+      "tank": {
+        "source": "Explorer planar force-driven dynamic surrogate",
+        "xml_sha256": "0cc49565feca7ea78081c96bc694d18a2af623bc077e2ac0b0f29e4fa9999c88",
+        "calibration": "assumed_uncalibrated",
+        "manufacturer": {
+          "source_repository": "gongyizhi0425/Shipcleaning-Robot",
+          "revision": "e63726dcd51620fd1778672a1296c6ca3d7c29af",
+          "files": [
+            {
+              "path": "package.xml",
+              "url": "https://raw.githubusercontent.com/gongyizhi0425/Shipcleaning-Robot/e63726dcd51620fd1778672a1296c6ca3d7c29af/robot_code/src/simulations/mentorpi_description/package.xml",
+              "sha256": "cb53570185333c8b1992aa526d7ee363b37c689625e6fc16d12c025c94436ef2",
+              "bytes": 664,
+              "lfs_sha256": null
+            },
+            {
+              "path": "urdf/tank.xacro",
+              "url": "https://raw.githubusercontent.com/gongyizhi0425/Shipcleaning-Robot/e63726dcd51620fd1778672a1296c6ca3d7c29af/robot_code/src/simulations/mentorpi_description/urdf/tank.xacro",
+              "sha256": "0a07b3fd9afb4ffc9b3501db9ab70f485c4747a977c8990815f2f770ba064db8",
+              "bytes": 4280,
+              "lfs_sha256": null
+            },
+            {
+              "path": "urdf/depth_cam.xacro",
+              "url": "https://raw.githubusercontent.com/gongyizhi0425/Shipcleaning-Robot/e63726dcd51620fd1778672a1296c6ca3d7c29af/robot_code/src/simulations/mentorpi_description/urdf/depth_cam.xacro",
+              "sha256": "bf6efcf72ee4db4207c873fed74e42cac7b03ac3e3a5a4c2877f6d502fdc0261",
+              "bytes": 1276,
+              "lfs_sha256": null
+            },
+            {
+              "path": "urdf/inertial_matrix.xacro",
+              "url": "https://raw.githubusercontent.com/gongyizhi0425/Shipcleaning-Robot/e63726dcd51620fd1778672a1296c6ca3d7c29af/robot_code/src/simulations/mentorpi_description/urdf/inertial_matrix.xacro",
+              "sha256": "a6e9c97cf27bdb88b19e5281dbb0bda956ed14394c772a15903abea8c112fd26",
+              "bytes": 1161,
+              "lfs_sha256": null
+            },
+            {
+              "path": "meshes/tank/base_chaais.STL",
+              "url": "https://media.githubusercontent.com/media/gongyizhi0425/Shipcleaning-Robot/e63726dcd51620fd1778672a1296c6ca3d7c29af/robot_code/src/simulations/mentorpi_description/meshes/tank/base_chaais.STL",
+              "sha256": "60d1fb8481eb79564efc38fb923d520cf87098e19cd980e5bc3b63ea0fd9dd5b",
+              "bytes": 17591784,
+              "lfs_sha256": "60d1fb8481eb79564efc38fb923d520cf87098e19cd980e5bc3b63ea0fd9dd5b"
+            },
+            {
+              "path": "meshes/tank/body_board.STL",
+              "url": "https://raw.githubusercontent.com/gongyizhi0425/Shipcleaning-Robot/e63726dcd51620fd1778672a1296c6ca3d7c29af/robot_code/src/simulations/mentorpi_description/meshes/tank/body_board.STL",
+              "sha256": "2fce77e59017da9aec10c029cd355bd3af0169b7ba20fe777db597e6df9825cd",
+              "bytes": 259784,
+              "lfs_sha256": null
+            },
+            {
+              "path": "meshes/tank/cam_Link.STL",
+              "url": "https://raw.githubusercontent.com/gongyizhi0425/Shipcleaning-Robot/e63726dcd51620fd1778672a1296c6ca3d7c29af/robot_code/src/simulations/mentorpi_description/meshes/tank/cam_Link.STL",
+              "sha256": "4bf9e75f7d7070db2263b978cbb34b159f981f6db57a50a64b64547c8835292e",
+              "bytes": 4717884,
+              "lfs_sha256": null
+            },
+            {
+              "path": "meshes/tank/cam_link_asc.STL",
+              "url": "https://raw.githubusercontent.com/gongyizhi0425/Shipcleaning-Robot/e63726dcd51620fd1778672a1296c6ca3d7c29af/robot_code/src/simulations/mentorpi_description/meshes/tank/cam_link_asc.STL",
+              "sha256": "4bf9e75f7d7070db2263b978cbb34b159f981f6db57a50a64b64547c8835292e",
+              "bytes": 4717884,
+              "lfs_sha256": null
+            },
+            {
+              "path": "meshes/tank/depth_cam.STL",
+              "url": "https://raw.githubusercontent.com/gongyizhi0425/Shipcleaning-Robot/e63726dcd51620fd1778672a1296c6ca3d7c29af/robot_code/src/simulations/mentorpi_description/meshes/tank/depth_cam.STL",
+              "sha256": "1c66ad024d2beb67f935bff8447a7087ca59ed4656f3b7a1f84959892df92fb3",
+              "bytes": 743984,
+              "lfs_sha256": null
+            },
+            {
+              "path": "meshes/tank/lidar_Link.STL",
+              "url": "https://raw.githubusercontent.com/gongyizhi0425/Shipcleaning-Robot/e63726dcd51620fd1778672a1296c6ca3d7c29af/robot_code/src/simulations/mentorpi_description/meshes/tank/lidar_Link.STL",
+              "sha256": "93c5329be97117f2b2f0196586627730e48798565415bcdcd7be4799ffb7047d",
+              "bytes": 876284,
+              "lfs_sha256": null
+            }
+          ],
+          "official_crosscheck": "https://wiki.hiwonder.com/projects/MentorPi-T1/en/latest/docs/6.mapping_courses.html#brief-analysis-of-robot-s-main-body-model",
+          "provenance": "public third-party mirror of manufacturer package, not an official Hiwonder release",
+          "license": "package.xml says TODO; assets cached locally, not redistributed",
+          "installed_robot_match": "unverified until stage C read-only copy",
+          "source": "MentorPi T1 package CAD from pinned public mirror",
+          "geometry": "original STL chassis/tracks, board, depth camera and lidar; original fixed URDF transforms",
+          "original_cad_mass_kg": 0.5148988,
+          "calibration": "geometry_unverified_against_installed_robot; dynamics_uncalibrated",
+          "camera": "URDF depth_cam mount; optical center and FOV still require calibration",
+          "adaptations": [
+            "native MuJoCo URDF import",
+            "one rigid planar chassis; tracks represented by chassis CAD mesh",
+            "published complete-kit mass used for surrogate dynamics, CAD partial inertias not a whole-robot measurement"
+          ],
+          "published_mass_kg": 1.88,
+          "source_url": "https://github.com/gongyizhi0425/Shipcleaning-Robot/tree/e63726dcd51620fd1778672a1296c6ca3d7c29af",
+          "unknown": [
+            "installed CAD match",
+            "assembled mass/inertia",
+            "optical calibration",
+            "drive response/slip"
+          ],
+          "presentation": {
+            "renderer": "native MuJoCo/Studio",
+            "style": "laboratory-v1",
+            "checker_cell_m": 0.1,
+            "reference": "Menagerie robotstudio_so101/scene.xml (Apache-2.0)",
+            "policy_camera": "same physical scene, no object coordinates or debug overlays"
+          }
+        },
+        "geometry_source": "MentorPi T1 package CAD from pinned public mirror",
+        "assumed": [
+          "traction/slip",
+          "command delay",
+          "gains",
+          "camera FOV",
+          "Tank whole-body box inertia and optical camera center"
+        ],
+        "limitations": "Planar force-driven chassis, fixed wheels/tracks, no wheel-floor friction because vertical DOF is constrained; object collisions retained; not a calibrated physical twin; geometry alone does not verify odometry"
+      }
+    }
+  }
+}

@@ -3,6 +3,7 @@
 The author TD score consumes externally estimated failure risk and novelty.
 It is not our learned gain score, nor an implementation of C.U.R.'s critics.
 """
+import copy
 from types import SimpleNamespace
 import numpy as np
 from .vendor.fleet_dagger.random_allocation import RandomAllocation
@@ -46,6 +47,20 @@ class FleetAllocator(Assignment):
         self.idle_robot_steps+=sum(bool(b) and i!=self.current for i,b in enumerate(self.blocked_envs))
         self.t+=1
         return self.current
+
+    def snapshot(self):
+        return {'method':type(self.allocation).__name__,'config':copy.deepcopy(vars(self.exp_cfg)),
+                'rng':self.rng.get_state(),**{k:copy.deepcopy(getattr(self,k)) for k in
+                ('assignments','human_timers','blocked_envs','t','switches','assigned_steps','idle_robot_steps')}}
+
+    def restore(self,state):
+        if state['method']!=type(self.allocation).__name__ or state['config']!=vars(self.exp_cfg):
+            raise ValueError('Allocator snapshot configuration mismatch')
+        if np.asarray(state['assignments']).shape!=self.assignments.shape or np.sum(state['assignments'])>1:
+            raise ValueError('Invalid single-operator assignment')
+        self.rng.set_state(state['rng'])
+        for key in ('assignments','human_timers','blocked_envs','t','switches','assigned_steps','idle_robot_steps'):
+            setattr(self,key,copy.deepcopy(state[key]))
 
     @property
     def current(self):

@@ -32,18 +32,24 @@ def model_xml(robot):
     ET.SubElement(base,'joint',name='y',type='slide',axis='0 1 0',damping='.1',limited='false')
     ET.SubElement(base,'joint',name='yaw',type='hinge',axis='0 0 1',damping='.03',limited='false')
     if tank:
-        # A dimensioned proxy, explicitly not a fabricated T1 mesh. Replace only
-        # when the manufacturer's actual tank.xacro/assets have been obtained.
-        ET.SubElement(base,'geom',name='chassis',type='box',pos='0 0 .091',size=f'{length} {width} .091',mass=str(mass),rgba='.16 .36 .55 1')
-        for side in (-1,1):
-            ET.SubElement(base,'geom',name=f'track_{side}',type='box',pos=f'0 {side*(width+.01)} .06',
-                size=f'{length} .01 .06',mass='0',contype='0',conaffinity='0',rgba='.08 .1 .12 1')
-        ET.SubElement(base,'camera',name='front_cam',pos=f'{length} 0 .17',xyaxes='0 -1 0 0 0 1',fovy='65')
-        provenance={'source':'Hiwonder MentorPi T1 Advanced published depth-camera dimensions and mass',
-            'source_url':'https://www.hiwonder.com/products/mentorpi-t1?variant=41789241655383',
-            'geometry':'dimensioned bounding proxy; original T1 meshes unavailable in published branch',
-            'dimensions_m':evidence['dimensions_m'],'published_mass_kg':mass,
-            'unknown':['actual mass with user Pi/accessories','original Tank URDF','inertia','camera extrinsics/intrinsics']}
+        from .tank_model import native_tree as tank_tree
+        native,provenance=tank_tree()
+        root.append(native.find('asset'))
+        for body in native.find('worldbody'):base.append(body)
+        # Preserve the original CAD hierarchy/geometry; use a single explicitly
+        # assumed whole-robot inertia for this planar surrogate, not the partial
+        # CAD assembly mass. The public kit mass is not a physical measurement.
+        for body in base.iter('body'):
+            inertial=body.find('inertial')
+            if inertial is not None:body.remove(inertial)
+            for geom in body.findall('geom'):geom.set('mass','0')
+        ET.SubElement(base,'inertial',pos='0 0 .09',mass=str(mass),
+            diaginertia=f'{mass*(.195**2+.182**2)/12} {mass*(.278**2+.182**2)/12} {mass*(.278**2+.195**2)/12}')
+        camera_body=base.find(".//body[@name='depth_cam']")
+        ET.SubElement(camera_body,'camera',name='front_cam',pos='0 0 0',xyaxes='0 -1 0 0 0 1',fovy='65')
+        provenance['published_mass_kg']=mass
+        provenance['source_url']='https://github.com/'+provenance['source_repository']+'/tree/'+provenance['revision']
+        provenance['unknown']=['installed CAD match','assembled mass/inertia','optical calibration','drive response/slip']
     else:
         from .manufacturer import native_tree
         from .vendor_rosmaster.arm_model import DCW2_ON_ARM4,REP103_OPTICAL
@@ -89,8 +95,8 @@ class MobileDock(SO101PickPlace):
             'xml_sha256':hashlib.sha256(xml.encode()).hexdigest(),'calibration':'assumed_uncalibrated',
             'manufacturer':provenance,
             'geometry_source':provenance['source'],
-            'assumed':['traction/slip','command delay','gains','camera FOV','Tank proxy inertia and camera pose'],
-            'limitations':'Planar force-driven chassis, fixed wheels/tracks, no wheel-floor friction because vertical DOF is constrained; object collisions retained; not a calibrated physical twin'}
+            'assumed':['traction/slip','command delay','gains','camera FOV','Tank whole-body box inertia and optical camera center'],
+            'limitations':'Planar force-driven chassis, fixed wheels/tracks, no wheel-floor friction because vertical DOF is constrained; object collisions retained; not a calibrated physical twin; geometry alone does not verify odometry'}
         self.images=images;self.render_mode=render_mode;self.renderer=None
         self.dt=1/self.fps;self.deadline_s=deadline_s
         bounds=np.array([.2,.5] if robot=='tank' else [.3,.25,.8],dtype=np.float32)
@@ -143,19 +149,28 @@ class MobileDock(SO101PickPlace):
                 'success':self.stable>=.5,'elapsed_s':self.elapsed,'calibration':'assumed_uncalibrated',
                 'phase':self.phase,'model':self.manifest,'variation':self.episode_parameters}
 
-    def step(self,action):
+    def prepare_action(self,action):
         action=np.asarray(action,dtype=float)
         if action.shape!=self.action_space.shape or not np.isfinite(action).all():raise ValueError('Invalid velocity command')
-        target=np.clip(action,self.action_space.low,self.action_space.high)
+        return np.clip(action,self.action_space.low,self.action_space.high)
+
+    def physics_control(self,timestep):
+        self.filtered+=min(1.,timestep/self.lag_s)*(self.pending-self.filtered)
+        vx,vy,w=(self.filtered[0],0.,self.filtered[1]) if self.robot=='tank' else self.filtered
+        yaw=self.data.qpos[2];c,s=np.cos(yaw),np.sin(yaw)
+        desired=np.array([c*vx-s*vy,s*vx+c*vy,w])*self.slip
+        response=np.array([self.mass/.12,self.mass/.12,.12/.10])*(desired-self.data.qvel)
+        self.data.ctrl[:]=np.clip(response,self.model.actuator_ctrlrange[:,0],self.model.actuator_ctrlrange[:,1])
+
+    def step(self,action):
+        target=self.prepare_action(action)
         end=(self.steps+1)*self.dt
         while self.data.time<end-1e-10:
-            self.filtered+=min(1.,self.model.opt.timestep/self.lag_s)*(self.pending-self.filtered)
-            vx,vy,w=(self.filtered[0],0.,self.filtered[1]) if self.robot=='tank' else self.filtered
-            yaw=self.data.qpos[2];c,s=np.cos(yaw),np.sin(yaw)
-            desired=np.array([c*vx-s*vy,s*vx+c*vy,w])*self.slip
-            response=np.array([self.mass/.12,self.mass/.12,.12/.10])*(desired-self.data.qvel)
-            self.data.ctrl[:]=np.clip(response,self.model.actuator_ctrlrange[:,0],self.model.actuator_ctrlrange[:,1])
+            self.physics_control(self.model.opt.timestep)
             mujoco.mj_step(self.model,self.data)
+        return self.complete_step(target)
+
+    def complete_step(self,target):
         self.pending=target;self.previous=target.copy();self.steps+=1;self.elapsed=self.data.time
         info=self.info()
         in_zone=info['distance_m']<.08 and abs(info['yaw_error_rad'])<.15

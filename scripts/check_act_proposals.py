@@ -19,6 +19,8 @@ def check(checkpoint,spool,output):
     try:
         cfg=profile(meta['profile']);client.action(obs,cfg);before=client.request('snapshot')
         proposal=client.observation_request('propose',obs,cfg);after=client.request('snapshot')
+        embedded=client.observation_request('embed',obs,cfg)
+        assert embedded['policy_id']==proposal['policy_id'] and np.allclose(embedded['features'],proposal['features'])
         assert before==after,'Scoring mutated execution state'
         expected=[client.action(obs,cfg) for _ in range(3)]
         client.request('restore',snapshot=before)
@@ -28,6 +30,7 @@ def check(checkpoint,spool,output):
         result={'actual_official_ACT':True,'existing_checkpoint':str(checkpoint),'policy_id':proposal['policy_id'],
             'feature_shape':list(np.asarray(proposal['features']).shape),'chunk_shape':list(np.asarray(proposal['chunk']).shape),
             'proposal_leaves_queue_unchanged':'PASS','snapshot_restore_actions':'PASS','proposal_matches_actual_first_action':'PASS',
+            'embedding_only_matches_proposal_features':'PASS',
             'training_started':False,'source':'stored image, inference plumbing only; no policy skill evaluation'}
         (output/'result.json').write_text(json.dumps(result,indent=2))
         (output/'proposal.json').write_text(json.dumps(proposal))

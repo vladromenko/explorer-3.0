@@ -17,9 +17,10 @@
     "profile": "so101_pick_place",
     "base_model": "lerobot/smolvla_base",
     "enabled": true,
-    "status": "software_forward_backward_reload_verified_synthetic_only",
+    "status": "existing_synthetic_smoke_only; simulation_recipe_prepared",
     "batch_size": 1,
-    "push_to_hub": false
+    "push_to_hub": false,
+    "profiles": "all_sim_profiles; so101_real_existing_gate"
   },
   "concurrency": 1,
   "split": {
@@ -28,5 +29,13 @@
     "test": 0.1,
     "unit": "session_scene_group",
     "statistics": "train_only"
+  },
+  "diffusion": {
+    "batch_size": 4,
+    "smoke_steps": 50,
+    "steps": 100000,
+    "seed": 1000,
+    "push_to_hub": false,
+    "status": "recipe_prepared_no_training"
   }
 }

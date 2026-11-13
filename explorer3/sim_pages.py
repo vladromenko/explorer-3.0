@@ -95,7 +95,9 @@ def install(stop_real,css,jobs):
                 state=await call()
                 if not state or state['profile']!=profile_select.value:
                     raise ValueError('Сначала откройте выбранную сцену')
-                ident=jobs.sim_ppo(profile_select.value,sim_model_hash=state['task']['model']['xml_sha256'],variation=variation_select.value) if kind=='ppo' else jobs.enqueue(profile_select.value,'act',smoke=kind!='act_full',
+                if kind=='ppo':ident=await asyncio.to_thread(jobs.sim_ppo,profile_select.value,
+                    sim_model_hash=state['task']['model']['xml_sha256'],variation=variation_select.value)
+                else:ident=await asyncio.to_thread(jobs.enqueue,profile_select.value,policy_select.value,smoke=kind!='act_full',
                     sim_model_hash=state['task']['model']['xml_sha256'])
                 job_status.set_text('В очереди: '+ident)
             except Exception as exc:job_status.set_text(str(exc))
@@ -110,6 +112,7 @@ def install(stop_real,css,jobs):
                 ui.button('STOP',icon='stop_circle',on_click=pause,color='negative').props('size=lg')
         with ui.row().classes('w-full items-center justify-between'):
             ui.link('← Реальные роботы','/').classes('muted')
+            ui.link('Общий стенд · три робота →','/sim/fleet')
             profile_select=ui.select({'so101_pick_place_sim':'SO-101 · Menagerie','rosmaster_pick_place_sim':'ROSMASTER · рука','rosmaster_dock_sim':'ROSMASTER · шасси','tank_dock_sim':'Tank · шасси'},
                 value=initial_profile,label='Робот в симуляции',on_change=select_profile).style('min-width:300px')
             variation_select=ui.select({'nominal':'Базовая сцена · сетка 10 см','varied':'Вариации для обучения'},
@@ -202,10 +205,12 @@ def install(stop_real,css,jobs):
         </script>""")
         with ui.column().classes('sim-panel'):
             ui.label('Обучение и результаты').classes('sim-title')
-            ui.label('ACT учится по камере и доступным данным робота. PPO использует полное состояние симуляции и остаётся симуляционным учителем.').classes('muted')
+            ui.label('ACT и Diffusion используют камеру и состояние; SmolVLA также получает текст задачи. PPO использует полное состояние симуляции. Обучение запускается только вашей кнопкой.').classes('muted')
+            from .policy_catalog import POLICIES
+            policy_select=ui.select(POLICIES,value='act',label='Модель управления').classes('w-full')
             with ui.row():
-                ui.button('Проверить обучение ACT · 50 шагов',icon='model_training',on_click=lambda:enqueue('act')).props('outline')
-                ui.button('Обучить ACT · 2 000 шагов',icon='model_training',on_click=lambda:enqueue('act_full')).props('outline')
+                ui.button('Проверить тракт · 50 шагов',icon='model_training',on_click=lambda:enqueue('act')).props('outline')
+                ui.button('Обучить выбранную модель · 2 000 шагов',icon='model_training',on_click=lambda:enqueue('act_full')).props('outline')
                 ui.button('Обучить PPO · 16 384 шага',icon='model_training',on_click=lambda:enqueue('ppo')).props('outline')
                 ui.button('Обновить список',icon='refresh',on_click=lambda:history.refresh()).props('flat')
             job_status=ui.label('Один trainer за раз. 50 шагов проверяют тракт, а не готовность навыка.').classes('muted')
@@ -218,8 +223,19 @@ def install(stop_real,css,jobs):
                 for episode in episodes:
                     ui.link(f"Показ {episode['id'][:8]} · {episode['outcome']} · {episode['frames']} кадров",f"/episodes/{episode['id']}")
                 for task in tasks:
-                    if task['policy']=='act' and task['status']=='completed' and task['checkpoint']:
-                        ui.button('Испытать ACT · '+task['id'][:8],on_click=lambda ident=task['id']:jobs.sim_evaluate(ident)).props('outline')
+                    if task['policy'] in {'act','smolvla','diffusion'} and task['status']=='completed' and task['checkpoint']:
+                        async def evaluate(ident=task['id']):
+                            try:
+                                created=await asyncio.to_thread(jobs.sim_evaluate,ident)
+                                job_status.set_text('Испытание модели: '+created)
+                            except Exception as exc:job_status.set_text(str(exc))
+                        ui.button('Испытать '+task['policy'].upper()+' · '+task['id'][:8],on_click=evaluate).props('outline')
+                        async def prepare_support(ident=task['id']):
+                            try:
+                                created=await asyncio.to_thread(jobs.prepare_support,ident)
+                                job_status.set_text('Подготовка оценки помощи: '+created)
+                            except Exception as exc:job_status.set_text(str(exc))
+                        if task['policy']=='act':ui.button('Подготовить оценку помощи',on_click=prepare_support).props('outline')
                     ui.link(f"{task['policy'].upper()} · {task['status']} · {task['id'][:8]}",f"/jobs/{task['id']}")
                 if not episodes and not tasks:ui.label('Здесь появятся сохранённые записи и запуски обучения').classes('muted')
         history()
@@ -245,7 +261,7 @@ def install(stop_real,css,jobs):
                         camera_title.set_text('Камера спереди' if mobile else 'Камера руки')
                         task_help.set_text('Подъехать к видимой цели → остановиться в зелёной зоне.' if mobile else 'Захватить кубик → положить в коробку → отпустить → отвести руку.')
                         success_help.set_text('Успех: положение, направление и малая скорость сохраняются в зоне 0,5 секунды.' if mobile else 'Кубик отпущен и неподвижен в коробке 0,5 секунды.')
-                        model_note.set_text('MentorPi T1: размерный макет по данным Hiwonder; исходную геометрию уточним на Tank.' if state['profile']=='tank_dock_sim' else
+                        model_note.set_text('MentorPi T1: исходные STL и URDF из публичной копии пакета; сверка с установленным роботом и калибровка впереди.' if state['profile']=='tank_dock_sim' else
                             'ROSMASTER M3Pro: исходная геометрия Yahboom, перенесённая из заводской модели.' if state['profile'].startswith('rosmaster') else
                             'SO-101: исходная модель MuJoCo Menagerie с контактной геометрией захвата.')
                     if state['episode']!=last_episode:

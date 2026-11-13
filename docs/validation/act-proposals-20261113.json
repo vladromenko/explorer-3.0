@@ -13,6 +13,7 @@
   "proposal_leaves_queue_unchanged": "PASS",
   "snapshot_restore_actions": "PASS",
   "proposal_matches_actual_first_action": "PASS",
+  "embedding_only_matches_proposal_features": "PASS",
   "training_started": false,
-  "source": "stored sim image, inference plumbing only; no new-geometry skill evaluation"
+  "source": "stored image, inference plumbing only; no policy skill evaluation"
 }

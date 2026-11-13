@@ -53,3 +53,12 @@ def test_memory_roundtrip_and_local_windows_do_not_rewind(tmp_path):
     assert monitor.windows[0]==1
     with (tmp_path/'memory.npz').open('ab') as output:output.write(b'changed')
     with pytest.raises(ValueError):Memory.load(tmp_path/'memory.npz')
+
+
+def test_calibration_job_rejects_smoke_before_opening_dataset(monkeypatch):
+    import json
+    from explorer3 import act_support
+    job={'status':'completed','policy':'act','checkpoint':'unused','profile':'arm',
+         'config':json.dumps({'kind':'train','plan_id':'frozen'})}
+    monkeypatch.setattr(act_support,'load_plan',lambda ident:{'smoke':True,'splits':{'validation':[]}})
+    with pytest.raises(ValueError,match='smoke'):act_support.source_plan(job)

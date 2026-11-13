@@ -107,19 +107,28 @@ class SO101PickPlace(gym.Env):
                 'stationary':bool(stationary),'stable_s':self.stable,'success':self.stable>=.5,
                 'elapsed_s':self.elapsed, 'calibration':'uncalibrated','variation':self.episode_parameters}
 
-    def step(self, action):
+    def prepare_action(self, action):
         a = np.asarray(action,dtype=float)
         if a.shape!=(6,) or not np.isfinite(a).all():
             raise ValueError('Six finite joint targets required')
-        target = self.to_radians(np.clip(a,self.action_space.low,self.action_space.high))
+        return self.to_radians(np.clip(a,self.action_space.low,self.action_space.high))
+
+    def physics_control(self, timestep):
+        self.filtered += min(1.,timestep/self.lag_s)*(self.pending-self.filtered)
+        self.data.ctrl[:] = self.filtered
+
+    def step(self, action):
+        target = self.prepare_action(action)
         end = (self.steps+1)*self.dt
         while self.data.time < end-1e-10:
             # Real dynamics: filtered controls, finite motor forces and contacts; never overwrite qpos here.
-            self.filtered += min(1.,self.model.opt.timestep/self.lag_s)*(self.pending-self.filtered)
-            self.data.ctrl[:] = self.filtered
+            self.physics_control(self.model.opt.timestep)
             mujoco.mj_step(self.model,self.data)
             if self.physics_observer is not None:
                 self.physics_observer(self.model,self.data)
+        return self.complete_step(target)
+
+    def complete_step(self, target):
         self.pending = target  # one command-period transport delay
         self.steps += 1
         self.elapsed = self.data.time
