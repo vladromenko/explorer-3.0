@@ -1,0 +1,84 @@
+{
+  "data": "/home/jetsonnx/.local/share/explorer3/pipeline-check/20261112-190255",
+  "training_started": false,
+  "motor_commands_sent": false,
+  "profiles": {
+    "rosmaster_dock": {
+      "readback": [
+        "PASS",
+        "PASS",
+        "PASS"
+      ],
+      "dataset_plan": {
+        "id": "ffd9c2e9ba545d1a7a456f882ac446c0a8253d9171c34d96f9c2e8e170562477",
+        "immutable_same_id_on_refreeze": true,
+        "train_episodes": 3,
+        "limitation": "Smoke использует все показы; это не независимая оценка качества"
+      },
+      "policy_trial_plan": {
+        "id": "b0781691035c4ed68bc5b807d4e706d2",
+        "state": "prepared_requires_physical_block",
+        "physical_acceptance": false,
+        "smoke_checkpoint": true,
+        "limitation": "Smoke checkpoint is not a learned physical skill"
+      },
+      "physical_start_gate": "closed: Включён локальный режим: роботы не опрашиваются, управление не открывается",
+      "gate_with_exception_without_authorization": "closed: Нужен отдельный физический блок для этого плана испытания",
+      "gate_with_exception_and_authorization": "open (plan only; nothing executed)",
+      "policy_inference_on_recorded_frame": {
+        "action": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "finite": true,
+        "dims_match_profile": true
+      },
+      "replay_plan": {
+        "id": "049bb6ff8aa44449927fe2dfd27141c8",
+        "frames": 61,
+        "state": "prepared_requires_physical_block"
+      }
+    },
+    "rosmaster_pick_place": {
+      "readback": [
+        "PASS",
+        "PASS",
+        "PASS"
+      ],
+      "dataset_plan": {
+        "id": "d67012a3dcd7ee7b84fb62cd9b56652718b1c869063850fe232cc1add41def08",
+        "immutable_same_id_on_refreeze": true,
+        "train_episodes": 3,
+        "limitation": "Smoke использует все показы; это не независимая оценка качества"
+      },
+      "policy_trial_plan": {
+        "id": "4e6bde74651749bb987940e007beac5a",
+        "state": "prepared_requires_physical_block",
+        "physical_acceptance": false,
+        "smoke_checkpoint": true,
+        "limitation": "Smoke checkpoint is not a learned physical skill"
+      },
+      "physical_start_gate": "closed: Включён локальный режим: роботы не опрашиваются, управление не открывается",
+      "gate_with_exception_without_authorization": "closed: Нужен отдельный физический блок для этого плана испытания",
+      "gate_with_exception_and_authorization": "open (plan only; nothing executed)",
+      "policy_inference_on_recorded_frame": {
+        "action": [
+          90.0,
+          90.0,
+          90.0,
+          90.0,
+          90.0,
+          30.0
+        ],
+        "finite": true,
+        "dims_match_profile": true
+      },
+      "replay_plan": {
+        "id": "30d76b2c4ce44a4fb31a253f9c26ae01",
+        "frames": 61,
+        "state": "prepared_requires_physical_block"
+      }
+    }
+  }
+}
