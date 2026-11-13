@@ -108,6 +108,138 @@ async def websocket(socket:WebSocket):
                 except Exception as exc:payload=telemetry({},state['mode'],'Нет связи: '+str(exc))
                 await socket.send_json(payload)
                 await asyncio.sleep(.1)
+    action_lock=asyncio.Lock();pending=[]
+    async def act(action,value):
+        try:
+            if action=='stop':
+                reason='Браузер: '+str(value.get('reason','кнопка STOP'))[:100]
+                await asyncio.to_thread(operator.stop,reason);state['notice']='Остановлено · '+reason
+            elif action=='acquire':
+                state['notice']='Запуск агента ROSMASTER…' if await asyncio.to_thread(ensure_agent) else state['notice']
+                await asyncio.to_thread(request,'/acquire',{},45);state['notice']='Explorer получил управление. Нажмите «Включить управление»'
+            elif action=='restore':
+                await asyncio.to_thread(operator.stop,'Возврат прежнего управления')
+                await asyncio.to_thread(request,'/restore',{},45);state['notice']='Прежнее управление восстановлено'
+            elif action=='prepare' and operator.owner==owner and operator.lease:
+                # Already enabled: raise the arm with a preset instead of a new session.
+                await asyncio.to_thread(request,'/preset',{'lease':operator.lease,'name':'up'})
+                state['notice']='Рука выпрямляется'
+            elif action in ('enable','prepare'):
+                # Connect automatically: start the inert agent and take serial/camera if needed.
+                health=await asyncio.to_thread(lambda:(ensure_agent(),request('/health'))[1])
+                if not health.get('hardware_open'):
+                    state['notice']='Подключение ROSMASTER…'
+                    await asyncio.to_thread(request,'/acquire',{},45)
+                result=await asyncio.to_thread(operator.enable,owner,'prepare' if action=='prepare' else 'rosmaster_manual',state['mode'],value.get('observing') is True)
+                state['notice']='Управление уже включено: двигайте клавишами (окно должно быть в фокусе)' if result=='already' else ''
+            elif action in ('record_start','trial_start'):
+                if recorder.active():raise RuntimeError('Сначала закончите текущую запись')
+                plan=None
+                if action=='trial_start':
+                    from . import trials
+                    plan=trials.load(str(value.get('plan','')))
+                    trials.require_physical(plan)
+                    name=plan['profile']
+                    study=None
+                    if value.get('study'):
+                        from . import research
+                        study=next((x for x in research.studies() if x['id']==value.get('study')),None)
+                        if study is None:raise ValueError('Исследование не найдено')
+                else:name=value.get('profile');study=None
+                if name not in PROFILES:raise ValueError('Выберите задачу ROSMASTER')
+                source='policy' if plan else 'human'
+                current=operator.status or {}
+                if not (operator.owner==owner and operator.lease and current.get('profile')==name and current.get('source','human')==source):
+                    if operator.lease:await asyncio.to_thread(operator.stop,'Переключение на задачу '+name)
+                    health=await asyncio.to_thread(lambda:(ensure_agent(),request('/health'))[1])
+                    if not health.get('hardware_open'):await asyncio.to_thread(request,'/acquire',{},45)
+                    await asyncio.to_thread(operator.enable,owner,name,state['mode'],value.get('observing') is True,source)
+                recorder.start(owner,name,str(value.get('scene','scene-01'))[:60],
+                               'correction' if value.get('category')=='correction' else 'demonstration',
+                               str(value.get('collection') or time.strftime('%Y-%m-%d')+'-'+name)[:80],plan=plan,study=study)
+                state['notice']=('Испытание' if plan else 'Запись')+' идёт: '+name+'. Затем «Успех», «Неуспех» или «Прервать»'
+            elif action=='record_finish':
+                recorder.finish(value.get('outcome'));state['notice']='Сохранение эпизода: '+str(value.get('outcome'))
+            elif action in ('mirror_flip','grip_capture','grip_save','grip_reset','pair_capture','pair_reset'):
+                current=(operator.status or {})
+                sign=list(current.get('mirror_sign') or [1,-1,1,1,1]);grip=current.get('mirror_gripper_map')
+                pair=current.get('mirror_ref_pair')
+                if action=='grip_capture':
+                    sample=operator.leader_sample
+                    if not sample:raise RuntimeError('Сначала «Подключить Leader»')
+                    state['grip'][value.get('which')]=sample[1]['gripper']
+                    state['notice']='Захват Leader: '+str(value.get('which'))+' = '+str(round(sample[1]['gripper'],1))
+                else:
+                    if operator.mirror:raise RuntimeError('Сначала выключите зеркало')
+                    if action=='mirror_flip':
+                        index=int(value.get('joint'));sign[index]=-sign[index]
+                    elif action=='pair_capture':
+                        sample=operator.leader_sample;measured=current.get('arm_measured')
+                        if not sample or time.monotonic()-sample[0]>.3:raise RuntimeError('Сначала подключите Leader (кнопка «Включить зеркало» или «Подключить Leader»)')
+                        if not measured:raise RuntimeError('Нет измерений руки ROSMASTER')
+                        pair={'leader':[round(sample[1][n],2) for n in JOINT_NAMES],'servo':[round(v,2) for v in measured[:5]]}
+                    elif action=='pair_reset':pair=None
+                    elif action=='grip_save':
+                        if 'open' not in state['grip'] or 'closed' not in state['grip']:raise ValueError('Снимите обе точки: Leader открыт и закрыт')
+                        grip=[state['grip']['open'],state['grip']['closed']]
+                    elif action=='grip_reset':grip=None
+                    if not operator.lease:raise RuntimeError('Сначала «▶ Включить»')
+                    await asyncio.to_thread(request,'/mirror_config',{'sign':sign,'gripper_map':grip,'ref_pair':pair})
+                    state['notice']='Зеркало: настройка сохранена на роботе'
+            elif action=='correction_done':
+                recorder.end_correction();state['notice']='Коррекция завершена, управление у политики'
+            elif action=='emergency':
+                await asyncio.to_thread(operator.stop,'Аварийное вмешательство оператора')
+                recorder.finish('aborted',emergency=True);state['notice']='Аварийное вмешательство: STOP, эпизод помечен'
+            elif action=='arm_mode':
+                if value.get('mode') not in {'cartesian','joint'}:raise ValueError('Неизвестный режим руки')
+                state['mode']=value['mode']
+                if operator.owner==owner:operator.arm_mode=value['mode']  # switched live, no stop
+                state['notice']='Режим руки: '+('суставы' if value['mode']=='joint' else 'захват XYZ')
+            elif action in ('mirror_on','mirror_off','mirror_toggle'):
+                # Idempotent on/off: a double click must never switch the mirror on and straight off.
+                wanted=(not operator.mirror) if action=='mirror_toggle' else action=='mirror_on'
+                if wanted and operator.mirror and operator.owner==owner:
+                    state['notice']='Зеркало уже включено'
+                elif not wanted:
+                    operator.disable_mirror(owner);state['notice']='Зеркало выключено, ручное управление продолжается'
+                else:
+                    if operator.owner!=owner or not operator.lease:
+                        # One button: enable control first (same checks as «▶ Включить»).
+                        if operator.lease:await asyncio.to_thread(operator.stop,'Переход к зеркалу')
+                        health=await asyncio.to_thread(lambda:(ensure_agent(),request('/health'))[1])
+                        if not health.get('hardware_open'):await asyncio.to_thread(request,'/acquire',{},45)
+                        await asyncio.to_thread(operator.enable,owner,'rosmaster_manual',state['mode'],True)
+                    if operator.leader_sample is None or time.monotonic()-operator.leader_sample[0]>.2:
+                        await asyncio.to_thread(operator.start_leader,owner)
+                        end=time.monotonic()+5
+                        while time.monotonic()<end and (operator.leader_sample is None or time.monotonic()-operator.leader_sample[0]>.2):
+                            if operator.leader_error:raise RuntimeError(operator.leader_error)
+                            await asyncio.sleep(.1)
+                    operator.enable_mirror(owner);state['notice']='Зеркало включено: двигайте Leader понемногу'
+            elif action=='leader':
+                state['notice']=await asyncio.to_thread(operator.start_leader,owner)
+            elif action=='leader_off':
+                await asyncio.to_thread(operator.stop_leader);state['notice']='Leader отключён'
+            elif action=='mirror':
+                if value.get('on'):
+                    operator.enable_mirror(owner);state['notice']=''
+                else:
+                    operator.disable_mirror(owner);state['notice']='Зеркало выключено, ручное управление продолжается'
+            elif action=='preset':
+                if operator.owner!=owner:raise PermissionError('Сначала включите управление')
+                await asyncio.to_thread(request,'/preset',{'lease':operator.lease,'name':value.get('name')})
+                state['notice']='Переход в выбранную позу'
+            else:raise ValueError('Эта функция ещё не перенесена в Explorer')
+        except Exception as exc:
+            state['notice']=str(exc)
+            log_action(owner,action,value,exc)
+        else:log_action(owner,action,value,None)
+
+    async def serial(action,value):
+        async with action_lock:
+            await act(action,value)
+
     task=asyncio.create_task(push())
     try:
         while True:
@@ -115,132 +247,13 @@ async def websocket(socket:WebSocket):
             action=value.get('action')
             if action is None:
                 operator.input(owner,{key:value[key] for key in ('drive','arm','pitch','roll','grip','slow','free') if key in value})
+            elif action=='stop':
+                # STOP never waits behind another action.
+                await act(action,value)
             else:
-                try:
-                    if action=='stop':
-                        reason='Браузер: '+str(value.get('reason','кнопка STOP'))[:100]
-                        await asyncio.to_thread(operator.stop,reason);state['notice']='Остановлено · '+reason
-                    elif action=='acquire':
-                        state['notice']='Запуск агента ROSMASTER…' if await asyncio.to_thread(ensure_agent) else state['notice']
-                        await asyncio.to_thread(request,'/acquire',{},45);state['notice']='Explorer получил управление. Нажмите «Включить управление»'
-                    elif action=='restore':
-                        await asyncio.to_thread(operator.stop,'Возврат прежнего управления')
-                        await asyncio.to_thread(request,'/restore',{},45);state['notice']='Прежнее управление восстановлено'
-                    elif action=='prepare' and operator.owner==owner and operator.lease:
-                        # Already enabled: raise the arm with a preset instead of a new session.
-                        await asyncio.to_thread(request,'/preset',{'lease':operator.lease,'name':'up'})
-                        state['notice']='Рука выпрямляется'
-                    elif action in ('enable','prepare'):
-                        # Connect automatically: start the inert agent and take serial/camera if needed.
-                        health=await asyncio.to_thread(lambda:(ensure_agent(),request('/health'))[1])
-                        if not health.get('hardware_open'):
-                            state['notice']='Подключение ROSMASTER…'
-                            await asyncio.to_thread(request,'/acquire',{},45)
-                        result=await asyncio.to_thread(operator.enable,owner,'prepare' if action=='prepare' else 'rosmaster_manual',state['mode'],value.get('observing') is True)
-                        state['notice']='Управление уже включено: двигайте клавишами (окно должно быть в фокусе)' if result=='already' else ''
-                    elif action in ('record_start','trial_start'):
-                        if recorder.active():raise RuntimeError('Сначала закончите текущую запись')
-                        plan=None
-                        if action=='trial_start':
-                            from . import trials
-                            plan=trials.load(str(value.get('plan','')))
-                            trials.require_physical(plan)
-                            name=plan['profile']
-                            study=None
-                            if value.get('study'):
-                                from . import research
-                                study=next((x for x in research.studies() if x['id']==value.get('study')),None)
-                                if study is None:raise ValueError('Исследование не найдено')
-                        else:name=value.get('profile');study=None
-                        if name not in PROFILES:raise ValueError('Выберите задачу ROSMASTER')
-                        source='policy' if plan else 'human'
-                        current=operator.status or {}
-                        if not (operator.owner==owner and operator.lease and current.get('profile')==name and current.get('source','human')==source):
-                            if operator.lease:await asyncio.to_thread(operator.stop,'Переключение на задачу '+name)
-                            health=await asyncio.to_thread(lambda:(ensure_agent(),request('/health'))[1])
-                            if not health.get('hardware_open'):await asyncio.to_thread(request,'/acquire',{},45)
-                            await asyncio.to_thread(operator.enable,owner,name,state['mode'],value.get('observing') is True,source)
-                        recorder.start(owner,name,str(value.get('scene','scene-01'))[:60],
-                                       'correction' if value.get('category')=='correction' else 'demonstration',
-                                       str(value.get('collection') or time.strftime('%Y-%m-%d')+'-'+name)[:80],plan=plan,study=study)
-                        state['notice']=('Испытание' if plan else 'Запись')+' идёт: '+name+'. Затем «Успех», «Неуспех» или «Прервать»'
-                    elif action=='record_finish':
-                        recorder.finish(value.get('outcome'));state['notice']='Сохранение эпизода: '+str(value.get('outcome'))
-                    elif action in ('mirror_flip','grip_capture','grip_save','grip_reset','pair_capture','pair_reset'):
-                        current=(operator.status or {})
-                        sign=list(current.get('mirror_sign') or [1,-1,1,1,1]);grip=current.get('mirror_gripper_map')
-                        pair=current.get('mirror_ref_pair')
-                        if action=='grip_capture':
-                            sample=operator.leader_sample
-                            if not sample:raise RuntimeError('Сначала «Подключить Leader»')
-                            state['grip'][value.get('which')]=sample[1]['gripper']
-                            state['notice']='Захват Leader: '+str(value.get('which'))+' = '+str(round(sample[1]['gripper'],1))
-                        else:
-                            if operator.mirror:raise RuntimeError('Сначала выключите зеркало')
-                            if action=='mirror_flip':
-                                index=int(value.get('joint'));sign[index]=-sign[index]
-                            elif action=='pair_capture':
-                                sample=operator.leader_sample;measured=current.get('arm_measured')
-                                if not sample or time.monotonic()-sample[0]>.3:raise RuntimeError('Сначала подключите Leader (кнопка «Включить зеркало» или «Подключить Leader»)')
-                                if not measured:raise RuntimeError('Нет измерений руки ROSMASTER')
-                                pair={'leader':[round(sample[1][n],2) for n in JOINT_NAMES],'servo':[round(v,2) for v in measured[:5]]}
-                            elif action=='pair_reset':pair=None
-                            elif action=='grip_save':
-                                if 'open' not in state['grip'] or 'closed' not in state['grip']:raise ValueError('Снимите обе точки: Leader открыт и закрыт')
-                                grip=[state['grip']['open'],state['grip']['closed']]
-                            elif action=='grip_reset':grip=None
-                            if not operator.lease:raise RuntimeError('Сначала «▶ Включить»')
-                            await asyncio.to_thread(request,'/mirror_config',{'sign':sign,'gripper_map':grip,'ref_pair':pair})
-                            state['notice']='Зеркало: настройка сохранена на роботе'
-                    elif action=='correction_done':
-                        recorder.end_correction();state['notice']='Коррекция завершена, управление у политики'
-                    elif action=='emergency':
-                        await asyncio.to_thread(operator.stop,'Аварийное вмешательство оператора')
-                        recorder.finish('aborted',emergency=True);state['notice']='Аварийное вмешательство: STOP, эпизод помечен'
-                    elif action=='arm_mode':
-                        if value.get('mode') not in {'cartesian','joint'}:raise ValueError('Неизвестный режим руки')
-                        state['mode']=value['mode']
-                        if operator.owner==owner:operator.arm_mode=value['mode']  # switched live, no stop
-                        state['notice']='Режим руки: '+('суставы' if value['mode']=='joint' else 'захват XYZ')
-                    elif action in ('mirror_on','mirror_off','mirror_toggle'):
-                        # Idempotent on/off: a double click must never switch the mirror on and straight off.
-                        wanted=(not operator.mirror) if action=='mirror_toggle' else action=='mirror_on'
-                        if wanted and operator.mirror and operator.owner==owner:
-                            state['notice']='Зеркало уже включено'
-                        elif not wanted:
-                            operator.disable_mirror(owner);state['notice']='Зеркало выключено, ручное управление продолжается'
-                        else:
-                            if operator.owner!=owner or not operator.lease:
-                                # One button: enable control first (same checks as «▶ Включить»).
-                                if operator.lease:await asyncio.to_thread(operator.stop,'Переход к зеркалу')
-                                health=await asyncio.to_thread(lambda:(ensure_agent(),request('/health'))[1])
-                                if not health.get('hardware_open'):await asyncio.to_thread(request,'/acquire',{},45)
-                                await asyncio.to_thread(operator.enable,owner,'rosmaster_manual',state['mode'],True)
-                            if operator.leader_sample is None or time.monotonic()-operator.leader_sample[0]>.2:
-                                await asyncio.to_thread(operator.start_leader,owner)
-                                end=time.monotonic()+5
-                                while time.monotonic()<end and (operator.leader_sample is None or time.monotonic()-operator.leader_sample[0]>.2):
-                                    if operator.leader_error:raise RuntimeError(operator.leader_error)
-                                    await asyncio.sleep(.1)
-                            operator.enable_mirror(owner);state['notice']='Зеркало включено: двигайте Leader понемногу'
-                    elif action=='leader':
-                        state['notice']=await asyncio.to_thread(operator.start_leader,owner)
-                    elif action=='leader_off':
-                        await asyncio.to_thread(operator.stop_leader);state['notice']='Leader отключён'
-                    elif action=='mirror':
-                        if value.get('on'):
-                            operator.enable_mirror(owner);state['notice']=''
-                        else:
-                            operator.disable_mirror(owner);state['notice']='Зеркало выключено, ручное управление продолжается'
-                    elif action=='preset':
-                        if operator.owner!=owner:raise PermissionError('Сначала включите управление')
-                        await asyncio.to_thread(request,'/preset',{'lease':operator.lease,'name':value.get('name')})
-                        state['notice']='Переход в выбранную позу'
-                    else:raise ValueError('Эта функция ещё не перенесена в Explorer')
-                except Exception as exc:
-                    state['notice']=str(exc)
-                    log_action(owner,action,value,exc)
-                else:log_action(owner,action,value,None)
+                # Long actions (Leader start, acquire) run aside, so 'tab alive' inputs keep flowing.
+                pending.append(asyncio.create_task(serial(action,value)))
+                pending[:]=[t for t in pending if not t.done()]
     except (WebSocketDisconnect,WebSocketDisconnected):pass
     finally:
         task.cancel()

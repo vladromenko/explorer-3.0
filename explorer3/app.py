@@ -139,7 +139,7 @@ def index():
             ui.label('HOMEBRAIN / ЛОКАЛЬНАЯ ЛАБОРАТОРИЯ').classes('kicker')
             ui.html('<h1>Explorer 3.0</h1>')
             ui.label('Показы → обучение → проверяемые испытания').classes('muted')
-        ui.button('STOP · все роботы',icon='stop_circle',color='negative',on_click=stop_all).props('size=lg')
+        ui.button('STOP · всё управление Explorer',icon='stop_circle',color='negative',on_click=stop_all).props('size=lg')
     stage_label=ui.label('Этап A · программная подготовка. Движение не разрешено. Запись и физические испытания ещё не проверены.').classes('notice')
     ready=ui.label('').classes('muted')
     fleet_labels={}
@@ -487,6 +487,9 @@ def index():
         mode_label.set_text((session.error or phase_text) if control.robot=='tank' else control.mode+' · '+(session.error or phase_text))
         tank_motion_state.set_text((session.error or phase_text).removeprefix('RuntimeError: '))
         tank_motion_state.classes('text-red-4' if session.error else 'text-green-4',remove='text-red-4 text-green-4')
+        if control.robot=='tank' and (DATA/'validation/tank-motion-incident.json').exists():
+            tank_motion_state.set_text('Tank заблокирован после отказа STOP. Соединение с моторной платой пропало; закрытие программы не подтверждает остановку гусениц. Повторный запуск запрещён до проверки причины.')
+            tank_motion_state.classes('text-red-4',remove='text-green-4')
     def refresh_preview():
         with session.lock:
             sample=session.latest
