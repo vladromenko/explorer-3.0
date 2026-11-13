@@ -657,3 +657,14 @@ Diffusion: обнаружена отсутствовавшая зависимо�
 Fine-tune same-profile/same-model соединяет старые/новые данные, сохраняет роли прежних connected groups, отвергает мост между прежним train и hold-out; фиксирует хеш исходного checkpoint, смесь кадров и train-only normalization. LeRobot0.6.1 действительно обновляет processor stats на non-resume по train. Resume fine-tune допускается как продолжение того же job ID, без нового optimizer. Sim→real protocol ещё не готов.
 
 14 tests PASS. Browser isolated: ACT1234-update draft подготовлен/скачан/повторно открыт, по1 группе train/validation/test, jobs до/после идентичны, обучение не запущено. Две дополнительные записи scripted Tank seeds15/16 (137/130 кадров) только для приёмки, в изолированном DATA. В sim UI восстановлена явная ширина полей при отключённом Tailwind; форма нового плана отделена от просмотра готового.
+
+### 2026-11-13 — ROSMASTER (соседний диалог): программная часть без физических проверок
+
+Подробности и даты — `docs/handoffs/ROSMASTER_RESULT_RU.md`. Workflow A/hardware_connections=false не менялись; :8020, Tank, Console 8090 (новые исправления Explorer) не трогались; обучение не запускалось.
+
+- Агент на роботе: ARM EXPIRED после серии отмен у предела больше не рвёт сессию (цели на 1° внутри пределов, EXPIRED трактуется как NOT_READY); первая причина остановки сохраняется. 27 agent tests PASS на роботе (`scripts/rosmaster_robot_tests.sh`).
+- Запись: причины завершения (operator_success/failure/abort, emergency, robot_stop, operator_stop, hardware_or_network_error), provenance domain/source/sha кода агента.
+- Этап A теперь закрывает и панель/управление/монитор ROSMASTER; открыть можно только отдельным файлом-исключением `configs/rosmaster-hardware-enabled.json` (Tank/SO-101 не затрагивает). Файл не создан — ждёт согласия пользователя.
+- Измеренные параметры для симуляции с источником: `docs/handoffs/rosmaster_measured_params.json`; fovy камеры в sim 53.06°.
+- Fake-agent + браузер (6 сценариев PASS, эпизод 42 кадра) и цепочка проверка → неизменяемый план → checkpoint → план испытания (inference на записанном кадре, без команд) PASS: `docs/handoffs/rosmaster-flow-report.json`.
+- Осталось только физическое (с подтверждением пользователя): приёмка базы/руки/STOP/потери связи, по 3 показа на задачу, журналы движения для идентификации sim, возврат старой системы.
