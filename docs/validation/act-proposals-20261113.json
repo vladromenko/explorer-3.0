@@ -1,0 +1,18 @@
+{
+  "actual_official_ACT": true,
+  "existing_checkpoint": "/home/jetsonnx/.local/share/explorer3/checkpoints/corrective-a-so101-act-cpu-b1/checkpoints/last/pretrained_model",
+  "policy_id": "5e2bc3104ab1affeddd898c5cb491f33c712cc84f7fffb429ffb4129111305fe",
+  "feature_shape": [
+    1,
+    512
+  ],
+  "chunk_shape": [
+    100,
+    6
+  ],
+  "proposal_leaves_queue_unchanged": "PASS",
+  "snapshot_restore_actions": "PASS",
+  "proposal_matches_actual_first_action": "PASS",
+  "training_started": false,
+  "source": "stored sim image, inference plumbing only; no new-geometry skill evaluation"
+}
