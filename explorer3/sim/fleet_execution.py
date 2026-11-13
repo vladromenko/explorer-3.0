@@ -85,7 +85,7 @@ def load_monitor(spec,policy,env):
 
 
 class FleetExecution:
-    def __init__(self,specs,output,*,seed=1,method='fleet_thrifty',delay_s=.1,help_s=1.,request_deadline_s=3.,help_mode='scripted_expert'):
+    def __init__(self,specs,output,*,seed=1,method='fleet_thrifty',delay_s=.1,help_s=1.,request_deadline_s=3.,help_mode='scripted_expert',gain=None,horizon_s=20.):
         if not specs or not set(specs).issubset({'so101','rosmaster','tank'}):raise ValueError('Choose at least one fleet agent')
         if help_mode not in {'scripted_expert','hold_only'}:raise ValueError('Unknown assistance mode')
         if not all(math.isfinite(x) and 0<=x<=10 for x in (delay_s,help_s,request_deadline_s)) or help_s<=0 or request_deadline_s<=0:
@@ -98,8 +98,16 @@ class FleetExecution:
         self.requests={};self.last_scores={};self.executed={n:0 for n in specs};self.inflight={}
         self.counts={n:{'policy':0,'safety':0,'scripted_expert':0} for n in specs}
         self.accounting={'assignments':[],'reward':{n:0. for n in specs},'waiting_s':{n:0. for n in specs}}
+        self.gain=None;self.gain_scores={};self.history={n:[] for n in specs};self.horizon_s=horizon_s
         self.before_action=None;self.events=[];self.rows=[];self.sequence=0;self.inference_seconds=0.;self.paused=False
         try:
+            if gain:
+                from explorer3.vision_assets import digest
+                if digest(gain['path'])!=gain['sha256']:raise ValueError('Gain model changed after preparation')
+                self.gain=json.loads(Path(gain['path']).read_text())
+                if self.gain.get('schema')!='branch_gain_model_v1' or self.gain.get('domain')!='sim' or self.gain.get('supervision')!='scripted_expert':
+                    raise ValueError('Only explicit simulated assistance models accepted')
+                if self.gain['protocol']['correction_s']!=help_s:raise ValueError('Gain assistance budget mismatch')
             for name,spec in specs.items():
                 env=self.world.views[name].env
                 if spec['kind']=='fixture':
@@ -162,6 +170,16 @@ class FleetExecution:
             view=self.world.views[name];policy=self.policies[name]
             observations[name]={'state':view.env.observation()['state']}
             if policy.needs_image:observations[name]['rgb']=self.world.render(name)
+            if self.gain is not None:
+                from explorer3.gain_preparation import observation
+                from explorer3.gain_model import predict
+                compatible=self.horizon_s-self.world.data.time>=self.gain['protocol']['horizon_s']
+                if compatible and policy.metadata['kind']=='frozen_checkpoint':
+                    features=observation(self.history[name],view.env.elapsed,
+                        view.env.action_space.high-view.env.action_space.low,self.delay_s)
+                    self.gain_scores[name]={**predict(self.gain,[{'features':features}])[0],
+                        'mode':'shadow_simulation','controls_assignment':False,'human_effect':False}
+                else:self.gain_scores[name]={'unavailable':'insufficient horizon or numerical fixture'}
             if name in self.monitors:
                 started=time.monotonic();proposal=policy.propose(observations[name]);self.inference_seconds+=time.monotonic()-started
                 monitor=self.monitors[name]
@@ -192,6 +210,9 @@ class FleetExecution:
             action=np.asarray(action,dtype=float)
             if action.shape!=env.action_space.shape or not np.isfinite(action).all():raise ValueError('Invalid policy action')
             if self.before_action is not None:self.before_action(name,action,source)
+            from explorer3.gain_preparation import sample
+            self.history[name].append(sample(env.profile,observations[name]['state'],action,env.elapsed))
+            self.history[name]=self.history[name][-max(2,math.ceil(3/env.dt)):]
             actions[name]=action;self.inflight[name]=source
             self.rows.append({'sequence':self.sequence,'agent':name,'task_id':self.world.views[name].task_id,
                 'sim_time_s':float(self.world.data.time),'source':source,'action':action.tolist(),
@@ -216,7 +237,8 @@ class FleetExecution:
             'requests':copy.deepcopy(self.requests),'monitors':copy.deepcopy(self.last_scores),'counts':copy.deepcopy(self.counts),
             'policies':{n:p.metadata for n,p in self.policies.items()},'paused':self.paused,
             'inference_wall_seconds':self.inference_seconds,'world':self.world.info(),
-            'help_source':self.help_mode,'measured_human_cost':False,'gain_estimator':'unavailable; support distance is not causal gain'}
+            'help_source':self.help_mode,'measured_human_cost':False,'gain_estimator':'shadow_simulation' if self.gain else 'unavailable; support distance is not causal gain',
+            'gain_scores':copy.deepcopy(self.gain_scores)}
 
     def metrics(self):
         assignments=self.accounting['assignments'] or [np.zeros((len(self.names),1)).tolist()]
@@ -233,16 +255,17 @@ class FleetExecution:
         helper=None if self.helper is None else {k:copy.deepcopy(v) for k,v in vars(self.helper).items() if k not in {'env','scratch','arm'}}
         return {'world':self.world.snapshot(),'policies':{n:p.snapshot() for n,p in self.policies.items()},
             'monitors':{n:m.snapshot() for n,m in self.monitors.items()},'allocator':self.allocator.snapshot(),
-            'identity':self.specs,'helper':helper,'helper_clock_start':self.helper.env.start if self.helper is not None else None,**{k:copy.deepcopy(getattr(self,k)) for k in
-            ('next_allocation','helper_name','help_started','requests','last_scores','executed','inflight','counts','accounting','events','rows','sequence','paused')}}
+            'identity':self.specs,'gain_identity':self.gain,'helper':helper,'helper_clock_start':self.helper.env.start if self.helper is not None else None,**{k:copy.deepcopy(getattr(self,k)) for k in
+            ('next_allocation','helper_name','help_started','requests','last_scores','executed','inflight','counts','accounting','history','gain_scores','events','rows','sequence','paused')}}
 
     def restore(self,saved,*,interactive=False):
         if saved['identity']!=self.specs:raise ValueError('Fleet policy set changed')
+        if saved.get('gain_identity')!=self.gain:raise ValueError('Gain model changed')
         self.world.restore(saved['world'])
         for name,state in saved['policies'].items():self.policies[name].restore(state)
         for name,state in saved['monitors'].items():self.monitors[name].restore(state)
         self.allocator.restore(saved['allocator'])
-        for key in ('next_allocation','helper_name','help_started','requests','last_scores','executed','inflight','counts','accounting','events','rows','sequence','paused'):
+        for key in ('next_allocation','helper_name','help_started','requests','last_scores','executed','inflight','counts','accounting','history','gain_scores','events','rows','sequence','paused'):
             setattr(self,key,copy.deepcopy(saved[key]))
         self.helper=None
         if saved['helper'] is not None:
@@ -261,6 +284,7 @@ class FleetExecution:
         self.world.reset(seed=seed,agent=name);self.policies[name].reset()
         if name in self.monitors:self.monitors[name].reset('policy')
         self.requests.pop(name,None);self.last_scores.pop(name,None);self.executed[name]=0;self.inflight.pop(name,None)
+        self.history[name]=[];self.gain_scores.pop(name,None)
         self.counts[name]={k:0 for k in self.counts[name]};self.event('agent_reset',agent=name,seed=seed)
 
     def close(self):

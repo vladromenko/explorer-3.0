@@ -60,6 +60,10 @@ def run_job(path: Path):
     cfg = json.loads(path.read_text())
     work = DATA/'jobs'/path.stem
     work.mkdir(exist_ok=True)
+    if cfg.get('kind')=='branch_gain_train':
+        from .gain_model import fit_plan
+        fit_plan(cfg['plan_id'],work)
+        return
     if cfg.get('kind')=='fleet_execution':
         subprocess.run([str(ROOT/'.venv-sim/bin/python'),'-m','explorer3.sim.fleet_run',str(path),str(work)],
                        check=True,env={**offline_environment(),'MUJOCO_GL':'egl'})

@@ -17,7 +17,7 @@ def selections():
         and j['checkpoint'] and j['policy'] in {'act','smolvla','diffusion'} and json.loads(j['config']).get('kind','train')=='train']
 
 
-def prepare(selected,*,horizon_s=2.,seed=1,software_probe=False,method='fleet_thrifty',delay_s=.1,help_s=1.,support=None):
+def prepare(selected,*,horizon_s=2.,seed=1,software_probe=False,method='fleet_thrifty',delay_s=.1,help_s=1.,support=None,gain_job=None):
     if not isinstance(horizon_s,(int,float)) or not math.isfinite(horizon_s) or not .2<=horizon_s<=20:
         raise ValueError('Длительность проверки: 0,2–20 секунд симуляции')
     if method not in {'random','fleet_thrifty'}:raise ValueError('Unknown allocator')
@@ -50,7 +50,14 @@ def prepare(selected,*,horizon_s=2.,seed=1,software_probe=False,method='fleet_th
                 paths=[Path(result['memory']),Path(result['memory']).with_suffix('.json'),Path(result['thresholds'])]
                 specs[name].update(memory=result['memory'],thresholds=result['thresholds'],support_job=item['id'],
                     support_files={str(p):digest(p) for p in paths})
-    return {'kind':'fleet_execution','domain':'sim','specs':specs,'seed':int(seed),'horizon_s':float(horizon_s),
+    gain=None
+    if gain_job:
+        job=jobs[gain_job]
+        if job['status']!='completed' or json.loads(job['config']).get('kind')!='branch_gain_train':raise ValueError('Нужен готовый оценщик пользы')
+        path=DATA/'jobs'/gain_job/'model.json';artifact=json.loads(path.read_text())
+        if artifact['protocol']['correction_s']!=help_s:raise ValueError('Бюджет помощи не совпадает с оценщиком')
+        gain={'path':str(path),'sha256':digest(path),'source_job':gain_job}
+    return {'gain':gain,'kind':'fleet_execution','domain':'sim','specs':specs,'seed':int(seed),'horizon_s':float(horizon_s),
         'method':method,'delay_s':float(delay_s),'help_s':float(help_s),'device':'cpu','training_started':False,
         'transfer_protocol':'individual_to_shared_nominal; not physical deployment',
         'software_probe':bool(software_probe),'replay_steps':8}

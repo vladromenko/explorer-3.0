@@ -67,3 +67,28 @@ def test_correction_capture_uses_pre_step_full_state_and_fixture_cannot_enter_tr
         np.testing.assert_array_equal(runner.world.data.qpos,expected)
         assert runner.events==event
     finally:runner.close()
+
+
+def test_gain_shadow_never_changes_assignment_and_is_part_of_snapshot(tmp_path):
+    import json
+    from explorer3.research import FEATURES,matrix
+    from explorer3.vision_assets import digest
+    _,names=matrix([{'features':{n:None for n in FEATURES}}])
+    head={'mean':[0.]*len(names),'scale':[1.]*len(names),'coef':[0.]*len(names),'intercept':0.}
+    # Explicit numerical inference fixture; no fitting or learned-quality claim.
+    artifact={'schema':'branch_gain_model_v1','domain':'sim','supervision':'scripted_expert',
+        'protocol':{'correction_s':1.,'horizon_s':1.},'include_physical':True,'feature_names':names,'heads':[head,head]}
+    path=tmp_path/'gain.json';path.write_text(json.dumps(artifact));spec={'path':str(path),'sha256':digest(path)}
+    runner=FleetExecution({'tank':{'kind':'fixture'}},tmp_path/'run',gain=spec)
+    try:
+        runner.advance()
+        assert 'unavailable' in runner.gain_scores['tank']
+        # Exercise inference route without starting a heavyweight policy process.
+        runner.policies['tank'].metadata={**runner.policies['tank'].metadata,'kind':'frozen_checkpoint'}
+        runner.advance();saved=runner.snapshot();runner.advance();expected=copy.deepcopy(runner.gain_scores)
+        assert expected['tank']['controls_assignment'] is False and expected['tank']['human_effect'] is False
+        runner.restore(saved);runner.advance();assert runner.gain_scores==expected
+    finally:runner.close()
+    path.write_text('{}')
+    with pytest.raises(ValueError,match='changed after preparation'):
+        FleetExecution({'tank':{'kind':'fixture'}},tmp_path/'changed',gain=spec)

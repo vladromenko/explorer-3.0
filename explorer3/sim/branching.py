@@ -66,8 +66,12 @@ def experiment(env,policy,output,config):
     output=Path(output);output.mkdir(parents=True,exist_ok=True)
     # No silent overwriting of scientific evidence.
     if (output/'snapshot.json').exists():raise ValueError('Branch directory already contains a snapshot')
+    from explorer3.gain_preparation import sample,observation
+    decision_history=[]
     for _ in range(math.ceil(config['warmup_s']/env.dt-1e-10)):
-        _,_,terminated,truncated,_=env.step(policy.action())
+        action=policy.action()
+        decision_history.append(sample(env.profile,env.observation()['state'],action,env.elapsed))
+        _,_,terminated,truncated,_=env.step(action)
         if terminated or truncated:raise ValueError('Task ended before the requested branch point')
     point={'environment':env.snapshot(),'policy':policy.snapshot(),'policy_identity':policy.metadata}
     lineage=uuid.uuid4().hex
@@ -79,6 +83,10 @@ def experiment(env,policy,output,config):
     horizon_steps=math.ceil(config['horizon_s']/env.dt-1e-10)
     intervention_end=wait_steps+help_steps
     if intervention_end>horizon_steps:raise ValueError('Rounded intervention exceeds horizon')
+    decision_context={'features':observation(decision_history,env.elapsed,
+        env.action_space.high-env.action_space.low,wait_steps*env.dt),
+        'source':'controller_visible_history','domain':'sim','truth_features':False,
+        'decision_sim_s':env.elapsed,'measured_hardware':False}
     results=[];replay={};segments=[]
     started=time.monotonic()
     for repeat in range(config['repeats']):
@@ -158,7 +166,8 @@ def experiment(env,policy,output,config):
     report={'status':'completed','protocol':'R5_protocol_adaptation_v1','domain':'sim','lineage':lineage,
         'split_group':lineage,'snapshot_sha256':digest,'model':env.manifest,'policy':policy.metadata,
         'implementation_sha256':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (Path(__file__),Path(state_codec.__file__))},
-        'budget':config,'actual_windows':{'delay_s':wait_steps*env.dt,'correction_s':help_steps*env.dt,'horizon_s':horizon_steps*env.dt},
+        'budget':config,'decision_context':decision_context,
+        'actual_windows':{'delay_s':wait_steps*env.dt,'correction_s':help_steps*env.dt,'horizon_s':horizon_steps*env.dt},
         'outcomes':results,'correction_candidates':segments,
         'comparisons':{'correction_minus_continue_success':difference('correction','continue'),
             'correction_minus_hold_success':difference('correction','hold_only'),

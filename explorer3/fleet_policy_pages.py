@@ -32,7 +32,8 @@ def install(css,jobs):
                 selected={n:selectors[n].value for n in selectors if enabled[n].value}
                 support={n:supports[n].value for n in selected if supports[n].value!='none'}
                 ident=await asyncio.to_thread(jobs.fleet_execute,selected,horizon_s=float(horizon.value),seed=int(seed.value),
-                    method=method.value,delay_s=float(delay.value),help_s=float(budget.value),software_probe=probe.value,support=support)
+                    method=method.value,delay_s=float(delay.value),help_s=float(budget.value),software_probe=probe.value,support=support,
+                    gain_job=gain.value if gain.value!='none' else None)
                 status.set_text('Проверка в очереди · '+ident[:8]);links.clear()
                 with links:ui.link('Журнал задания и отмена','/jobs/'+ident)
                 saved.set_options(history(),value=None)
@@ -45,7 +46,7 @@ def install(css,jobs):
                 ui.label('Отдельные политики · одна физическая сцена · один слот помощи').classes('muted')
             ui.button('STOP',icon='stop_circle',color='negative',on_click=cancel).props('size=lg')
         with ui.row():
-            ui.link('← Общий стенд','/sim/fleet');ui.link('Подготовка обучения','/sim/training');ui.link('Сравнение вариантов помощи','/sim/branches')
+            ui.link('← Общий стенд','/sim/fleet');ui.link('Подготовка обучения','/sim/training');ui.link('Сравнение вариантов помощи','/sim/branches');ui.link('Оценщик пользы','/sim/gain')
         with ui.element('div').classes('sim-panel'):
             ui.label('Что исполняет каждый робот').classes('sim-title')
             ui.label('Физические роботы не подключаются. Каждая политика получает только свою камеру и состояние. Во время расчёта действий симуляционные часы ждут; скорость реального управления этим не подтверждается.').classes('muted')
@@ -58,6 +59,11 @@ def install(css,jobs):
                     selectors[name]=ui.select(choices,value='fixture',label='Политика',on_change=lambda name=name:support_choices(name)).classes('w-full')
                     supports[name]=ui.select({'none':'Тестовый оценщик · программный пример'},value='none',label='Оценщик запроса помощи').classes('w-full')
             probe=ui.checkbox('Разрешить программную проверку старых весов на новой физике · без оценки навыка')
+            gain_choices={'none':'Оценщик пользы не подключён'}
+            for job in catalog.rows('jobs'):
+                if job['status']=='completed' and json.loads(job['config']).get('kind')=='branch_gain_train':
+                    gain_choices[job['id']]='Прогноз в симуляции · '+job['id'][:8]
+            gain=ui.select(gain_choices,value='none',label='Польза помощи · только наблюдение').classes('w-full')
             ui.label('Для рабочих весов калибровка привязана к конкретной модели и независимым данным. Если её нет, оценщик не подменяется выдуманными порогами. В программном примере пороги тестовые и явно отмечены.').classes('muted')
         with ui.element('div').classes('sim-layout'):
             with ui.column().classes('sim-panel'):
@@ -81,13 +87,14 @@ def install(css,jobs):
         table=ui.table(columns=[{'name':'robot','label':'Робот','field':'robot'},{'name':'source','label':'Политика','field':'source'},
             {'name':'monitor','label':'Оценщик','field':'monitor'},{'name':'request','label':'Запрос помощи','field':'request'},
             {'name':'priority','label':'Соответствие / риск','field':'priority'},
+            {'name':'gain','label':'Прогноз пользы · sim','field':'gain'},
             {'name':'actions','label':'Команд политики','field':'actions'}],rows=[],row_key='robot').classes('w-full')
         detail=ui.label('').classes('sim-status')
         with ui.row():
             ui.button('Скачать отчёт',icon='download',on_click=lambda:ui.download.file(DATA/'jobs'/ident/'result.json') if ident and (DATA/'jobs'/ident/'result.json').exists() else None).props('outline')
             ui.button('Скачать команды',icon='download',on_click=lambda:ui.download.file(DATA/'jobs'/ident/'commands.json') if ident and (DATA/'jobs'/ident/'commands.json').exists() else None).props('outline')
         corrections=ui.column().classes('sim-panel');corrections.set_visibility(False)
-        ui.label('Оценщик показывает соответствие показам, а не вероятность пользы человека. Причинная оценка G пока недоступна; нулём или константой она не заменяется.').classes('muted')
+        ui.label('Оценщик соответствия показам и прогноз пользы — разные величины. Прогноз малого оценщика появится только при подключении обученной модели; он не выбирает робота и не подтверждает пользу человека.').classes('muted')
         async def poll():
             nonlocal busy,last_image,displayed
             if ident is None or busy:return
@@ -105,6 +112,7 @@ def install(css,jobs):
                     for name,policy in state['policies'].items():
                         monitor=state.get('monitors',{}).get(name)
                         rows.append({'robot':NAMES[name],'source':'Программный пример' if policy['kind']=='numerical_fixture' else policy['policy_type'].upper(),
+                            'gain':round(state['gain_scores'][name]['gain'],3) if 'gain' in state.get('gain_scores',{}).get(name,{}) else 'нет оценки',
                             'monitor':('Просит помощь' if monitor['mode']=='operator' else 'Политика принята') if monitor else 'Не подключён',
                             'priority':f"{monitor['support']:.3f} / {monitor['risk'] if monitor['risk'] is not None else 'вне области'}" if monitor else 'нет оценки',
                             'request':{'pending':'Ожидает','assisting':'Помощь','returned':'Возврат к политике','expired':'Окно помощи истекло','budget_exhausted':'Бюджет исчерпан'}.get(state['requests'].get(name,{}).get('status'),'нет'),'actions':state['counts'][name]['policy']})

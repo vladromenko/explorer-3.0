@@ -38,7 +38,7 @@ def install(css,jobs):
                 ui.label('Что изменит помощь в одной и той же ситуации').classes('muted')
             ui.label('MuJoCo · без обучения').classes('sim-badge')
         with ui.row():
-            ui.link('← Симуляция','/sim');ui.link('Общий стенд','/sim/fleet');ui.link('Зрение','/sim/vision')
+            ui.link('← Симуляция','/sim');ui.link('Общий стенд','/sim/fleet');ui.link('Зрение','/sim/vision');ui.link('Оценщик пользы помощи','/sim/gain')
         with ui.element('div').classes('sim-layout'):
             with ui.column().classes('sim-panel'):
                 ui.label('Одно состояние · три варианта').classes('sim-title')

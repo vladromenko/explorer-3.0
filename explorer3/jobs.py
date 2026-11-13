@@ -55,6 +55,11 @@ class Jobs:
         config=prepare(selected,**options)
         return self._insert('fleet_lab_sim','frozen_fleet',config)
 
+    def train_prepared_gain(self,ident):
+        from .gain_preparation import load
+        load(ident)
+        return self._insert('intervention','branch_gain',{'kind':'branch_gain_train','plan_id':ident,'device':'cpu'})
+
     def start_prepared_training(self,draft_id):
         from .training_drafts import load
         draft=load(draft_id)

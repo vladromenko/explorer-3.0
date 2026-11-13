@@ -19,7 +19,7 @@ def run(config,output):
     output=Path(output);output.mkdir(parents=True,exist_ok=True)
     atomic_json(output/'progress.json',{'phase':'loading','training_started':False})
     runner=FleetExecution(config['specs'],output,seed=config['seed'],method=config['method'],
-        delay_s=config['delay_s'],help_s=config['help_s'])
+        delay_s=config['delay_s'],help_s=config['help_s'],gain=config.get('gain'),horizon_s=config['horizon_s'])
     started=time.monotonic();last_frame=0.;saved=False;replay={}
     captures=FleetCorrections(runner,config['seed']);runner.before_action=captures.observe;segments=None
     try:

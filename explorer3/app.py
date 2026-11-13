@@ -116,6 +116,8 @@ from . import training_pages
 training_pages.install(CSS,jobs)
 from . import fleet_policy_pages
 fleet_policy_pages.install(CSS,jobs)
+from . import gain_pages
+gain_pages.install(CSS,jobs)
 
 @ui.page('/')
 def index():
