@@ -1,0 +1,14 @@
+[Unit]
+Description=Explorer ROSMASTER read-only sensors %i
+After=network.target
+[Service]
+WorkingDirectory=/home/vlad/explorer3
+ExecStart=/bin/bash /home/vlad/explorer3/start-sensors.sh %i
+ExecStop=/home/vlad/explorer3/.venv/bin/python /home/vlad/explorer3/stop_sensors.py %i
+Environment=PYTHONNOUSERSITE=1
+Restart=always
+RestartSec=5
+TimeoutStopSec=8
+NoNewPrivileges=yes
+[Install]
+WantedBy=default.target

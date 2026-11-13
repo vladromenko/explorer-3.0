@@ -51,17 +51,24 @@ def write_status(path,**values):
 
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--wait-hours',type=float,default=0);args=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--wait-hours',type=float,default=0)
+    p.add_argument('--address',help='Known Tank IP when mDNS is unavailable; keeps SSH alias credentials')
+    args=p.parse_args()
+    ssh=SSH
+    if args.address:
+        import ipaddress
+        address=str(ipaddress.ip_address(args.address))
+        ssh=SSH[:-1]+['-o','Hostname='+address,SSH[-1]]
     if not 0<=args.wait_hours<=72:p.error('wait-hours must be 0 (until connected) or up to 72')
     out=DATA/'validation/corrective-c';out.mkdir(parents=True,exist_ok=True)
     status=out/'startup-watcher.json';end=time.monotonic()+args.wait_hours*3600
     write_status(status,phase='waiting',read_only=True,motion_commands_sent=0)
     while not args.wait_hours or time.monotonic()<end:
         try:
-            r=subprocess.run(SSH+['cat /proc/sys/kernel/random/boot_id'],capture_output=True,text=True,timeout=6)
+            r=subprocess.run(ssh+['cat /proc/sys/kernel/random/boot_id'],capture_output=True,text=True,timeout=6)
             if r.returncode==0 and len(r.stdout.strip())==36:break
         except subprocess.TimeoutExpired:pass
-        time.sleep(3)
+        time.sleep(10)
     else:write_status(status,phase='expired',read_only=True);return
     boot=r.stdout.strip();folder=out/('startup-'+boot);folder.mkdir(exist_ok=True)
     source=(ROOT/'agents/tank/startup_probe.py').read_text()
@@ -75,7 +82,7 @@ def main():
         remote='/home/pi/.local/state/explorer3/diagnostics/startup-'+str(uuid.uuid4())+'.jsonl'
         job_file.write_text(json.dumps({'path':remote})+'\n')
         try:
-            r=subprocess.run(SSH+[detached_command(source,remote)],capture_output=True,text=True,timeout=8)
+            r=subprocess.run(ssh+[detached_command(source,remote)],capture_output=True,text=True,timeout=8)
             (folder/'launch.stderr.txt').write_text(r.stderr)
         except subprocess.TimeoutExpired:
             pass  # Retrieval below can safely retry the exclusive launch.
@@ -84,7 +91,7 @@ def main():
     deadline=time.monotonic()+180
     while time.monotonic()<deadline:
         try:
-            r=subprocess.run(SSH+['cat -- '+shlex.quote(remote)],capture_output=True,text=True,timeout=6)
+            r=subprocess.run(ssh+['cat -- '+shlex.quote(remote)],capture_output=True,text=True,timeout=6)
             if r.returncode==0:
                 (folder/'detached.jsonl').write_text(r.stdout)
                 power_seen,complete=scan_events(r.stdout)
@@ -92,7 +99,7 @@ def main():
             elif r.returncode==1:
                 # SSH reached the host but the file does not exist yet. Exclusive
                 # creation makes a repeated launch harmless after uncertain delivery.
-                subprocess.run(SSH+[detached_command(source,remote)],capture_output=True,text=True,timeout=8)
+                subprocess.run(ssh+[detached_command(source,remote)],capture_output=True,text=True,timeout=8)
         except subprocess.TimeoutExpired:pass
         time.sleep(3)
     write_status(status,phase=('captured' if power_seen else 'captured_without_voltage') if complete else 'collection_incomplete',boot_id=boot,folder=str(folder),

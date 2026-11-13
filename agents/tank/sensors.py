@@ -14,7 +14,11 @@ import numpy as np
 
 
 class SensorStore:
-    def __init__(self):
+    def __init__(self,robot='tank'):
+        if robot not in ('tank','rosmaster'):raise ValueError('Unsupported robot')
+        self.robot=robot
+        self.ros_clock_reader=None
+        self.use_sim_time=False
         self.lock=threading.Lock();self.entries={};self.sequence=0
         self.boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip()
 
@@ -26,7 +30,12 @@ class SensorStore:
     def capture(self):
         with self.lock:entries=dict(self.entries)
         now=time.monotonic_ns()
-        meta={'version':1,'robot':'tank','boot_id':self.boot_id,'monotonic_ns':now,
+        ros_now=self.ros_clock_reader() if self.ros_clock_reader else None
+        clock_after=time.monotonic_ns()
+        meta={'version':1,'robot':self.robot,'boot_id':self.boot_id,'monotonic_ns':now,
+              'clock_pair':{'monotonic_ns':(now+clock_after)//2,'ros_time_ns':ros_now,
+                            'uncertainty_ns':(clock_after-now)//2,'system_time_ns':time.time_ns(),
+                            'use_sim_time':self.use_sim_time},
               'read_only':True,'motion_commands_sent':0,'streams':{}}
         arrays={}
         for key,(value,metadata) in entries.items():
@@ -50,23 +59,26 @@ def decode_image(msg):
 def observe(store,done):
     import rclpy
     from rclpy.qos import QoSProfile,ReliabilityPolicy
-    from sensor_msgs.msg import Image,CameraInfo,Imu,LaserScan,PointCloud2
-    from std_msgs.msg import UInt16
+    from sensor_msgs.msg import Image,CameraInfo,Imu,LaserScan,PointCloud2,MagneticField,JointState
+    from nav_msgs.msg import Odometry
+    from std_msgs.msg import UInt16,Float32
     from tf2_msgs.msg import TFMessage
     from rclpy.qos import DurabilityPolicy
     rclpy.init();node=rclpy.create_node('explorer3_sensor_observer')
+    store.ros_clock_reader=lambda:node.get_clock().now().nanoseconds
+    store.use_sim_time=node.get_parameter('use_sim_time').value
     qos=QoSProfile(depth=1,reliability=ReliabilityPolicy.BEST_EFFORT)
     def callback(name,topic,msg):
         meta={'topic':topic}
         if hasattr(msg,'header'):
             meta.update(frame_id=msg.header.frame_id,source_timestamp_ns=msg.header.stamp.sec*10**9+msg.header.stamp.nanosec,
-                        source_clock='tank_ros_time')
+                        source_clock=store.robot+'_ros_time')
         array=None
         if isinstance(msg,Image):
             array=decode_image(msg);meta.update(encoding=msg.encoding,width=msg.width,height=msg.height)
             if name=='depth':meta['unit']='mm' if msg.encoding in ('mono16','16UC1') else 'm'
         elif isinstance(msg,CameraInfo):
-            meta.update(width=msg.width,height=msg.height,k=list(msg.k),p=list(msg.p),d=list(msg.d),distortion_model=msg.distortion_model)
+            meta.update(width=msg.width,height=msg.height,k=list(msg.k),p=list(msg.p),r=list(msg.r),d=list(msg.d),distortion_model=msg.distortion_model)
         elif isinstance(msg,LaserScan):
             array=np.asarray(msg.ranges,dtype=np.float32)
             meta.update(angle_min=msg.angle_min,angle_increment=msg.angle_increment,range_min=msg.range_min,
@@ -75,7 +87,25 @@ def observe(store,done):
             array=np.array([msg.angular_velocity.x,msg.angular_velocity.y,msg.angular_velocity.z,
                             msg.linear_acceleration.x,msg.linear_acceleration.y,msg.linear_acceleration.z],dtype=np.float32)
             meta['units']=['rad/s']*3+['m/s2']*3
+            meta.update(orientation_xyzw=[msg.orientation.x,msg.orientation.y,msg.orientation.z,msg.orientation.w],
+                        orientation_covariance=list(msg.orientation_covariance),
+                        angular_velocity_covariance=list(msg.angular_velocity_covariance),
+                        linear_acceleration_covariance=list(msg.linear_acceleration_covariance))
         elif isinstance(msg,UInt16):meta['voltage']=msg.data/1000.
+        elif isinstance(msg,Float32):meta['voltage']=float(msg.data)
+        elif isinstance(msg,MagneticField):
+            array=np.array([msg.magnetic_field.x,msg.magnetic_field.y,msg.magnetic_field.z],np.float32)
+            meta.update(unit='tesla',covariance=list(msg.magnetic_field_covariance))
+        elif isinstance(msg,JointState):
+            array=np.array(msg.position,np.float32);meta.update(names=list(msg.name),unit='servo_degrees_from_CubeBot_bridge')
+        elif isinstance(msg,Odometry):
+            array=np.array([msg.pose.pose.position.x,msg.pose.pose.position.y,
+                msg.pose.pose.orientation.x,msg.pose.pose.orientation.y,msg.pose.pose.orientation.z,msg.pose.pose.orientation.w,
+                msg.twist.twist.linear.x,msg.twist.twist.linear.y,msg.twist.twist.angular.z],np.float32)
+            meta.update(child_frame=msg.child_frame_id,source='CubeBot measured encoders',
+                        pose_z=msg.pose.pose.position.z,pose_covariance=list(msg.pose.covariance),
+                        twist_covariance=list(msg.twist.covariance),
+                        channels=['x_m','y_m','qx','qy','qz','qw','vx_m_s','vy_m_s','wz_rad_s'])
         elif isinstance(msg,PointCloud2):
             # Display-only decimation of the manufacturer's metric cloud. Full
             # depth + CameraInfo are retained separately for offline reconstruction.
@@ -99,6 +129,21 @@ def observe(store,done):
         'imu':(Imu,['/ros_robot_controller/imu_raw','/explorer3/tank/ros_robot_controller/imu_raw']),
         'battery':(UInt16,['/ros_robot_controller/battery','/explorer3/tank/ros_robot_controller/battery']),
         'cloud':(PointCloud2,['/ascamera/camera_publisher/depth0/points','/explorer3/tank/camera/points2'])}
+    if store.robot=='rosmaster':
+        subscriptions={
+            'rgb':(Image,['/camera/color/image_raw']),
+            'depth':(Image,['/camera/depth/image_raw']),
+            'ir':(Image,['/camera/ir/image_raw']),
+            'rgb_info':(CameraInfo,['/camera/color/camera_info']),
+            'depth_info':(CameraInfo,['/camera/depth/camera_info']),
+            'scan':(LaserScan,['/scan0']),
+            'scan_rear':(LaserScan,['/scan1']),
+            'imu':(Imu,['/imu/data_raw']),
+            'mag':(MagneticField,['/imu/mag']),
+            'arm':(JointState,['/arm_servo_state']),
+            'odometry':(Odometry,['/odom_raw']),
+            'battery':(Float32,['/battery']),
+            'cloud':(PointCloud2,['/camera/depth/points','/camera/depth_registered/points'])}
     def safe_callback(name,topic,msg):
         try:callback(name,topic,msg)
         except (ValueError,TypeError) as exc:store.put(name+'_error',None,{'error':str(exc),'topic':topic})
@@ -162,11 +207,14 @@ if __name__=='__main__':
     import uvicorn
     parser=argparse.ArgumentParser()
     parser.add_argument('--localhost',choices=('0','1'),default='0')
+    parser.add_argument('--robot',choices=('tank','rosmaster'),default='tank')
+    parser.add_argument('--port',type=int)
     args=parser.parse_args()
     os.environ['ROS_LOCALHOST_ONLY']=args.localhost
     (Path(__file__).parent/f'sensors-{args.localhost}.pid').write_text(str(os.getpid()))
-    token=json.loads((Path(__file__).parent/'config.json').read_text())['token']
-    store=SensorStore();done=threading.Event()
+    root=Path(__file__).parent
+    token=json.loads((root/('config.json' if args.robot=='tank' else 'config/agent.json')).read_text())['token']
+    store=SensorStore(args.robot);done=threading.Event()
     thread=threading.Thread(target=observe,args=(store,done),daemon=True);thread.start()
-    try:uvicorn.run(make_app(store,token),host='0.0.0.0',port=8043+int(args.localhost),access_log=False)
+    try:uvicorn.run(make_app(store,token),host='0.0.0.0',port=args.port or 8043+int(args.localhost),access_log=False)
     finally:done.set();thread.join(timeout=2)

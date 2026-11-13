@@ -27,20 +27,39 @@ def previews(packet):
         gray=np.clip(np.nan_to_num(metric,nan=0,posinf=0)*255/4,0,255).astype(np.uint8)
         colored=cv2.applyColorMap(gray,cv2.COLORMAP_TURBO);colored[~valid]=0
         result['depth']=jpeg(colored)
-    if 'scan' in arrays:
+    for scan_key in ('scan','scan_rear'):
+        if scan_key not in arrays:continue
         canvas=np.full((500,500,3),(31,22,16),np.uint8)
         for radius in (50,100,150,200):
             cv2.circle(canvas,(250,250),radius,(65,61,54),1)
             cv2.putText(canvas,f'{radius/50:g}m',(254,249-radius),cv2.FONT_HERSHEY_SIMPLEX,.35,(160,160,160),1)
         cv2.arrowedLine(canvas,(250,270),(250,220),(210,210,210),2)
-        info=streams['scan'];ranges=arrays['scan']
+        info=streams[scan_key];ranges=arrays[scan_key]
         angles=info['angle_min']+np.arange(len(ranges))*info['angle_increment']
         valid=np.isfinite(ranges)&(ranges>=info['range_min'])&(ranges<=min(4.8,info['range_max']))
         for radius,angle in zip(ranges[valid],angles[valid]):
             point=(int(250-radius*math.sin(angle)*50),int(250-radius*math.cos(angle)*50))
             cv2.circle(canvas,point,2,(190,210,78),-1)
-        result['scan']=jpeg(canvas)
+        result[scan_key]=jpeg(canvas)
     return result
+
+
+def display_cloud(packet):
+    arrays=packet['arrays'];streams=packet['meta']['streams']
+    if 'cloud' in arrays:return arrays['cloud']
+    if 'depth' not in arrays or 'depth_info' not in streams:return None
+    depth=arrays['depth'];info=streams['depth_info']
+    if depth.shape!=(info['height'],info['width']):return None
+    k=np.array(info['k']).reshape(3,3)
+    if k[0,0]<=0 or k[1,1]<=0:return None
+    if info.get('distortion_model') not in ('plumb_bob','rational_polynomial',''):return None
+    yy,xx=np.mgrid[0:depth.shape[0]:8,0:depth.shape[1]:8]
+    z=depth[::8,::8].astype(np.float32).ravel()*(.001 if streams['depth']['unit']=='mm' else 1.)
+    pixels=np.stack((xx.ravel(),yy.ravel()),axis=-1).astype(np.float32).reshape(-1,1,2)
+    distortion=np.array(info.get('d',[]),float)
+    rays=cv2.undistortPoints(pixels,k,distortion if distortion.size else None).reshape(-1,2)
+    points=np.column_stack((rays[:,0]*z,rays[:,1]*z,z))
+    return points[np.isfinite(points).all(axis=1)&(z>.15)&(z<8.)]
 
 
 def install():
@@ -48,17 +67,22 @@ def install():
     from fastapi import HTTPException
     from fastapi.responses import FileResponse
     from .paths import DATA
-    feed=SensorFeed(isolated=None);app.on_shutdown(feed.close)
+    feeds={robot:SensorFeed(isolated=None,robot=robot) for robot in ('tank','rosmaster')}
+    for feed in feeds.values():app.on_shutdown(feed.close)
 
-    @app.get('/api/tank/sensors/audio/{ident}')
-    def audio_file(ident:str):
+    @app.get('/api/{robot}/sensors/audio/{ident}')
+    def audio_file(robot:str,ident:str):
+        if robot not in feeds:raise HTTPException(404)
         if len(ident)!=32 or any(c not in '0123456789abcdef' for c in ident):raise HTTPException(404)
-        path=DATA/'sensor-audio'/('tank-'+ident+'.wav')
+        path=DATA/'sensor-audio'/(robot+'-'+ident+'.wav')
         if not path.is_file():raise HTTPException(404)
         return FileResponse(path,media_type='audio/wav',headers={'Cache-Control':'no-store'})
 
-    @ui.page('/tank/sensors')
-    async def page(recording: str | None=None):
+    @ui.page('/{robot}/sensors')
+    async def page(robot:str,recording: str | None=None):
+        if robot not in feeds:raise HTTPException(404)
+        feed=feeds[robot]
+        robot_name='Tank' if robot=='tank' else 'ROSMASTER'
         ui.dark_mode().enable()
         ui.add_css('''body{background:#10161f;color:#e6edf4;font-family:system-ui,sans-serif}
           .nicegui-content{max-width:1440px;width:100%;margin:auto;padding:26px}
@@ -73,22 +97,23 @@ def install():
         ui.link('← Explorer 3.0','/').classes('text-teal-300')
         replay_root=None;replay_rows=[];replay_packet=None;replay_index=-1
         if recording:
+            if not recording.startswith(robot+'-'):ui.label('Запись принадлежит другому роботу');return
             try:replay_root,replay_rows=open_archive(recording)
             except (ValueError,OSError):
                 ui.label('Запись датчиков не найдена');return
             if not replay_rows:ui.label('В записи нет пакетов');return
-        ui.label('TANK · ОКРУЖЕНИЕ').classes('text-xs tracking-widest text-teal-300')
+        ui.label(robot_name.upper()+' · ОКРУЖЕНИЕ').classes('text-xs tracking-widest text-teal-300')
         ui.label('Что видит робот').classes('text-3xl font-bold')
-        ui.label('Камеры, глубина и лазерный обзор. Подключение только для чтения: гусеницы не запускаются.').classes('muted')
+        ui.label('Камеры, глубина и лазерный обзор. Подключение только для чтения: движение не запускается.').classes('muted')
         state=ui.label('Нажмите «Подключить датчики»').classes('text-teal-200')
         archive=None;last_packet=None;started=0.;busy=False
-        def connect():feed.start();state.set_text('Подключение к датчикам Tank…')
+        def connect():feed.start();state.set_text('Подключение к датчикам '+robot_name+'…')
         def record():
             nonlocal archive,started
             if archive:return
             if not feed.latest or stream_age(feed.latest,'rgb')>2:
                 ui.notify('Сначала дождитесь свежих данных',type='warning');return
-            archive=SensorArchive();started=time.monotonic();save_state.set_text('Запись датчиков…')
+            archive=SensorArchive(robot=robot);started=time.monotonic();save_state.set_text('Запись датчиков…')
         def stop_record():
             nonlocal archive
             if archive:
@@ -99,7 +124,7 @@ def install():
                 ui.button('Записать датчики · до 60 с',on_click=record,color='teal').props('outline')
                 ui.button('Закончить запись',on_click=stop_record).props('flat')
         else:
-            ui.link('← К живым датчикам','/tank/sensors')
+            ui.link('← К живым датчикам',f'/{robot}/sensors')
             ui.label(f'Просмотр сохранённой записи · {len(replay_rows)} пакетов').classes('text-lg')
             selector=ui.slider(min=0,max=max(1,len(replay_rows)-1),step=1,value=0).classes('w-full')
         save_state=ui.label('Исходные измерения сохраняются отдельно от показов движения.').classes('muted text-sm')
@@ -107,11 +132,11 @@ def install():
             with ui.expansion('Сохранённые записи датчиков').classes('w-full sensor-card'):
                 @ui.refreshable
                 def recordings():
-                    entries=archive_entries()
+                    entries=archive_entries(robot)
                     if not entries:ui.label('Пока нет записей')
                     for entry in entries:
                         label=time.strftime('%d.%m %H:%M',time.localtime(entry['created_at']))+f" · {entry['frames']} пакетов"
-                        ui.link(label,'/tank/sensors?recording='+entry['id'])
+                        ui.link(label,f'/{robot}/sensors?recording='+entry['id'])
                 ui.button('Обновить список',on_click=recordings.refresh).props('flat')
                 recordings()
             with ui.expansion('Микрофон · отдельная проверка').classes('w-full sensor-card'):
@@ -123,15 +148,15 @@ def install():
                     import uuid
                     audio_button.disable();audio_status.set_text('Запись 5 секунд…')
                     def fetch():
-                        client=SensorClient()
+                        client=SensorClient(robot=robot)
                         try:
                             result=client.http.get('/microphone.wav',timeout=9);result.raise_for_status();return result.content
                         finally:client.close()
                     try:
                         payload=await run.io_bound(fetch)
                         ident=uuid.uuid4().hex;directory=DATA/'sensor-audio';directory.mkdir(exist_ok=True)
-                        (directory/('tank-'+ident+'.wav')).write_bytes(payload)
-                        playback.set_source('/api/tank/sensors/audio/'+ident)
+                        (directory/(robot+'-'+ident+'.wav')).write_bytes(payload)
+                        playback.set_source(f'/api/{robot}/sensors/audio/'+ident)
                         playback.set_visibility(True)
                         audio_status.set_text('Запись готова. Прослушивание — на этом устройстве.')
                     except Exception as exc:audio_status.set_text('Не удалось записать микрофон: '+str(exc))
@@ -140,17 +165,18 @@ def install():
         with ui.element('div').classes('sensor-grid'):
             images={}
             for key,title,description in (
-                ('rgb','Обычная камера','RGB · 640 × 400'),
+                ('rgb','Обычная камера','RGB · изображение робота'),
                 ('depth','Расстояния до поверхностей','Глубина в метрах · 0,15–4 м · чёрное = нет измерения'),
                 ('scan','Лидар · вид сверху','Кольца через 1 м · верх = +X датчика · обзор до 4,8 м'),
-                ('ir','Инфракрасная камера','Отдельный исходный поток Aurora930')):
+                *(([('scan_rear','Второй лидар','Отдельная система координат заднего лидара')] if robot=='rosmaster' else [])),
+                ('ir','Инфракрасная камера','Отдельный поток, если включён в драйвере')):
                 with ui.card().classes('sensor-card w-full'):
                     ui.label(title).classes('text-lg font-semibold')
                     ui.label(description).classes('muted text-xs')
                     images[key]=ui.image().props('no-spinner no-transition').classes('w-full').style('aspect-ratio:1.6;background:#10161f')
         with ui.card().classes('sensor-card w-full'):
             ui.label('Поверхности в 3D').classes('text-lg font-semibold')
-            ui.label('Облако производителя, в системе камеры: X вправо, Y вниз, Z вперёд. Вращайте мышью; колесо — масштаб.').classes('muted text-sm')
+            cloud_label=ui.label('В системе камеры: X вправо, Y вниз, Z вперёд. Вращайте мышью; колесо — масштаб.').classes('muted text-sm')
             with ui.scene(width=600,height=420,grid=False,background_color='#10161f').classes('w-full') as scene:
                 cloud=scene.point_cloud([[0,0,0]],[[.35,.86,.78]],point_size=.018)
                 scene.axes_helper(.3)
@@ -160,7 +186,7 @@ def install():
         table=ui.table(columns=columns,rows=[],row_key='name').classes('w-full sensor-card')
         ui.label('Это отдельные измерения робота, не общая карта помещения. Объединение роботов требует проверки положения датчиков и общей системы координат.').classes('muted text-sm')
         with ui.expansion('Как данные используются в обучении').classes('w-full sensor-card'):
-            ui.label('Сохраняются исходные глубина, RGB, ИК, скан, IMU, параметры камер и метки времени. Дополнительно рассчитываются 178 признаков окружения: сектора лидара, сетка глубины, IMU, маски пропусков и возраст измерений.').classes('muted')
+            ui.label('Сохраняются глубина, RGB, доступный ИК, сканы, IMU, параметры камер и метки времени. Признаки окружения включают расстояния, маски пропусков и возраст измерений; у ROSMASTER — оба лидара, магнитометр и измеренная одометрия.').classes('muted')
             ui.label('Запись этого экрана не содержит действий и не является демонстрацией задачи. Обучение здесь не запускается. Потоки асинхронны; их метки времени сохранены для последующего совмещения.').classes('muted')
         async def update():
             nonlocal last_packet,busy,replay_packet,replay_index
@@ -184,13 +210,14 @@ def install():
                 for key,info in packet['meta']['streams'].items():
                     if key.endswith('_info') or key=='tf_static':continue
                     value=stream_age(packet,key,display_time)
-                    detail=f"{info['voltage']:.3f} В · на зарядке не означает полный заряд" if key=='battery' else f"{info.get('width','')} × {info.get('height','')}" if 'width' in info else f"{len(packet['arrays'].get(key,[]))} значений"
+                    detail=f"{info['voltage']:.3f} В · напряжение, не процент заряда" if key=='battery' else f"{info.get('width','')} × {info.get('height','')}" if 'width' in info else f"{len(packet['arrays'].get(key,[]))} значений"
                     rows.append({'name':key,'state':f'{value:.2f} с' if value<2 else f'Устарело · {value:.1f} с','frame':info.get('frame_id','—'),'details':detail})
                 table.rows=rows;table.update()
                 if packet is not last_packet:
                     rendered=await run.io_bound(previews,packet)
                     for key,src in rendered.items():images[key].set_source(src)
-                    points=packet['arrays'].get('cloud')
+                    points=display_cloud(packet)
+                    if 'cloud' not in packet['arrays']:cloud_label.set_text('Восстановлено из глубины и CameraInfo · система камеры · положение относительно корпуса не откалибровано')
                     if points is not None:
                         colors=np.tile([.35,.86,.78],(len(points),1))
                         cloud.set_points(points.tolist(),colors.tolist())

@@ -111,6 +111,8 @@ from . import sim_pages
 sim_pages.install(stop_all,CSS,jobs)
 from . import fleet_pages
 fleet_pages.install(stop_all,CSS)
+from . import fleet_live_pages
+fleet_live_pages.install(stop_all,CSS)
 from . import vision_pages
 vision_pages.install(CSS,jobs)
 from . import branching_pages
@@ -168,6 +170,8 @@ def index():
         ui.button('STOP · всё управление Explorer',icon='stop_circle',color='negative',on_click=stop_all).props('size=lg')
     ui.link('Симуляция MuJoCo · Homebrain', '/sim')
     ui.link('Tank · камеры, глубина и лидар', '/tank/sensors')
+    ui.link('ROSMASTER · датчики и окружение', '/rosmaster/sensors')
+    ui.link('Общий обзор роботов · связь и датчики', '/fleet/live')
     ui.label('РЕАЛЬНЫЕ РОБОТЫ').classes('kicker')
     stage_label=ui.label('Этап A · программная подготовка. Движение не разрешено. Запись и физические испытания ещё не проверены.').classes('notice')
     ready=ui.label('').classes('muted')

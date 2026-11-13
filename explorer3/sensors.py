@@ -23,6 +23,15 @@ CHANNELS=([f'lidar_min_m_{i:02}' for i in range(36)]+
           [f'depth_valid_fraction_{y}_{x}' for y in range(6) for x in range(8)]+
           ['gyro_x','gyro_y','gyro_z','accel_x','accel_y','accel_z','imu_valid']+
           ['lidar_age_s','depth_age_s','imu_age_s'])
+ROSMASTER_CHANNELS=CHANNELS+([f'rear_lidar_min_m_{i:02}' for i in range(36)]+
+    [f'rear_lidar_valid_fraction_{i:02}' for i in range(36)]+['rear_lidar_age_s']+
+    ['mag_x_t','mag_y_t','mag_z_t','mag_valid']+
+    ['odom_x_m','odom_y_m','odom_qx','odom_qy','odom_qz','odom_qw','odom_vx','odom_vy','odom_wz','odom_valid'])
+
+
+def feature_schema(robot):
+    if robot not in ('tank','rosmaster'):raise ValueError('Unknown sensor robot')
+    return (SCHEMA,CHANNELS) if robot=='tank' else ('rosmaster_environment_v1',ROSMASTER_CHANNELS)
 
 
 def decode_packet(payload, received_ns=None, elapsed_s=0.):
@@ -33,7 +42,7 @@ def decode_packet(payload, received_ns=None, elapsed_s=0.):
             raise ValueError('Expanded sensor packet too large')
     with np.load(io.BytesIO(payload),allow_pickle=False) as packet:
         meta=json.loads(packet['metadata'].tobytes())
-        if meta.get('version')!=1 or meta.get('robot')!='tank':raise ValueError('Unknown sensor schema')
+        if meta.get('version')!=1 or meta.get('robot') not in ('tank','rosmaster'):raise ValueError('Unknown sensor schema')
         arrays={k:packet[k].copy() for k in packet.files if k!='metadata'}
     if 'rgb_jpeg' in arrays:
         import cv2
@@ -86,32 +95,59 @@ def environment_features(packet,now_ns=None):
     result=np.concatenate((ranges,coverage,depth.ravel(),valid_depth.ravel(),imu,
                            [imu_valid],np.minimum(ages,10.))).astype(np.float32)
     if result.shape!=(len(CHANNELS),) or not np.isfinite(result).all():raise ValueError('Invalid sensor feature vector')
+    if packet['meta']['robot']=='rosmaster':
+        rear_packet={**packet,'meta':{**packet['meta'],'robot':'tank','streams':{**streams}},'arrays':{**arrays}}
+        rear_packet['meta']['streams'].pop('scan',None);rear_packet['arrays'].pop('scan',None)
+        if 'scan_rear' in streams:
+            rear_packet['meta']['streams']['scan']=streams['scan_rear']
+            if 'scan_rear' in arrays:rear_packet['arrays']['scan']=arrays['scan_rear']
+        rear=environment_features(rear_packet,now_ns)
+        extra=[]
+        for key,size in [('mag',3),('odometry',9)]:
+            value=arrays.get(key)
+            good=value is not None and value.shape==(size,) and np.isfinite(value).all() and stream_age(packet,key,now_ns)<1.
+            extra.extend(value.tolist() if good else [0.]*size);extra.append(float(good))
+        result=np.concatenate((result,rear[:72],rear[-3:-2],extra)).astype(np.float32)
     return result
 
 
 class SensorClient:
-    def __init__(self,isolated=False):
+    def __init__(self,isolated=False,robot='tank'):
         from .tank import config
-        from .local_work import require_hardware_mode
-        require_hardware_mode('tank')
-        cfg=config()
-        self.http=httpx.Client(base_url=f"http://{cfg['host']}:{8044 if isolated else 8043}",headers={'X-Explorer-Token':cfg['token']},
+        from .local_work import hardware_allowed,homebrain_only
+        permit=DATA/'configs/sensor-observation-enabled.json'
+        extra=json.loads(permit.read_text()).get('robots',[]) if permit.exists() else []
+        if homebrain_only() or not (hardware_allowed(robot) or robot in extra):raise PermissionError('Наблюдение этого робота ещё не разрешено')
+        if robot not in ('tank','rosmaster'):raise ValueError('Unknown robot')
+        self.robot=robot
+        cfg=config() if robot=='tank' else json.loads((DATA/'configs/rosmaster-agent.json').read_text())
+        port=(8043 if robot=='tank' else 8053)+int(bool(isolated))
+        self.http=httpx.Client(base_url=f"http://{cfg['host']}:{port}",headers={'X-Explorer-Token':cfg['token']},
                                timeout=3.,trust_env=False)
 
     def snapshot(self):
         start=time.monotonic()
         response=self.http.get('/snapshot.npz');response.raise_for_status()
         received=time.monotonic_ns()
-        return decode_packet(response.content,received,time.monotonic()-start)
+        packet=decode_packet(response.content,received,time.monotonic()-start)
+        if packet['meta']['robot']!=self.robot:raise ValueError('Sensor packet came from another robot')
+        return packet
 
     def close(self):self.http.close()
+
+    def clock_sample(self):
+        before=time.monotonic_ns();r=self.http.get('/health');after=time.monotonic_ns()
+        r.raise_for_status();meta=r.json()
+        if meta.get('robot')!=self.robot:raise ValueError('Clock belongs to another robot')
+        return {'before_ns':before,'after_ns':after,'remote':meta}
 
 
 class SensorFeed:
     """One bounded-rate reader; network and compression stay outside control loops."""
-    def __init__(self,interval=.5,isolated=False):
+    def __init__(self,interval=.5,isolated=False,robot='tank'):
         self.interval=interval;self.latest=None;self.error=None;self.thread=None
         self.isolated=isolated
+        self.robot=robot
         self.done=threading.Event()
 
     def start(self):
@@ -122,8 +158,8 @@ class SensorFeed:
     def _run(self):
         client=None;alternate=None
         try:
-            client=SensorClient(isolated=self.isolated)
-            if self.isolated is None:alternate=SensorClient(isolated=True)
+            client=SensorClient(isolated=self.isolated,robot=self.robot)
+            if self.isolated is None:alternate=SensorClient(isolated=True,robot=self.robot)
             while not self.done.is_set():
                 start=time.monotonic()
                 try:
@@ -148,14 +184,15 @@ class SensorFeed:
 
 class SensorArchive:
     """Lossless diagnostic record, explicitly excluded from action demonstrations."""
-    def __init__(self,root=None):
+    def __init__(self,root=None,robot='tank'):
         self.lock=threading.RLock()
-        self.root=Path(root) if root else DATA/'sensor-recordings'/('tank-'+uuid.uuid4().hex)
+        schema,channels=feature_schema(robot)
+        self.root=Path(root) if root else DATA/'sensor-recordings'/(robot+'-'+uuid.uuid4().hex)
         self.root.mkdir(parents=True,exist_ok=False)
         self.count=0;self.last_key=None;self.closed=False
-        self.manifest={'version':1,'robot':'tank','category':'sensor_diagnostic','training_eligible':False,
-                       'reason':'No action labels or physical task outcome','feature_schema':SCHEMA,
-                       'feature_channels':CHANNELS,'created_at':time.time(),'frames':0,
+        self.manifest={'version':1,'robot':robot,'category':'sensor_diagnostic','training_eligible':False,
+                       'reason':'No action labels or physical task outcome','feature_schema':schema,
+                       'feature_channels':channels,'created_at':time.time(),'frames':0,
                        'clock_alignment':'asynchronous latest samples; source stamps and conservative ages preserved'}
         self._write_manifest()
 
@@ -167,13 +204,14 @@ class SensorArchive:
 
     def _add(self,packet):
         if self.closed:raise RuntimeError('Archive closed')
+        if packet['meta']['robot']!=self.manifest['robot']:raise ValueError('Robot/archive mismatch')
         key=(packet['meta']['boot_id'],packet['meta']['monotonic_ns'])
         if key==self.last_key:return False
         features=environment_features(packet,packet['received_ns'])
         ident=f'{self.count:06}'
         (self.root/(ident+'.npz')).write_bytes(packet['payload'])
         record={'file':ident+'.npz','homebrain_received_ns':packet['received_ns'],
-                'request_elapsed_s':packet['request_elapsed_s'],'feature_schema':SCHEMA,
+                'request_elapsed_s':packet['request_elapsed_s'],'feature_schema':self.manifest['feature_schema'],
                 'observation.environment_state':features.tolist()}
         with (self.root/'index.jsonl').open('a') as stream:stream.write(json.dumps(record)+'\n')
         self.count+=1;self.last_key=key;self.manifest['frames']=self.count;self._write_manifest();return True
@@ -183,14 +221,15 @@ class SensorArchive:
             self.closed=True;self.manifest['closed_at']=time.time();self._write_manifest();return str(self.root)
 
 
-def archive_entries():
+def archive_entries(robot='tank'):
     root=DATA/'sensor-recordings'
     return [json.loads(p.read_text())|{'id':p.parent.name} for p in
-            sorted(root.glob('tank-*/manifest.json'),key=lambda p:p.stat().st_mtime,reverse=True)[:30]]
+            sorted(root.glob(robot+'-*/manifest.json'),key=lambda p:p.stat().st_mtime,reverse=True)[:30]]
 
 
 def open_archive(ident):
-    if not ident.startswith('tank-') or len(ident)!=37 or any(c not in '0123456789abcdef' for c in ident[5:]):
+    import re
+    if not re.fullmatch(r'(tank|rosmaster)-[a-f0-9]{32}',ident):
         raise ValueError('Invalid sensor archive ID')
     root=DATA/'sensor-recordings'/ident
     if not root.resolve().is_relative_to((DATA/'sensor-recordings').resolve()):raise ValueError('Invalid archive path')
