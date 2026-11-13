@@ -70,3 +70,16 @@ def test_pairing_includes_uncertainty_and_rejects_stale_samples():
     b['age_s']=2
     assert not match_observations({'tank':[a],'rosmaster':[b]})['matched']
     assert not match_observations({'rosmaster':[b]})['matched']
+
+
+def test_status_file_ages_continue_to_grow_after_hub_stops(tmp_path,monkeypatch):
+    import json
+    from explorer3 import fleet_live
+    monkeypatch.setattr(fleet_live,'DATA',tmp_path)
+    monkeypatch.setattr(fleet_live.time,'time',lambda:110.)
+    (tmp_path/'ros2-hub').mkdir()
+    (tmp_path/'ros2-hub/status.json').write_text(json.dumps({'updated_at':100.,'robots':{
+        'tank':{'ages_s':{'rgb':.1},'uncertainty_ms':5.}}}))
+    value=fleet_live.read_hub_status()
+    assert not value['running'] and value['robots']['tank']['ages_s']['rgb']==10.1
+    assert value['robots']['tank']['uncertainty_ms']==7.5

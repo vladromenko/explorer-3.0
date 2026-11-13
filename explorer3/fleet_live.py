@@ -75,7 +75,13 @@ def read_hub_status():
     except (OSError,ValueError):return {'running':False,'robots':{},'reason':'Общая шина ещё не запущена'}
     age=max(0,time.time()-status.get('updated_at',0))
     status['running']=age<5;status['status_age_s']=age
-    if not status['running']:status['reason']='Нет свежего состояния общей шины'
+    # Never display a frozen, old status file as fresh sensor measurements.
+    for robot in status.get('robots',{}).values():
+        robot['ages_s']={key:value+age for key,value in robot.get('ages_s',{}).items()}
+        if 'uncertainty_ms' in robot:robot['uncertainty_ms']+=age*.25
+    if not status['running']:
+        status['reason']='Нет свежего состояния общей шины'
+        status['pairing']={'matched':False,'reason':'Нет свежей пары кадров'}
     return status
 
 

@@ -41,8 +41,14 @@ def install(stop_all,css):
             pair=value.get('pairing',{})
             pairing.set_text('Кадры двух роботов: '+pair.get('reason','Ожидание данных')+
                 (f" · расхождение с учётом погрешности ≤ {pair['worst_case_skew_ms']} мс" if 'worst_case_skew_ms' in pair else ''))
-            overall.set_text('Данные обеих машин доступны · время согласовано в пределах 50 мс' if ready['observations_ready']
-                             else ' · '.join(ready['problems']))
+            if not value.get('running'):overall.set_text('Общая шина временно недоступна. Ниже — последние полученные данные.')
+            elif ready['observations_ready']:overall.set_text('Обе машины подключены · данные доступны вместе')
+            else:
+                parts=[]
+                for robot,title in [('tank','Tank'),('rosmaster','ROSMASTER')]:
+                    one=readiness(value,required=(robot,))
+                    parts.append(title+(' подключён' if one['observations_ready'] else ' — ожидаем данные'))
+                overall.set_text(' · '.join(parts))
             for robot in labels:
                 state=value.get('robots',{}).get(robot,{})
                 error=state.get('error') or (None if value.get('running') else 'Нет связи с общей шиной')
