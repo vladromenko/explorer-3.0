@@ -8,5 +8,19 @@
   "browser_loss_physical": "not_checked",
   "autonomous_skill_verified": false,
   "recording_verified": false,
-  "return_to_factory_verified": false
+  "return_to_factory_verified": false,
+  "software_stream_check": {
+    "samples": 1300,
+    "unique_rgb_frames": 613,
+    "duration_s": 69.91,
+    "requested_commands": "zero only",
+    "session_survived": true,
+    "close_errors": [],
+    "sample_rtt_ms": {
+      "p50": 35.72,
+      "p95": 52.97,
+      "max": 96.63
+    },
+    "not_a_task_demonstration": true
+  }
 }
