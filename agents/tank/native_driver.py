@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 ROOT=Path(__file__).resolve().parent
 sys.path.insert(0,str(ROOT/'native'))
 from serial_guard import CheckedSerial,WriteJournal
-from motion_permission import require_motion_permission, limited_command, bench_authorized
+from motion_permission import require_motion_permission, limited_command, bench_authorized, neutral_diagnostic_authorized
 
 
 class CaptureSerial:
@@ -122,7 +122,7 @@ def build(verification=False):
                         elif time.monotonic()>self.expires:reason='Native motor command timeout'
                         elif not verification:
                             bench=bench_authorized(ROOT)
-                            if (ROOT/'incident-block.json').exists() and not bench:reason='Bench permission expired'
+                            if (ROOT/'incident-block.json').exists() and not bench and not neutral_diagnostic_authorized(ROOT):reason='Diagnostic permission expired'
                             elif self.board.battery_time is None or time.monotonic_ns()-self.board.battery_time>2_000_000_000:reason='Battery stale'
                             elif self.board.battery<6.9:reason='Low battery'
                     if reason:
