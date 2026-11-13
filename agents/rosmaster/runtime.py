@@ -47,9 +47,18 @@ class NativeIO(BaseIO):
 
     def move_arm(self,servo,duration_ms=None,wait=True,check=True):
         measured=self.runtime.core.measured_arm(.3)
+        clamped=False
         if measured is not None:
-            servo=[m+max(-self.MAX_LEAD_DEG,min(self.MAX_LEAD_DEG,s-m)) for s,m in zip(servo,measured)]
-        return super().move_arm(servo,duration_ms=duration_ms,wait=wait,check=check)
+            limited=[m+max(-self.MAX_LEAD_DEG,min(self.MAX_LEAD_DEG,s-m)) for s,m in zip(servo,measured)]
+            clamped=max(abs(a-b) for a,b in zip(limited,servo))>.5
+            servo=limited
+        result=super().move_arm(servo,duration_ms=duration_ms,wait=wait,check=check)
+        jog=getattr(getattr(self.runtime,'controls',None),'jog',None)
+        if clamped and jog is not None:
+            # Keep the keyboard jog's own target with the arm, so a held key never builds a backlog
+            # that has to unwind before a reversal; its velocity (smoothing) is preserved.
+            velocity=jog.velocity.copy();jog.reset(servo);jog.velocity[:]=velocity
+        return result
 
     def battery(self):return self.runtime.voltage()
     def _publish_twist(self,*values):
