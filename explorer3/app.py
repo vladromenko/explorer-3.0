@@ -35,6 +35,16 @@ research.initialize()
 local_pages.install(jobs)
 from . import sensor_pages
 sensor_pages.install()
+from . import recording_pages
+from .recording_readiness import Service as RecordingReadiness
+
+def recording_local_state():
+    sample=session.latest if control.robot=='so101' else None
+    stamp=(sample or {}).get('observation_timestamp_ns')
+    return {'camera_age_s':max(0,(time.monotonic_ns()-stamp)/1e9) if stamp else 999,
+            'frames':session.frame_count if sample else 0}
+
+recording_pages.install(RecordingReadiness(recording_local_state))
 live_preview=LivePreview(session,stop_requested=lambda:Server.instance.should_exit)
 ROBOT_NAMES={'so101':'SO-101','tank':'Tank','rosmaster':'ROSMASTER'}
 DEVICE_PATHS={'leader':'/dev/so101-leader','follower':'/dev/so101-follower',
@@ -132,7 +142,10 @@ from . import rosmaster_preparation_pages
 rosmaster_preparation_pages.install(CSS,jobs)
 
 @ui.page('/')
-def index():
+def index(request:Request):
+    selected=request.query_params.get('robot')
+    if selected in {'so101','tank'} and not control.owner and not control.maintenance and not (session.thread and session.thread.is_alive()):
+        control.select(selected)
     owner=ui.context.client.id
     client=ui.context.client
     ui.on('operator_heartbeat',lambda:control.heartbeat(owner))
@@ -178,6 +191,7 @@ def index():
     ui.link('ROSMASTER · датчики и окружение', '/rosmaster/sensors')
     ui.link('Общий обзор роботов · связь и датчики', '/fleet/live')
     ui.link('Команда · совместная задача и память', '/team')
+    ui.link('Готовность парка', '/recording/readiness')
     ui.link('Собрать датасет · инструкция', '/datasets/guide')
     ui.link('Подготовить обучение на реальных записях', '/training/prepare')
     ui.label('РЕАЛЬНЫЕ РОБОТЫ').classes('kicker')

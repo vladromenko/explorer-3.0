@@ -6,7 +6,7 @@ SIM_FILES = {
     'test_sim_branching.py', 'test_fleet_execution.py', 'test_physical_layout.py',
     'test_rosmaster_sysid.py', 'test_sim_variation.py', 'test_sim_physics.py',
     'test_rosmaster_sim_contacts.py', 'test_sim_operator.py', 'test_sim_normalization.py',
-    'test_sim_fleet.py', 'test_tank_camera_model.py',
+    'test_sim_fleet.py', 'test_tank_camera_model.py', 'test_simlab_dock.py',
 }
 # These existing tests actually fit an estimator or call a model. Keep visible,
 # but do not execute under the operator's no-training/no-generation instruction.
@@ -14,6 +14,8 @@ DEFERRED = {
     'test_estimator_is_assignment_model_with_disjoint_evaluation',
     'test_real_act_uses_environment_input_without_training',
     'test_policy_and_frozen_normalization_roundtrip_without_training',
+    'test_recovers_known_drive_parameters', 'test_shadow_report', 'test_policy_artifact_roundtrip',
+    'test_shadow_sends_nothing', 'test_operator_scales_and_parallel_fleet', 'test_sensor_failure_stops_robot',
 }
 
 def test_group(path):

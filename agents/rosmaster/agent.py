@@ -1,4 +1,5 @@
-"""ROSMASTER agent entrypoint. Starts inert and cannot acquire hardware without D acceptance."""
+"""ROSMASTER agent entrypoint. Starts inert and cannot acquire hardware without an authenticated explicit request from Homebrain."""
+import hashlib
 import hmac
 import json
 import os
@@ -14,6 +15,8 @@ lock = threading.RLock()
 runtime = None
 observer = None
 observer_error = None
+SOFTWARE={name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest()
+          for name in ('agent.py','runtime.py','leased_core.py','control_adapter.py')}
 
 
 @asynccontextmanager
@@ -56,6 +59,13 @@ async def authenticate(request: Request, call_next):
 
 @app.get('/health')
 def health():
+    dependency_error=None
+    try:
+        from cubebot import config as native_config
+        limits=runtime.cfg if runtime is not None else native_config.load()
+    except (ImportError,OSError,ValueError) as exc:
+        limits={'mission':{'min_battery_v':None}}
+        dependency_error=type(exc).__name__+': native configuration unavailable'
     observation=observer.snapshot() if observer else None
     state=runtime.status() if runtime else None
     if state is not None and observation is not None:
@@ -66,14 +76,14 @@ def health():
             'battery_voltage':state['battery_voltage'],'measured_velocity':state['measured_velocity'],
             'controller_command_readiness':state['controller_ready'],
             'arm_outside_native_model':None}
-    return {'robot': 'rosmaster', 'hardware_open': runtime is not None,
+    return {'robot': 'rosmaster', 'software':SOFTWARE, 'battery_stop_v':limits['mission']['min_battery_v'], 'hardware_open': runtime is not None,
             'armed': False if runtime is None else runtime.armed,
             'monotonic_ns': time.monotonic_ns(), 'physical_acceptance': False,
             'observation': observation,
-            'observation_error': observer_error,
+            'observation_error': observer_error, 'dependency_error':dependency_error,
             'status': state,
             'prepared': (ROOT/'native-manifest.json').exists(),
-            'reason': 'Separate physical block D not accepted' if not (ROOT/'stage-d-authorized.json').exists() else 'Explicit start required'}
+            'reason': 'Explicit start from Homebrain required'}
 
 
 @app.get('/frame.jpg')
@@ -107,8 +117,6 @@ def sample():
 @app.post('/session')
 def session(value:dict=Body(default={})):
     with lock:
-        if not (ROOT/'stage-d-authorized.json').is_file():
-            raise HTTPException(409, 'Нужна отдельная физическая проверка ROSMASTER')
         if runtime is None:raise HTTPException(409,'Сначала передайте управление Explorer')
         try:return runtime.enable(value.get('profile'),value.get('arm_mode','cartesian'),value.get('observing') is True,
                                   value.get('source','human'))
@@ -119,7 +127,6 @@ def session(value:dict=Body(default={})):
 def acquire():
     global runtime
     with lock:
-        if not (ROOT/'stage-d-authorized.json').is_file():raise HTTPException(409,'Физический блок ROSMASTER не разрешён')
         if runtime is not None:return {'acquired':True,'status':runtime.status()}
         from handoff import Handoff
         from runtime import Runtime

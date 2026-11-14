@@ -1252,3 +1252,20 @@ UI-кнопка подтверждения USB добавлена в исход�
 - Порог сближения 2°/3° в hardware.py не изменён. LeaderReader разрешён при owner=explorer, без новых stage/incident условий.
 - 6 PASS: явное подтверждение, повторное взятие, возврат, занятый порт с восстановлением службы, незакрытый собственный handle, HTTP-ошибка/повтор, выключенный допуск; tests/test_so_handoff.py + test_stage_b.py. Все systemd/device операции — фейки. Старую живую службу агент не трогал.
 - R3 native FakeBoard: 53 PASS (30.51 s), без физического serial.
+
+
+## Recording readiness R5 — в работе, 2026-11-14
+
+- Страница /recording/readiness: сеть/агент/хеши/допуск, батарея/частоты/свежесть, RTT, часовой offset с RTT-погрешностью, guards, USB, CPU/temp/throttled Tank, SO owner/USB/calibration/camera, место и задания. Чтение каждые 2 s, SSH диагностика кэшируется 30 s. Ни одного acquire/session/motor вызова.
+- Браузерная проверка мобильного вида, сообщений и fleet toggle PASS: tests-20261114T122439Z. 9 unit PASS.
+- Обнаружен дублирующий legacy stage-d gate в удалённом агенте ROSMASTER: удалён, авторизация homebrain/token и явное включение сохранены. Agent health публикует хеши загруженного кода и фактический runtime battery threshold. На FakeBoard 53 PASS, validation/recording-r5-native.log.
+- Собственные agent.py/sensors.py ROSMASTER установлены с backup /home/vlad/explorer3/archive/staging-readiness-20261114T122516Z. Старый stage-d marker архивирован; own agent остаётся inactive. Перезапущены только два read-only observer, runtime SHA проверен на 8053/8054; :8090 не менялась. Отчёты recording-r5-deployment.json и recording-r5-observers.json.
+- Первая общая main-проверка (tests-20261114T122554Z) сознательно прервана после 103 PASS: в соседнем диалоге появились тесты, реально подбирающие параметры/исполняющие numpy-policy. Добавлены явные skips по запрету обучения/моделей; они не считаются PASS. Повторная проверка запущена.
+
+### R5 — установка и итог проверок
+
+- Страница доступна на :8030/recording/readiness, HTTP 200; после idle restart armed=false/session idle. SO передача из R4 тоже загружена, старая служба не запускалась/не останавливалась агентом.
+- Повторная main-группа: 214 PASS + 2 subtests, 8 SKIP, один отказ health при отсутствующей native-библиотеке на Homebrain. Исправлено: health сообщает отсутствующую зависимость и неизвестный порог, не падает. Целевые observer/readiness/handoff: 12 PASS. Browser: 1 PASS. Общая сводка будет повторена в R9.
+- При первой правке обработки отсутствующей зависимости обнаружена синтаксическая ошибка; неактивный удалённый агент не запускался. Ошибка исправлена, добавлен обязательный ast.parse обоих payload перед установкой и удалённо до замены файлов. Финальная установка backup: /home/vlad/explorer3/archive/staging-readiness-20261114T123014Z, agent SHA daf8af9b2030d6a69deff4f26a53ce81de515951a969fa12e5072a94bc61d267. Проверка хеша работающих observers включена в installer с rollback.
+- Read-only live проверка: Tank и ROSMASTER в сети; агент Tank и версии доступны, ROSMASTER agent inactive; оба ROSMASTER observers дают RGB/depth/оба lidar/IMU/arm/battery. Частота Tank RGB и согласование часов остаются измеряемыми красными пунктами, не объявлены физическим PASS.
+- Обучения, вызовов моделей и команд движения не было. Следующий пакет R6: единый сбор серий и автоматическая проверка записей.

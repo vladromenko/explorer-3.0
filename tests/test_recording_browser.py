@@ -35,6 +35,18 @@ def test_preparation_and_guides_without_execution(tmp_path):
                     expect(page.locator('.nicegui-content')).to_be_visible()
                     assert page.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
                 expect(page.get_by_role('button',name='Запустить подготовленное обучение',exact=True)).to_be_disabled()
+                page.goto('http://127.0.0.1:8037/recording/readiness')
+                expect(page.get_by_text('Готовность парка',exact=True)).to_be_visible()
+                expect(page.get_by_text('Перенесите записи на внешний диск',exact=True)).to_be_visible()
+                assert page.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
+                switch=page.get_by_role('switch',name='Разрешить Tank',exact=True)
+                expect(switch).to_be_checked()
+                switch.click()
+                expect(switch).not_to_be_checked()
+                import json
+                deadline=time.monotonic()+3
+                while json.loads((tmp_path/'configs/fleet.json').read_text())['robots']['tank']['enabled'] and time.monotonic()<deadline:time.sleep(.05)
+                assert not json.loads((tmp_path/'configs/fleet.json').read_text())['robots']['tank']['enabled']
                 assert not errors
                 browser.close()
         finally:

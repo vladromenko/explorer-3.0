@@ -23,4 +23,3 @@ class StageB(unittest.TestCase):
                 session._run('so101_pick_place','test','test')
             self.assertEqual(session.outcome,'success')
             self.assertIsNone(session.error)
-
