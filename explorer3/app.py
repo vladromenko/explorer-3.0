@@ -97,26 +97,36 @@ def status():
     return {'health':health(),'profiles':PROFILES,'jobs':catalog.rows('jobs'),'episodes':catalog.rows('episodes')}
 
 CSS='''
-body { background:#10161f; color:#e6edf4; font-family:system-ui,sans-serif; }
-.nicegui-content { max-width:1440px; margin:auto; padding:30px; width:100%; }
-.hero { display:flex; align-items:center; justify-content:space-between; width:100%; gap:20px; }
-.kicker { color:#7dd3c7; letter-spacing:.14em; text-transform:uppercase; font-size:12px; }
-h1 { font-size:34px; margin:4px 0; font-weight:700; letter-spacing:-1px; }
-.muted { color:#9aacbf; }
-.fleet { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; width:100%; margin:22px 0; }
-.robot { background:#192331; border:1px solid #344253; border-radius:14px; padding:20px; box-shadow:none; }
-.preview { background:#111923; border:1px dashed #405167; height:125px; display:flex; align-items:center; justify-content:center; width:100%; color:#90a2b5; border-radius:8px; }
-.workspace { background:#192331; border:1px solid #344253; border-radius:14px; width:100%; padding:22px; }
-.selected { font-size:22px; font-weight:650; color:#9de7dd; }
-.q-tab-panels { background:transparent; width:100%; }
-.q-tab-panel { padding:24px 0; }
-.q-table__container { background:#121d29; color:#e6edf4; width:100%; }
+body { background:radial-gradient(1400px 700px at 0% -10%,#14302b 0%,transparent 55%),#0d1117 !important; color:#e6edf3; font-family:Inter,-apple-system,"Segoe UI",system-ui,sans-serif; }
+.nicegui-content { max-width:1360px; margin:auto; padding:26px 22px 70px; width:100%; }
+.hero { display:flex; align-items:center; justify-content:space-between; width:100%; gap:20px; flex-wrap:wrap; }
+.kicker { color:#63e0b8; letter-spacing:.14em; text-transform:uppercase; font-size:11px; font-weight:600; }
+h1 { font-size:32px; margin:2px 0; font-weight:750; letter-spacing:-.6px; }
+.muted { color:#8b98a8; }
+a { color:#63e0b8; }
+.nav { display:flex; gap:8px; flex-wrap:wrap; width:100%; margin:6px 0 4px; }
+.nav a { text-decoration:none; color:#c9d4e0; background:#141b24; border:1px solid #232f3e; padding:8px 14px; border-radius:999px; font-size:14px; transition:border-color .15s,color .15s; }
+.nav a:hover { border-color:#2fb39f; color:#e6edf3; }
+.nav a.main { background:#123430; border-color:#2fb39f; color:#7fe0bd; }
+.fleet { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; width:100%; margin:16px 0; }
+.robot { background:#141b24 !important; border:1px solid #232f3e; border-radius:18px !important; padding:18px !important; box-shadow:none !important; transition:border-color .15s; }
+.robot:hover { border-color:#3a4d63; }
+.preview { background:linear-gradient(135deg,#111821,#0f1a1d); border:1px solid #1e2a37; height:110px; display:flex; align-items:center; justify-content:flex-start; gap:14px; padding:0 16px; width:100%; color:#9fb0c2; border-radius:12px; }
+.preview .material-icons { font-size:44px; color:#63e0b8; }
+.workspace { background:#141b24; border:1px solid #232f3e; border-radius:18px; width:100%; padding:22px; }
+.selected { font-size:22px; font-weight:700; color:#e6edf3; }
+.q-tab-panels { background:transparent !important; width:100%; }
+.q-tab-panel { padding:22px 0; }
+.q-table__container { background:#10161e !important; color:#e6edf3; width:100%; border-radius:12px; }
 .q-field__native,.q-field__label { color:#cdd9e6; }
-.q-tabs { width:100%; border-bottom:1px solid #344253; }
-.q-btn { text-transform:none; border-radius:8px; }
-.notice { padding:14px 18px; background:#2b2b20; border:1px solid #6b6236; border-radius:9px; color:#e6dca5; width:100%; }
-.q-footer { background:#192331; padding:10px 30px; }
-@media(max-width:800px) { .fleet {grid-template-columns:1fr;} .hero {align-items:flex-start;} .nicegui-content {padding:16px;} }
+.q-tabs { width:100%; border-bottom:1px solid #232f3e; }
+.q-tab { text-transform:none; font-size:15px; }
+.q-btn { text-transform:none; border-radius:10px; }
+.q-card { background:#141b24; border-radius:14px; }
+.notice { padding:12px 16px; background:#16202b; border:1px solid #2a3a4c; border-radius:12px; color:#c9d4e0; width:100%; }
+.q-badge { padding:4px 9px; border-radius:999px; font-size:12px; }
+.q-footer { background:#0f141b !important; border-top:1px solid #232f3e; padding:10px 30px; }
+@media(max-width:900px) { .fleet {grid-template-columns:1fr;} .hero {align-items:flex-start;} .nicegui-content {padding:16px;} }
 '''
 
 def notify_error(exc):
@@ -203,17 +213,18 @@ def index(request:Request):
             ui.html('<h1>Explorer 3.0</h1>')
             ui.label('Показы → обучение → проверяемые испытания').classes('muted')
         ui.button('STOP · всё управление Explorer',icon='stop_circle',color='negative',on_click=stop_all).props('size=lg')
-    ui.link('Симуляция MuJoCo · Homebrain', '/sim')
-    ui.link('Tank · камеры, глубина и лидар', '/tank/sensors')
-    ui.link('ROSMASTER · датчики и окружение', '/rosmaster/sensors')
-    ui.link('Общий обзор роботов · связь и датчики', '/fleet/live')
-    ui.link('Команда · совместная задача и память', '/team')
-    ui.link('Готовность парка', '/recording/readiness')
-    ui.link('Сбор датасета · серии и показы', '/recording/collect')
-    ui.link('Подготовить обучение на реальных записях', '/training/prepare')
-    ui.label('РЕАЛЬНЫЕ РОБОТЫ').classes('kicker')
-    stage_label=ui.label('Этап A · программная подготовка. Движение не разрешено. Запись и физические испытания ещё не проверены.').classes('notice')
-    ready=ui.label('').classes('muted')
+    ui.html('<div class="nav">'
+            '<a class="main" href="/learn">Обучение</a>'
+            '<a href="/recording/collect">Сбор датасета</a>'
+            '<a href="/recording/readiness">Готовность парка</a>'
+            '<a href="/fleet/live">Обзор роботов</a>'
+            '<a href="/tank/sensors">Датчики Tank</a>'
+            '<a href="/rosmaster/sensors">Датчики ROSMASTER</a>'
+            '<a href="/sim">Симуляция</a>'
+            '<a href="/team">Команда</a>'
+            '<a href="http://'+request.url.hostname+':8000/">Пульт Homebrain</a></div>')
+    stage_label=ui.label('').classes('notice');stage_label.set_visibility(False)
+    ready=ui.label('');ready.set_visibility(False)
     fleet_labels={}
     with ui.element('div').classes('fleet'):
         for ident,name in ROBOT_NAMES.items():
@@ -221,14 +232,17 @@ def index(request:Request):
                 ui.label(name).style('font-size:22px;font-weight:650')
                 label='USB обнаружены · требуется приёмка' if ident=='so101' and all(v['present'] for v in inventory().values()) else 'Подключение ещё не проверено'
                 fleet_labels[ident]=ui.badge(label,color='grey-8')
+                icon,line1,line2={'so101':('precision_manufacturing','Рука на столе','кубик → коробка · Leader для показов'),
+                                  'tank':('agriculture','Гусеничная база','«подъехать к …» · камера, глубина, лидар'),
+                                  'rosmaster':('smart_toy','Мобильный манипулятор','база + рука · «подъехать к …»')}[ident]
                 with ui.element('div').classes('preview'):
-                    ui.label('Физическая проверка на этапе '+{'so101':'D','tank':'C','rosmaster':'B'}[ident])
-                ui.button('Выбрать '+name,on_click=lambda robot=ident:select(robot)).props('outline')
-                if ident=='rosmaster':
-                    ui.link('Подготовка без робота', '/rosmaster/preparation')
-                    ui.link('Открыть управление', '/rosmaster/control')
-                    ui.link('Камера и диагностика', '/rosmaster')
-    with ui.card().style('background:#141b24;border:1px solid #2a3a4c;border-radius:14px;padding:12px 16px;width:100%;margin-bottom:10px'):
+                    ui.icon(icon)
+                    ui.html(f'<div><div style="font-weight:650;color:#e6edf3">{line1}</div><div style="font-size:13px">{line2}</div></div>')
+                with ui.row().style('gap:8px'):
+                    ui.button('Выбрать',icon='touch_app',on_click=lambda robot=ident:select(robot)).props('unelevated')
+                    if ident=='rosmaster':
+                        ui.button('Полная панель',on_click=lambda:ui.navigate.to('/rosmaster/control')).props('flat')
+    with ui.card().classes('robot').style('width:100%;margin-bottom:14px'):
         with ui.row().style('width:100%;justify-content:space-between;align-items:center'):
             ui.label('Общая память роботов').style('font-size:17px;font-weight:700')
             memory_status=ui.label('').classes('muted')
