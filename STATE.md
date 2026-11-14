@@ -1320,3 +1320,7 @@ Operator reported an empty panel. Reproduced live page: wizard controls rendered
 ## Correct charger check — 2026-11-14
 
 User confirms Tank powered on and charger disconnected. Removed incorrect <8.3 V and non-rising voltage conditions: neither detects charger presence and a full disconnected battery can exceed 8.3 V. Retained explicit operator confirmation, fresh measurements over 10 seconds and configured lower battery threshold. No control/STOP protections changed. Six physical evaluator tests PASS, including 8.4 V full battery, small variation, missing confirmation, stale and low battery. No motion commands sent.
+
+## Direct Tank controls — 2026-11-14
+
+At user's explicit request removed charger step and its prerequisite from Tank physical wizard. Control panel loads immediately without enabling motors; ordinary direct Tank page remains available. Battery/USB/TTL/STOP guards in controller unchanged. Browser PASS (tests-20261114T140628Z), physical evaluator 6 PASS. User confirmed charger disconnected. No agent-issued movement.

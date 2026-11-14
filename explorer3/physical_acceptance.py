@@ -12,7 +12,6 @@ from .fleet_config import atomic_write,load
 
 STEPS={
  'tank':[
-  ('charger','Отсоедините зарядник. Нажмите «Начать измерение шага», подождите 10 секунд, отметьте подтверждение и сохраните результат. Движение не включайте.'),
   ('forward','Удерживайте ↑ 2 секунды, отпустите. Подтвердите движение вперёд и остановку.'),
   ('backward','Удерживайте ↓ 2 секунды, отпустите. Подтвердите движение назад и остановку.'),
   ('left','Удерживайте ← 2 секунды, отпустите. Подтвердите поворот влево и остановку.'),
@@ -187,8 +186,6 @@ class Run:
     def start(self,step):
         if step not in dict(STEPS[self.robot]):raise ValueError('Неизвестный шаг')
         if self.thread and self.thread.is_alive():raise RuntimeError('Сначала закончите текущий шаг')
-        if self.robot=='tank' and step not in {'charger','recording'} and self.results.get('charger',{}).get('result')!='PASS':
-            raise ValueError('Сначала подтвердите отключённый зарядник и проверьте напряжение')
         self.current=step;self.samples=[];self.done.clear()
         self.thread=threading.Thread(target=self.capture,daemon=True);self.thread.start()
     def capture(self):
