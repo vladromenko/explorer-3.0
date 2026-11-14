@@ -54,6 +54,10 @@ class EpisodeWriter:
             raise ValueError('Unknown data category')
         self.id=uuid.uuid4().hex
         self.name,self.session,self.scene,self.category=name,session,scene,category
+        if domain=='real':
+            from .collection import instruction_for
+            instruction=instruction_for(session)
+            if instruction:cfg={**cfg,'task':instruction}
         self.cfg=cfg
         from . import collection
         self.collection_context=collection.context(name,session,scene) if domain!='sim' else None

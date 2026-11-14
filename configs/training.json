@@ -8,19 +8,28 @@
       1
     ],
     "smoke_steps": 50,
-    "steps": 100000,
+    "steps": 40000,
     "seed": 1000,
     "push_to_hub": false,
-    "vision_backbone": "resnet18"
+    "vision_backbone": "resnet18",
+    "note": "Orin NX: ~1 s/step at batch 8 (measured 2026-11-14) -> ~11 h; 40k steps is enough for ~50 episodes of one task"
   },
   "smolvla": {
     "profile": "so101_pick_place",
     "base_model": "lerobot/smolvla_base",
     "enabled": true,
-    "status": "existing_synthetic_smoke_only; simulation_recipe_prepared",
-    "batch_size": 1,
+    "status": "measured on Orin NX 2026-11-14: train 1.56 s/step at batch 8 (3.6 GB), inference 0.8 s per 50-action chunk (1 GB)",
+    "batch_size": 8,
     "push_to_hub": false,
-    "profiles": "all_sim_profiles; so101_real_existing_gate"
+    "profiles": "so101_pick_place, rosmaster_pick_place (RGB variant; SmolVLA does not use depth/lidar)",
+    "oom_batch_fallback": [
+      4,
+      2,
+      1
+    ],
+    "smoke_steps": 50,
+    "steps": 20000,
+    "seed": 1000
   },
   "concurrency": 1,
   "split": {

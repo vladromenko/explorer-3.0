@@ -702,7 +702,7 @@ def index(request:Request):
                     ui.button('ACT · основное обучение',on_click=act_full)
                     smol_button=ui.button('SmolVLA · smoke',on_click=smol_smoke)
                     smol_full_button=ui.button('SmolVLA · основное обучение',on_click=smol_full)
-                ui.label('Основной рецепт: 100 000 шагов; checkpoint каждые 5 000. Validation отдельно; test не используется для подбора. Незавершённое обучение продолжается только явно.').classes('muted')
+                ui.label('Основной рецепт: ACT 40 000 шагов (~11 ч), SmolVLA 20 000 шагов (~9 ч) на Homebrain; checkpoint каждые 5 000. Validation отдельно; test не используется для подбора. Незавершённое обучение продолжается только явно.').classes('muted')
                 job_table=ui.table(columns=[{'name':k,'label':v,'field':k} for k,v in [('id','Задание'),('profile','Задача'),('policy','Модель'),('status','Состояние'),('checkpoint','Checkpoint'),('error','Ошибка')]],rows=[],row_key='id',selection='single')
                 def selected_job_action(action):
                     try:
@@ -848,8 +848,8 @@ def index(request:Request):
             'rosmaster':'ROSMASTER записывается в панели на вкладке «Управление» → карточка «Запись показа». Подъезд: камера + измеренная скорость колёс → команда базы. Кубик: камера + измеренные 6 суставов → цель руки. 20 Гц.'}[control.robot])
         selected.set_text('Выбран: '+ROBOT_NAMES[control.robot])
         smol_pass=(DATA/'validation/smolvla-pass.json').exists()
-        smol_button.set_enabled(smol_pass and task.value=='so101_pick_place')
-        smol_full_button.set_enabled(smol_pass and task.value=='so101_pick_place')
+        smol_button.set_enabled(smol_pass and task.value in {'so101_pick_place','rosmaster_pick_place'})
+        smol_full_button.set_enabled(smol_pass and task.value in {'so101_pick_place','rosmaster_pick_place'})
         collection_info.set_text(local_pages.collection_status(task.value))
         for ident,badge in fleet_labels.items():
             badge.set_text('Отдельная страница управления' if ident=='rosmaster' and rosmaster_control.enabled() else

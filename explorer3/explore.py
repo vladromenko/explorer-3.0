@@ -56,6 +56,7 @@ class Explore:
         self.progress = (None, time.monotonic())
         self.lost_since = None
         self.targets_done = 0
+        self.retried = False
         self.distance = self.bearing = None
         self.stop_when = stop_when
         self.scout = None
@@ -122,6 +123,9 @@ class Explore:
                 self.targets_done += 1                     # the place got mapped meanwhile (maybe by the other robot)
                 self.target = None
             if self.target is None:
+                if not fronts and self.banned and not self.retried:
+                    self.banned, self.retried = [], True     # places given up earlier: one more try
+                    return [0., 0.]
                 if not fronts:
                     self.finish('explored', f'Обследовано: {self.targets_done} участков, на карте {FLEET.grid.scans} сканов')
                     return [0., 0.]

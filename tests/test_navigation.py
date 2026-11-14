@@ -136,7 +136,7 @@ def test_goto_drives_around_furniture_to_a_reported_place(fleet, monkeypatch):
         if g.state != 'memory' and not (v or w):
             break
         true = (true[0] + v * .25 * math.cos(true[2]), true[1] + v * .25 * math.sin(true[2]), fm.wrap(true[2] + w * .25))
-        assert wall_distance(np.array(true[:2])) > .20
+        assert wall_distance(np.array(true[:2])) > .19                  # half-width .18: no side contact
     assert math.dist(true[:2], (1.9, -1.0)) < .8          # arrived near the reported place
     g.cancel()
     assert episodes.load()[0]['kind'] == 'goto'

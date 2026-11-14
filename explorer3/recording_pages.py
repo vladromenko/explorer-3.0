@@ -123,12 +123,18 @@ def install_collection():
             variant=ui.select({},label='Вариант потоков').classes('w-full')
             operator=ui.input('Оператор',value='operator').classes('w-full')
             description=ui.input('Что изменилось в расстановке').classes('w-full')
+            instruction=ui.input('Команда для робота (англ.; подставится из описания)').classes('w-full')
+            def suggest(_=None):
+                if not instruction.value or instruction.value==getattr(instruction,'_auto',''):
+                    value=collection.suggest_instruction(task.value,description.value) or ''
+                    instruction._auto=value;instruction.set_value(value)
+            description.on_value_change(suggest)
             repeat=ui.select({'':'Новая расстановка'},value='',label='Расстановка').classes('w-full')
             choice=ui.select({},label='Продолжить серию').classes('w-full')
             notice=ui.label('Выберите серию или создайте новую')
             async def create():
                 try:
-                    record=await asyncio.to_thread(collection.create_series,task.value,variant.value,operator.value,description.value,repeat.value or None)
+                    record=await asyncio.to_thread(collection.create_series,task.value,variant.value,operator.value,description.value,repeat.value or None,instruction.value)
                     setup();choice.set_value(record['id']);open_series()
                 except Exception as exc:ui.notify(str(exc),type='negative')
             new_button=ui.button('Новая серия',on_click=create)
@@ -150,7 +156,7 @@ def install_collection():
             variant.set_options({v:v for v in variants},value=chosen)
             variant.set_enabled(not existing)
             repeat.set_options({'':'Новая расстановка',**{s['layout']:s['layout']+' · общая группа' for s in existing}},value='')
-            choice.set_options({s['id']:s['id']+' · '+s['description'] for s in existing},value=None)
+            choice.set_options({s['id']:s['id']+' · '+s['description']+(' · «'+s['instruction']+'»' if s.get('instruction') else '') for s in existing},value=None)
         def open_series():
             if not choice.value:return
             record=next(s for s in collection.series(task.value) if s['id']==choice.value)

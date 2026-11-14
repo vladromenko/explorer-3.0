@@ -188,7 +188,8 @@ def run_job(path: Path):
         saved = json.loads((Path(resume)/'train_config.json').read_text())
         batches = (saved['batch_size'],)
     else:
-        batches = (int(cfg['batch_size']),) if cfg.get('batch_size') else (1,) if cfg['policy']=='smolvla' else (8,4,2,1)
+        recipe=TRAINING[cfg['policy']]
+        batches = (int(cfg['batch_size']),) if cfg.get('batch_size') else tuple([int(recipe.get('batch_size',8))]+[int(b) for b in recipe.get('oom_batch_fallback',(4,2,1))])
     done = False
     for batch in batches:
         if not done:

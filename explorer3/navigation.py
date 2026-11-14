@@ -11,7 +11,7 @@ from .fleet_map import RES, SIZE, wrap
 
 STEP = 2                      # planning cell = 2 map cells = 10 cm
 PRES = RES * STEP
-RADIUS = {'rosmaster': .27, 'tank': .21}          # half-diagonal (turning in place) + margin
+RADIUS = {'rosmaster': .22, 'tank': .18}          # half-width + margin (a 0.9 m doorway must stay open)
 BODY_FRONT = {'rosmaster': .24, 'tank': .17}
 BODY_HALF_W = {'rosmaster': .18, 'tank': .14}
 
@@ -29,11 +29,16 @@ def layers(grid, robot):
     n = SIZE // STEP
     occ = grid.occupied().reshape(n, STEP, n, STEP).any(axis=(1, 3))
     free = grid.known_free().reshape(n, STEP, n, STEP).any(axis=(1, 3)) & ~occ
-    r = max(1, int(math.ceil(RADIUS[robot] / PRES)))
+    r = max(1, int(round(RADIUS[robot] / PRES)))
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1, 2 * r + 1))
     blocked = cv2.dilate(occ.astype(np.uint8), k).astype(bool)
     unknown = ~free & ~occ
     return blocked, free, unknown
+
+
+def layers_occ(grid):
+    n = SIZE // STEP
+    return grid.occupied().reshape(n, STEP, n, STEP).any(axis=(1, 3)).astype(np.uint8)
 
 
 def plan(grid, robot, start, goal, allow_unknown=True):
@@ -57,6 +62,11 @@ def plan(grid, robot, start, goal, allow_unknown=True):
             return None
         g = (int(xs[i]), int(ys[i]))
     cost = np.where(free, 1., 3. if allow_unknown else np.inf)
+    # Soft clearance: hard inflation keeps doorways open, this keeps the path in the middle of
+    # passages and away from furniture whenever there is room (up to +4 per cell at the edge).
+    occ = layers_occ(grid)
+    dist = cv2.distanceTransform((1 - occ).astype(np.uint8), cv2.DIST_L2, 3) * PRES
+    cost = cost + 8. * np.clip((.55 - dist) / .3, 0., 1.) ** 2
     moves = [(1, 0, 1.), (-1, 0, 1.), (0, 1, 1.), (0, -1, 1.), (1, 1, 1.414), (1, -1, 1.414), (-1, 1, 1.414), (-1, -1, 1.414)]
     dist = {s: 0.}
     came = {}
@@ -84,7 +94,10 @@ def plan(grid, robot, start, goal, allow_unknown=True):
     while cells[-1] != s:
         cells.append(came[cells[-1]])
     cells.reverse()
-    return [_xy(c) for c in _shortcut(cells, blocked)]
+    # Straight shortcuts only with one extra cell of clearance: otherwise they graze the hard
+    # inflation edge and undo the soft clearance cost (A* cells themselves may stay tight, e.g. doorways).
+    clear = cv2.dilate(blocked.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
+    return [_xy(c) for c in _shortcut(cells, clear)]
 
 
 def _shortcut(cells, blocked):

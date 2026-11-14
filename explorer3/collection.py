@@ -29,6 +29,38 @@ def initialize():
           frames INTEGER NOT NULL DEFAULT 0,streams TEXT NOT NULL DEFAULT '{}',duration REAL,
           episode TEXT,quality TEXT,user_excluded INTEGER NOT NULL DEFAULT 0,created REAL NOT NULL);
         ''')
+        columns={r[1] for r in db.execute('PRAGMA table_info(collection_series)')}
+        if 'instruction' not in columns:
+            # Per-series language instruction (e.g. «pick up the cookie») written into every frame's
+            # task field: what lets a language-conditioned policy (SmolVLA) tell objects apart.
+            db.execute('ALTER TABLE collection_series ADD COLUMN instruction TEXT')
+
+
+def suggest_instruction(task,description):
+    """«взять с пола: печенье, 7 см» -> «pick up the cookie»; «передача: кубик» -> «hand over the cube»."""
+    from .goto import to_prompt
+    text=(description or '').strip()
+    head,_,rest=text.partition(':')
+    import re
+    phrase=(rest or head).split(',')[0]
+    phrase=re.split(r'\s(?:у|возле|около|рядом|под|за|перед|на|в|во|слева|справа|от|из)\s|\s(?:слева|справа)$|\d',' '+phrase.lower()+' ')[0]
+    obj=to_prompt(phrase) if text else ''
+    if not obj:return None
+    if task=='so101_pick_place' and 'передач' in head.lower():return f'hand over the {obj}'
+    if task.endswith('pick_place'):return f'pick up the {obj}'
+    if task.endswith('dock'):return f'drive to the {obj}'
+    return None
+
+
+def instruction_for(series_id):
+    """Language instruction of a managed series, or None (then the profile's fixed task text is used)."""
+    try:
+        initialize()
+        with catalog.connect() as db:
+            row=db.execute('SELECT instruction FROM collection_series WHERE id=?',(series_id,)).fetchone()
+        return row[0] if row and row[0] else None
+    except Exception:
+        return None
 
 
 def series(task=None):
@@ -38,7 +70,7 @@ def series(task=None):
                                            (task,) if task else ())]
 
 
-def create_series(task,profile,operator,description,repeat_layout=None):
+def create_series(task,profile,operator,description,repeat_layout=None,instruction=None):
     if task not in TASKS or profile not in TASKS[task][1]:raise ValueError('Выберите вариант этой задачи')
     operator=(operator or '').strip()[:80] or 'оператор'
     description=(description or '').strip()[:500] or 'без описания'
@@ -54,8 +86,9 @@ def create_series(task,profile,operator,description,repeat_layout=None):
             if repeat_layout not in {r['layout'] for r in existing}:raise ValueError('Такой прежней расстановки нет в этой задаче')
             layout=repeat_layout
         else:layout=f'{task}-layout{number:02}'
-        db.execute('INSERT INTO collection_series VALUES(?,?,?,?,?,?,?)',
-                   (ident,task,profile,layout,operator,description,time.time()))
+        instruction=(instruction or '').strip()[:200] or suggest_instruction(task,description)
+        db.execute('INSERT INTO collection_series(id,task,profile,layout,operator,description,created,instruction) VALUES(?,?,?,?,?,?,?,?)',
+                   (ident,task,profile,layout,operator,description,time.time(),instruction))
     return next(r for r in series(task) if r['id']==ident)
 
 

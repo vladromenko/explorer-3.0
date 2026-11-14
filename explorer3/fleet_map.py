@@ -312,7 +312,7 @@ class FleetMap:
             # Grow the map only from confident poses, and only after the robot moved.
             moved = self.last_key.get(robot)
             if inl > .6 and (moved is None or math.dist(moved[:2], pose[:2]) > .2 or abs(wrap(moved[2] - pose[2])) > .2):
-                self.grid.add(transform(pts, pose), pose)
+                self.grid.add(self._without_robots(robot, transform(pts, pose)), pose)
                 self.last_key[robot] = pose
             state = 'tracking' if inl > .45 else 'weak'
             note = s.pop('merged_note', '') if time.time() - s.get('global_at', 0) > 8 else s.get('merged_note', '')
@@ -322,6 +322,16 @@ class FleetMap:
         if state == 'tracking':
             world_memory.POSES[robot].fix(*pose, source='lidar')
         return out
+
+    def _without_robots(self, robot, pts_world, radius=.35):
+        """Drop returns from the other robots: a robot is not furniture, and leaving it in the
+        map would block passages for everybody after it drove on. Caller holds the lock."""
+        keep = np.ones(len(pts_world), bool)
+        for other, s in self.track.items():
+            p = s.get('pose')
+            if other != robot and p is not None and time.time() - s.get('at', 0) < 3:
+                keep &= np.hypot(pts_world[:, 0] - p[0], pts_world[:, 1] - p[1]) > radius
+        return pts_world[keep]
 
     def _submap(self, robot, pts, fine, odom):
         """Track the robot in its own map (until it recognises the shared one). Caller holds the lock."""
