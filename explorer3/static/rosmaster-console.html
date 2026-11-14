@@ -82,7 +82,7 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
   <details class="card"><summary>Испытания и исследование</summary>
    <div class="help" style="margin-top:6px">План готовится и разрешается во вкладке «Испытания» Explorer.</div>
    <div class="row" style="margin-top:8px"><select id="tplan"><option value="">нет планов</option></select><select id="tstudy"><option value="">без пилота</option></select>
-    <button onclick="send({action:'trial_start',plan:$('tplan').value,study:$('tstudy').value,scene:$('rscene').value,observing:true})">Запустить</button></div>
+    <button onclick="send({action:'trial_start',plan:$('tplan').value,study:$('tstudy').value,collection:$('rcollection').value,scene:$('rscene').value,observing:true})">Запустить</button></div>
    <div class="row" style="margin-top:8px"><button onclick="send({action:'correction_done'})">Коррекция готова</button><button class="stop" style="flex:0" onclick="send({action:'emergency'})">Аварийное вмешательство</button></div>
    <div class="row" style="margin-top:8px"><span class="help">Тип записи:</span><select id="rcat"><option value="demonstration">Показ</option><option value="correction">Коррекция</option></select></div></details>
   <details class="card"><summary>Ещё: позы, камера, джойстик</summary>

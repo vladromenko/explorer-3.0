@@ -76,7 +76,7 @@ if PILOT:
     plan = {'id': 'p' * 32, 'kind': 'policy', 'profile': NAME, 'checkpoint_sha256': 'a' * 64, 'max_duration_s': 30.}
     session.start('test-owner', NAME, 'scene-test', check=True, plan=plan, study=study)
 else:
-    session.start('test-owner', NAME, 'scene-test', check=True)
+    session.start('test-owner', NAME, 'scene-test', collection='r3-series-01', check=True)
 end = time.monotonic() + 60
 while time.monotonic() < end and session.status()['frames'] < (70 if PILOT else 30):
     time.sleep(.1)
@@ -86,6 +86,7 @@ assert status['error'] is None, status
 from explorer3.validation import validate
 rows = catalog.rows('episodes')
 assert all(r['excluded'] == 1 for r in rows)
+if not PILOT:assert all(r['session']=='r3-series-01' and r['scene']=='scene-test' for r in rows)
 result = validate(rows[0]['id'],domain='fixture' if ENVIRONMENT else 'real')
 extra = {}
 if PILOT:

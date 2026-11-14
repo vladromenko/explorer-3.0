@@ -97,3 +97,13 @@ def test_pilot_assignment_hold_correction_and_segments(tmp_path):
     assert result['events'] == ['request', 'operator_notified', 'human_start', 'human_end', 'finish']
     assert result['categories'] == ['rollout', 'correction', 'rollout']
     assert result['features']['response_change'] is not None  # measured servo readback feeds physical features
+
+
+def test_console_trial_and_record_share_collection_and_scene():
+    from pathlib import Path
+    page=(Path(__file__).resolve().parents[1]/'explorer3/static/rosmaster-console.html').read_text()
+    import re
+    for action in ('trial_start','record_start'):
+        payload=re.search(r"send\(\{action:'"+action+r"'.*?\}\)",page).group()
+        assert "collection:$('rcollection').value" in payload
+        assert "scene:$('rscene').value" in payload
