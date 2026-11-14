@@ -6,11 +6,21 @@ remain absent. Raw depth is preserved in millimetres as emitted by Aurora930.
 import hmac
 import io
 import json
+import os
 from pathlib import Path
 import threading
 import time
 
 import numpy as np
+
+
+def require_ros_environment(robot):
+    expected={'tank':('humble','0'),'rosmaster':('jazzy','30')}
+    distro,domain=expected[robot]
+    if os.environ.get('ROS_DISTRO')!=distro:
+        raise RuntimeError(f'{robot} observer requires ROS {distro}; refusing cross-distribution DDS discovery')
+    # Set explicitly before ROS initialization, even if caller forgot the environment script.
+    os.environ['ROS_DOMAIN_ID']=domain
 
 
 class SensorStore:
@@ -57,6 +67,7 @@ def decode_image(msg):
 
 
 def observe(store,done):
+    require_ros_environment(store.robot)
     import rclpy
     from rclpy.qos import QoSProfile,ReliabilityPolicy
     from sensor_msgs.msg import Image,CameraInfo,Imu,LaserScan,PointCloud2,MagneticField,JointState
@@ -210,6 +221,7 @@ if __name__=='__main__':
     parser.add_argument('--robot',choices=('tank','rosmaster'),default='tank')
     parser.add_argument('--port',type=int)
     args=parser.parse_args()
+    require_ros_environment(args.robot)
     os.environ['ROS_LOCALHOST_ONLY']=args.localhost
     (Path(__file__).parent/f'sensors-{args.localhost}.pid').write_text(str(os.getpid()))
     root=Path(__file__).parent

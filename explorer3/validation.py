@@ -63,6 +63,7 @@ def validate(episode_id: str, *, domain='real'):
                 cached_sensor=decode_packet(ref.read_bytes(),entry_sensor['homebrain_received_ns'],entry_sensor['request_elapsed_s'])
                 cached_sensor_ref=ref
             expected=environment_features(cached_sensor,obs)
+            if cached_sensor['meta']['robot']!=cfg['robot']:raise ValueError('Wrong robot sensor packet')
             if not np.allclose(expected,row['observation.environment_state']):raise ValueError('Sensor feature mismatch')
     for index in sorted({0,len(ds)//2,len(ds)-1}):
         frame=ds[index]

@@ -13,7 +13,7 @@ from cubebot.arm_model import ArmModel
 from cubebot.robot_io import BaseIO
 from cubebot.mirror import load as mirror_config
 from cubebot.scan_matching import scan_to_base, build_scan
-from rosmaster.link import Link
+from rosmaster.link import Link,RGB
 from leased_core import LeasedCore
 from control_adapter import NativeControls, ManualCartesianModel
 
@@ -103,6 +103,7 @@ class Runtime:
         self.lease=None;self.sequence=-1;self.profile=None;self.preparing=False
         self.error=None;self.reason='Explicit enable required';self.logs=[]
         self.last_arm_command=None;self.last_arm_at=None
+        self.last_rgb_request=None
         self.steps=0;self.direct=None;self.direct_source=None;self.policy_session=False
         self.mirror_align=False
         self.battery_value=None;self.battery_at=0.;self.odom=None;self.odom_at=0.
@@ -116,6 +117,18 @@ class Runtime:
 
     @property
     def armed(self):return bool(self.core and self.core.permitted)
+
+    def set_rgb(self,value):
+        """Use the existing controller opcode; never acquire, enable or refresh motion."""
+        if not isinstance(value,list) or len(value)!=3 or any(type(v) is not int or not 0<=v<=255 for v in value):
+            raise ValueError('RGB: три целых числа от 0 до 255')
+        with self.core_lock:
+            if self.core is None or self.core.phase!='ready' or self.core.last_status is None or self.core.clock()-self.core.last_status>.5:
+                raise RuntimeError('Нет свежей связи с контроллером подсветки')
+            sequence=self.core._send(RGB,bytes(value))
+            self.last_rgb_request={'rgb':list(value),'sequence':sequence,'requested_at':time.time(),
+                                   'physical_effect_confirmed':False}
+            return dict(self.last_rgb_request)
 
     def log(self,message):
         self.logs=(self.logs+[str(message)])[-20:]
@@ -681,6 +694,7 @@ class Runtime:
                 'battery_age_s':round(now-self.battery_at,2) if self.battery_at else None,'measured_velocity':self.odom if now-self.odom_at<.5 else None,
                 'base_command':list(self.io.last_output),'lidar_available':self.io.scan is not None,
                 'motion_commands_sent':self.core.motion_commands_sent,
+                'lighting':self.last_rgb_request,
                 'clock_sync':{'resyncs':self.core.clock_resyncs,'last_step_us':self.core.clock_last_step_us,
                               'max_step_us':self.core.clock_max_step_us},'arm_not_ready':self.core.arm_not_ready,
                 'physical_stop_confirmed':False,'logs':list(self.logs)}

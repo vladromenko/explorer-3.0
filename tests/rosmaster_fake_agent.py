@@ -48,6 +48,14 @@ OP = Operator()
 
 
 prepare(); catalog.initialize()
+ENVIRONMENT=NAME.endswith('_rgbd_lidar')
+if ENVIRONMENT:
+    from explorer3 import sensors,profiles
+    from explorer3.recording import EpisodeWriter
+    from rosmaster_sensor_fixture import FixtureFeed
+    sensors.SensorFeed=FixtureFeed
+    profiles.PROFILES[NAME]['domain']='sim'  # fixture-only schema, confined to this child process
+    rs.EpisodeWriter=lambda *a,**kw:EpisodeWriter(*a,**kw,domain='fixture')
 rs.agent_client = lambda timeout=.4: httpx.Client(transport=httpx.MockTransport(handler), base_url='http://agent')
 session = rs.RosmasterSession(OP)
 if PILOT:
@@ -55,7 +63,9 @@ if PILOT:
     class Policy:
         decision_info = {}
         def __init__(self, plan): pass
-        def next(self, observation): return [0.] * (3 if NAME.endswith('dock') else 6) if NAME.endswith('dock') else list(observation['observation.state'])
+        def next(self, observation):
+            if ENVIRONMENT:assert len(observation['observation.environment_state'])==265
+            return [0.]*3 if rs.control_profile(NAME)=='rosmaster_dock' else list(observation['observation.state'])
         def reset(self): pass
     trials.PolicyActions = Policy
     research.initialize()
@@ -76,7 +86,7 @@ assert status['error'] is None, status
 from explorer3.validation import validate
 rows = catalog.rows('episodes')
 assert all(r['excluded'] == 1 for r in rows)
-result = validate(rows[0]['id'])
+result = validate(rows[0]['id'],domain='fixture' if ENVIRONMENT else 'real')
 extra = {}
 if PILOT:
     from explorer3 import research

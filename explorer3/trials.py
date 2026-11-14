@@ -83,7 +83,7 @@ def authorize(ident, hours=3.):
 
 def require_physical(plan):
     local_work.require_hardware_mode(profile(plan['profile'])['robot'])
-    if plan['profile'] not in {'so101_pick_place','tank_dock','tank_dock_rgbd_lidar','rosmaster_dock','rosmaster_pick_place'}:
+    if plan['profile'] not in {'so101_pick_place','tank_dock','tank_dock_rgbd_lidar','rosmaster_dock','rosmaster_pick_place','rosmaster_dock_rgbd_lidar','rosmaster_pick_place_rgbd_lidar'}:
         raise PermissionError('Исполнитель этого профиля ещё не принят; план сохранён без движения')
     if profile(plan['profile'])['robot']=='tank':
         acceptance=DATA/'validation/tank-manual-control-pass.json'

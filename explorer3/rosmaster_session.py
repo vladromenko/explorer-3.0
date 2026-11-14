@@ -18,9 +18,26 @@ from .profiles import profile
 from .recording import EpisodeWriter
 from .resources import ResourceLease
 
-PROFILES = ('rosmaster_dock', 'rosmaster_pick_place')
+PROFILES = ('rosmaster_dock', 'rosmaster_pick_place','rosmaster_dock_rgbd_lidar','rosmaster_pick_place_rgbd_lidar')
 BASE_FEEDBACK_MAX_AGE_S = .5
 ARM_FEEDBACK_MAX_AGE_S = .6
+
+
+def control_profile(name):
+    if name not in PROFILES:raise ValueError('Неизвестная задача ROSMASTER')
+    return profile(name).get('control_profile',name)
+
+
+def attach_environment(sample,feed):
+    from .sensors import environment_features,stream_age
+    packet=feed.at_or_before(sample['observation_ns'])
+    if packet is None:raise RuntimeError('Нет предшествующего наблюдению пакета датчиков')
+    if packet['meta']['robot']!='rosmaster':raise ValueError('Датчики принадлежат другому роботу')
+    required=('depth','scan','scan_rear','imu')
+    if any(stream_age(packet,k,sample['observation_ns'])>2 for k in required):
+        raise RuntimeError('Нет свежих depth/двух лидаров/IMU: запись с окружением остановлена')
+    sample['_sensor_packet']=packet
+    sample['observation.environment_state']=environment_features(packet,sample['observation_ns']).tolist()
 
 
 def agent_client(timeout=.4):
@@ -55,7 +72,7 @@ class ClockMap:
 
 def state_and_action(name, current, following):
     """observation.state from sample k and the action in force at sample k+1 (no future data in state)."""
-    if name == 'rosmaster_dock':
+    if control_profile(name) == 'rosmaster_dock':
         measured = current['base_measured']
         age = current['base_measured_age_s']
         if measured is None or age is None or age > BASE_FEEDBACK_MAX_AGE_S:
@@ -98,7 +115,7 @@ class RosmasterSession:
         """check=True records without an armed control session (pipeline check, nothing is sent).
         plan: replay/policy trial; study: diagnostic pilot (one random correction assignment per trial)."""
         if name not in PROFILES:
-            raise ValueError('Профиль ROSMASTER: rosmaster_dock или rosmaster_pick_place')
+            raise ValueError('Выберите профиль записи ROSMASTER')
         if self.active():
             raise RuntimeError('Запись уже идёт')
         if not scene.strip():
@@ -115,7 +132,7 @@ class RosmasterSession:
         if not check:
             if self.operator.owner != owner or not self.operator.lease:
                 raise PermissionError('Сначала «Включить управление» для этой задачи')
-            if (self.operator.status or {}).get('profile') != name:
+            if (self.operator.status or {}).get('profile') != control_profile(name):
                 raise PermissionError('Управление включено не для этой задачи')
         self.stop_event.clear()
         self.outcome = 'aborted'
@@ -172,12 +189,27 @@ class RosmasterSession:
         session_id = collection or f'{time.strftime("%Y%m%d")}-{owner[:8]}'
         provenance = {}
         timing = {'sample_ms_max': 0., 'write_ms_max': 0., 'lag_ms_max': 0., 'late_steps': 0}
+        sensors=None
+        base=control_profile(name)=='rosmaster_dock'
         try:
             lease.__enter__()
             clock = ClockMap(http)
             provenance = {'robot': 'rosmaster', 'profile_version': cfg['version'], 'clock_mapping': clock.probe(),
                           'agent': 'explorer3 native serial agent', 'pipeline_check': check,
                           'motor_acknowledgement': False, 'physical_skill_verified': False}
+            if cfg.get('environment_channels'):
+                from .sensors import SensorFeed,stream_age
+                sensors=SensorFeed(interval=.2,isolated=None,robot='rosmaster',retain_history=True);sensors.start()
+                end=time.monotonic()+8
+                while time.monotonic()<end and not self.stop_event.is_set():
+                    packet=sensors.latest
+                    if packet and all(stream_age(packet,k)<1 for k in ('depth','scan','scan_rear','imu')):break
+                    self.stop_event.wait(.1)
+                else:
+                    if self.stop_event.is_set():raise InterruptedError('Подготовка записи отменена')
+                    raise RuntimeError('Не готовы глубина, оба лидара или IMU ROSMASTER')
+                provenance.update(environment_schema=cfg['sensor_schema'],
+                    environment_alignment='latest packet received on Homebrain before the mapped agent observation; no future samples')
             if self.plan:
                 from .trials import ReplayActions, PolicyActions
                 provider = (ReplayActions if self.plan['kind'] == 'replay' else PolicyActions)(self.plan)
@@ -207,6 +239,7 @@ class RosmasterSession:
                     break
                 sample_started = time.monotonic()
                 sample = self.sample(http, clock)
+                if sensors:attach_environment(sample,sensors)
                 sample_ms = (time.monotonic()-sample_started)*1000
                 timing['sample_ms_max'] = max(timing['sample_ms_max'], sample_ms)
                 write_ms = 0.
@@ -246,8 +279,9 @@ class RosmasterSession:
                     observation = {'observation.state': state_and_action(name, sample, sample)[0],
                                    'images': {cfg['camera']: {'image': sample['rgb']}},
                                    'observation_timestamp_ns': sample['observation_ns']}
+                    if sensors:observation['observation.environment_state']=sample['observation.environment_state']
                     action = provider.next(observation)
-                    self.operator.set_direct({'base': action} if name == 'rosmaster_dock' else {'arm': action})
+                    self.operator.set_direct({'base': action} if base else {'arm': action})
                     sample['requested_action'] = list(action)
                     sample['decision'] = dict(getattr(provider, 'decision_info', {}))
                 if previous is not None:
@@ -272,7 +306,7 @@ class RosmasterSession:
                                                              'action', 'measured_response_kind', 'camera_ns_mapped',
                                                              'action_time_kind','action_available_ns','action_effective_ns')
                                        if k in frame},
-                                    'observation.state': previous['base_measured'] if name == 'rosmaster_dock' else frame['observation.state'],
+                                    'observation.state': previous['base_measured'] if base else frame['observation.state'],
                                     'state_valid': True, 'camera': {'timestamp_ns': previous['camera_ns']}})
                     history[:] = history[-120:]
                     with self.lock:
@@ -305,7 +339,11 @@ class RosmasterSession:
             with self.lock:
                 self.state['error'] = f'{type(exc).__name__}: {exc}'
             catalog.event('error', 'ROSMASTER запись: '+self.state['error'])
+            if sensors and not check:
+                try:self.operator.stop('Запись окружения: '+str(exc))
+                except Exception as stop_exc:catalog.event('error','STOP после ошибки датчиков: '+str(stop_exc))
         finally:
+            if sensors:sensors.close()
             provenance['recording_timing'] = timing
             if provider is not None:
                 self.operator.set_direct(None)
@@ -366,7 +404,7 @@ class RosmasterSession:
 
     def frame(self, name, cfg, current, following, len_frames):
         state, action = state_and_action(name, current, following)
-        sent_agent_ns=following['base_sent_ns'] if name=='rosmaster_dock' else following['arm_sent_ns']
+        sent_agent_ns=following['base_sent_ns'] if control_profile(name)=='rosmaster_dock' else following['arm_sent_ns']
         effective_ns=(sent_agent_ns+following['observation_ns']-following['agent_monotonic_ns']) if sent_agent_ns is not None else None
         if following['command_source'] == 'policy':
             source = 'policy'
@@ -377,8 +415,9 @@ class RosmasterSession:
                  'source_timestamp_ns': current['camera']['source_timestamp_ns'],
                  'source_clock': current['camera']['source_clock'], 'homebrain_receive_timestamp_ns': current['homebrain_received_ns'],
                  'timestamp_kind': 'agent_receive_mapped_to_homebrain'}
-        base = name == 'rosmaster_dock'
+        base = control_profile(name) == 'rosmaster_dock'
         return {
+            **({key:current[key] for key in ('observation.environment_state','_sensor_packet')} if cfg.get('environment_channels') else {}),
             'frame_id': len_frames, 'images': {cfg['camera']: image},
             'observation.state': state, 'action': action,
             'observation_timestamp_ns': current['observation_ns'],

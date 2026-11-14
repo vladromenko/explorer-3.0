@@ -78,20 +78,21 @@ def test_readonly_source_has_no_publisher_serial_or_subprocess():
     assert not {getattr(c.func,'attr',getattr(c.func,'id','')) for c in calls}&forbidden
 
 
-def test_real_act_uses_environment_input_without_training():
+@pytest.mark.parametrize('environment_channels',[178,265])
+def test_real_act_uses_environment_input_without_training(environment_channels):
     import torch
     from lerobot.configs.types import FeatureType,PolicyFeature
     from lerobot.policies.act.configuration_act import ACTConfig
     from lerobot.policies.act.modeling_act import ACTPolicy
     torch.set_num_threads(2);torch.manual_seed(19)
     cfg=ACTConfig(input_features={'observation.state':PolicyFeature(FeatureType.STATE,(2,)),
-        'observation.environment_state':PolicyFeature(FeatureType.ENV,(178,)),
+        'observation.environment_state':PolicyFeature(FeatureType.ENV,(environment_channels,)),
         'observation.images.front':PolicyFeature(FeatureType.VISUAL,(3,64,64))},
         output_features={'action':PolicyFeature(FeatureType.ACTION,(2,))},
         pretrained_backbone_weights=None,dim_model=32,n_heads=4,dim_feedforward=64,
         n_encoder_layers=1,n_decoder_layers=1,chunk_size=2,n_action_steps=1,use_vae=False,device='cpu')
     policy=ACTPolicy(cfg).eval()
-    batch={'observation.state':torch.zeros(1,2),'observation.environment_state':torch.zeros(1,178),
+    batch={'observation.state':torch.zeros(1,2),'observation.environment_state':torch.zeros(1,environment_channels),
            'observation.images.front':torch.zeros(1,3,64,64)}
     with torch.inference_mode():
         a=policy.predict_action_chunk(batch)

@@ -103,7 +103,7 @@ class EpisodeWriter:
             vector=environment_features(packet,timestamp)
             if len(vector)!=len(self.cfg['environment_channels']) or not np.allclose(vector,sample['observation.environment_state']):
                 raise ValueError('Environment feature contract mismatch')
-            if self.sensor_archive is None:self.sensor_archive=SensorArchive(self.root/'sensors')
+            if self.sensor_archive is None:self.sensor_archive=SensorArchive(self.root/'sensors',robot=self.cfg['robot'])
             self.sensor_archive.add(packet)
             sensor_ref=f'sensors/{self.sensor_archive.count-1:06}.npz'
             frame['observation.environment_state']=vector

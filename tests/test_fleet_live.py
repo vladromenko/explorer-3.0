@@ -83,3 +83,13 @@ def test_status_file_ages_continue_to_grow_after_hub_stops(tmp_path,monkeypatch)
     value=fleet_live.read_hub_status()
     assert not value['running'] and value['robots']['tank']['ages_s']['rgb']==10.1
     assert value['robots']['tank']['uncertainty_ms']==7.5
+
+
+def test_observer_cannot_join_wrong_distribution_or_default_rosmaster_domain(monkeypatch):
+    import os
+    from agents.tank.sensors import require_ros_environment
+    monkeypatch.setenv('ROS_DISTRO','jazzy');monkeypatch.setenv('ROS_DOMAIN_ID','0')
+    with pytest.raises(RuntimeError,match='cross-distribution'):require_ros_environment('tank')
+    require_ros_environment('rosmaster');assert os.environ['ROS_DOMAIN_ID']=='30'
+    monkeypatch.setenv('ROS_DISTRO','humble');require_ros_environment('tank')
+    assert os.environ['ROS_DOMAIN_ID']=='0'

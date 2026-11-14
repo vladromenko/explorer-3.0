@@ -14,6 +14,34 @@ def calibration():
     return json.loads(Path(os.environ['EXPLORER3_TEST_CALIBRATION']).read_text())
 
 
+def test_lighting_reuses_rgb_opcode_without_motor_enable_or_heartbeat():
+    import threading
+    from types import SimpleNamespace
+    sent=[]
+    r=Runtime.__new__(Runtime);r.core_lock=threading.RLock()
+    r.core=SimpleNamespace(phase='ready',last_status=10.,clock=lambda:10.,permitted=False,
+        _send=lambda kind,data:sent.append((kind,data)) or 42)
+    result=r.set_rgb([5,70,120])
+    assert sent==[(L.RGB,b'\x05\x46\x78')]
+    assert not r.core.permitted and not result['physical_effect_confirmed']
+    for invalid in ([True,0,0],[-1,0,0],[256,0,0],[1.,2,3],[0,0],None):
+        with pytest.raises(ValueError):r.set_rgb(invalid)
+    r.core.last_status=9.
+    with pytest.raises(RuntimeError):r.set_rgb([0,0,0])
+    assert len(sent)==1
+
+
+def test_lighting_endpoint_never_acquires_runtime(monkeypatch):
+    from fastapi.testclient import TestClient
+    import agent
+    monkeypatch.setattr(agent,'config',lambda:{'homebrain':'testclient','token':'fixture','observation_enabled':False})
+    monkeypatch.setattr(agent,'runtime',None)
+    client=TestClient(agent.app)
+    response=client.post('/accessories/rgb',json={'rgb':[0,0,0]},headers={'X-Explorer-Token':'fixture'})
+    assert response.status_code==409 and agent.runtime is None
+    assert client.post('/accessories/rgb',json={'rgb':[0,0,0]}).status_code==403
+
+
 class Link:
     boot_id=42
     sequence=0

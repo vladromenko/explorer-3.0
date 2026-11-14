@@ -1,6 +1,7 @@
 """Finite subscriber-only inspection of factory ROS streams; never opens hardware."""
 import json
 import math
+import os
 import time
 
 
@@ -12,6 +13,9 @@ def timing(samples):
 
 
 def inspect(seconds=15):
+    if os.environ.get('ROS_DISTRO')!='humble':
+        raise RuntimeError('Tank probe requires ROS Humble')
+    os.environ['ROS_DOMAIN_ID']='0'
     import rclpy
     from rclpy.qos import QoSProfile,ReliabilityPolicy
     from sensor_msgs.msg import Image,CameraInfo,Imu,LaserScan

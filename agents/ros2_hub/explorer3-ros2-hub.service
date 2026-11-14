@@ -2,7 +2,7 @@
 Description=Explorer ROS 2 observation hub (no motor commands)
 After=network-online.target
 [Service]
-ExecStart=/usr/bin/docker run --rm --name explorer3-ros2-hub --network host --user 1000:1000 --read-only --cap-drop ALL --security-opt no-new-privileges --env FASTRTPS_DEFAULT_PROFILES_FILE=/workspace/agents/ros2_hub/fastdds-hub.xml --tmpfs /tmp:rw,nosuid,nodev,size=128m --mount type=bind,src=/home/jetsonnx/Projects/explorer-3.0,dst=/workspace,readonly --mount type=bind,src=/home/jetsonnx/.local/share/explorer3/configs,dst=/data/configs,readonly --mount type=bind,src=/home/jetsonnx/.local/share/explorer3/ros2-hub,dst=/data/ros2-hub explorer3-ros2-hub:jazzy
+ExecStart=/usr/bin/docker run --rm --name explorer3-ros2-hub --network host --user 1000:1000 --read-only --cap-drop ALL --security-opt no-new-privileges --env FASTRTPS_DEFAULT_PROFILES_FILE=/workspace/agents/ros2_hub/fastdds-hub.xml --mount type=bind,src=/run/avahi-daemon,dst=/run/avahi-daemon,readonly --tmpfs /tmp:rw,nosuid,nodev,size=128m --mount type=bind,src=/home/jetsonnx/Projects/explorer-3.0,dst=/workspace,readonly --mount type=bind,src=/home/jetsonnx/.local/share/explorer3/configs,dst=/data/configs,readonly --mount type=bind,src=/home/jetsonnx/.local/share/explorer3/ros2-hub,dst=/data/ros2-hub explorer3-ros2-hub:jazzy
 ExecStop=/usr/bin/docker stop --time 10 explorer3-ros2-hub
 Restart=on-failure
 RestartSec=5

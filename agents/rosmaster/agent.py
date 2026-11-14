@@ -157,6 +157,13 @@ def mirror_config(value:dict=Body(...)):
     except (ValueError,PermissionError) as exc:raise HTTPException(409,str(exc)) from exc
 
 
+@app.post('/accessories/rgb')
+def lighting(value:dict=Body(...)):
+    if runtime is None:raise HTTPException(409,'Подсветка доступна после подключения робота к Explorer; автоматического перехвата нет')
+    try:return runtime.set_rgb(value.get('rgb'))
+    except (ValueError,RuntimeError,PermissionError) as exc:raise HTTPException(409,str(exc)) from exc
+
+
 @app.post('/preset')
 def preset(value:dict=Body(...)):
     if runtime is None:raise HTTPException(409,'Runtime not acquired')

@@ -72,7 +72,7 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
     <div class="row" style="margin-top:6px"><button onclick="send({action:'leader_off'})">Отключить Leader</button></div>
    </details></div>
   <div class="card"><h2>Запись показа</h2>
-   <div class="row"><select id="rprof"><option value="rosmaster_pick_place">Кубик → коробка (рука)</option><option value="rosmaster_dock">Подъезд к цели (база)</option></select>
+   <div class="row"><select id="rprof"><option value="rosmaster_pick_place">Кубик → коробка (рука)</option><option value="rosmaster_dock">Подъезд к цели (база)</option><option value="rosmaster_pick_place_rgbd_lidar">Рука + глубина и лидары</option><option value="rosmaster_dock_rgbd_lidar">База + глубина и лидары</option></select>
     <input id="rscene" value="scene-01" size="8" title="Расстановка: меняйте при новой расстановке предметов"></div>
    <div class="help">Задача записи определяет управление: рука или шасси.</div>
    <div class="row" style="margin-top:8px" id="recstart"><button class="go" onclick="startRecording()">● Начать запись</button></div>
@@ -90,6 +90,11 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
    <div class="row" style="margin-top:8px"><span class="help">Яркость показа:</span><button onclick="light(0)">как есть</button><button onclick="light(2)">ярче</button><b id="lightv" class="help">Как есть</b></div>
    <span class="help">В ручном управлении расстояние до препятствий контролирует оператор.</span>
    <div class="help">Джойстик: левый стик — езда, LB/RB — поворот, правый стик — рука, крестовина — высота/наклон, LT/RT — клешня, B — стоп.</div></details>
+  <details class="card"><summary>Подсветка робота</summary>
+   <div class="help">Нижняя RGB-подсветка. Доступна после подключения робота к Explorer; двигатели эти кнопки не включают.</div>
+   <div class="row"><button onclick="send({action:'rgb',rgb:[0,0,0]})">Выключить</button><button onclick="send({action:'rgb',rgb:[80,80,80]})">Белый</button><button onclick="send({action:'rgb',rgb:[0,70,50]})">Бирюзовый</button>
+   <input type="color" aria-label="Цвет подсветки робота" value="#004632" onchange="send({action:'rgb',rgb:this.value.slice(1).match(/../g).map(v=>parseInt(v,16))})"></div>
+  </details>
   <details class="card"><summary>Журнал</summary><div id="log"></div></details>
   <span hidden><i id="socbar"></i><span id="soc"></span><span id="volts"></span><span id="left"></span><span id="batnote"></span><span id="mstate"></span><span id="mres"></span></span>
 </aside></main>
@@ -99,15 +104,16 @@ function clearControls(){for(const k in keys)lockedKeys.add(k);keys={};padBlocke
 function releaseEditorFocus(){const el=document.activeElement;if(el&&el.blur)el.blur();}
 function profileChanged(){
  send({action:'stop'});$('control-profile').blur();
- if($('control-profile').value!=='rosmaster_manual')$('rprof').value=$('control-profile').value;
+ if($('control-profile').value!=='rosmaster_manual')$('rprof').value=$('control-profile').value+($('rprof').value.endsWith('_rgbd_lidar')?'_rgbd_lidar':'');
  try{localStorage.setItem('explorerManualProfile',$('control-profile').value)}catch(e){}
  profileControls();
 }
 function startRecording(){
  clearControls();
  const profile=$('rprof').value;
- $('control-profile').value=profile;profileControls();
- try{localStorage.setItem('explorerManualProfile',profile)}catch(e){}
+ const motorProfile=profile.replace(/_rgbd_lidar$/,'');
+ $('control-profile').value=motorProfile;profileControls();
+ try{localStorage.setItem('explorerManualProfile',motorProfile)}catch(e){}
  send({action:'record_start',profile,category:$('rcat').value,scene:$('rscene').value,observing:true});
 }
 function profileControls(){

@@ -2,6 +2,7 @@
 import argparse
 import json
 import math
+import os
 from pathlib import Path
 import subprocess
 import time
@@ -18,6 +19,9 @@ def battery_summary(samples):
 
 
 def ros_observe(seconds):
+    if os.environ.get('ROS_DISTRO')!='humble':
+        raise RuntimeError('Tank probe requires ROS Humble')
+    os.environ['ROS_DOMAIN_ID']='0'
     import rclpy
     from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
     from std_msgs.msg import UInt16

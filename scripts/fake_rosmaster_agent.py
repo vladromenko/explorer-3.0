@@ -102,5 +102,12 @@ def preset(value: dict = Body(...)):
     log('preset', value); return {}
 
 
+@app.post('/accessories/rgb')
+def rgb(value:dict=Body(...)):
+    if not S['acquired']:raise HTTPException(409,'Robot not acquired')
+    log('rgb',value)
+    return {'physical_effect_confirmed':False}
+
+
 if __name__ == '__main__':
     uvicorn.run(app, host='127.0.0.1', port=int(sys.argv[1]), log_level='warning')

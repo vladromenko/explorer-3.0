@@ -24,7 +24,7 @@ meta={'boot_id':'fixture-only','clock_pair':{'monotonic_ns':now,'ros_time_ns':wa
 clock=ClockAlignment();clock.add({'before_ns':now-1_000_000,'after_ns':now,'remote':meta})
 base={'source_timestamp_ns':wall,'frame_id':'optical','sequence':1,'received_ns':now,'age_s':0.}
 streams={
- 'rgb':{**base,'encoding':'rgb8'},'depth':{**base,'encoding':'16UC1','unit':'mm'},
+ 'rgb':{**base,'encoding':'rgb8'},'depth':{**base,'encoding':'mono16','unit':'mm'},
  'rgb_info':{**base,'width':4,'height':3,'k':[2.,0.,2.,0.,2.,1.,0.,0.,1.],
              'p':[2.,0.,2.,0.,0.,2.,1.,0.,0.,0.,1.,0.],'d':[],'distortion_model':'plumb_bob'},
  'scan':{**base,'frame_id':'lidar','angle_min':0.,'angle_increment':.1,'range_min':.05,'range_max':12.,'scan_time':.1,'time_increment':.001},
@@ -39,6 +39,7 @@ sent,errors=gateway.publish_packet('tank',packet,clock)
 assert not errors,errors
 assert set(sent)==set(streams)-{'tf_static'}
 depth=node.publishers['/explorer3/robots/tank/depth'].messages[0]
+assert depth.encoding=='16UC1'
 assert np.frombuffer(bytes(depth.data),'<u2').tolist()==[1234]*12 and depth.is_bigendian==0
 scan=node.publishers['/explorer3/robots/tank/scan'].messages[0]
 assert scan.header.frame_id=='tank/lidar' and np.isnan(scan.ranges[-1])

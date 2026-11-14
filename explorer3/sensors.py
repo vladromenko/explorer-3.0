@@ -9,6 +9,7 @@ import json
 import threading
 import time
 import uuid
+from collections import deque
 from pathlib import Path
 
 import httpx
@@ -144,15 +145,18 @@ class SensorClient:
 
 class SensorFeed:
     """One bounded-rate reader; network and compression stay outside control loops."""
-    def __init__(self,interval=.5,isolated=False,robot='tank'):
+    def __init__(self,interval=.5,isolated=False,robot='tank',retain_history=False):
         self.interval=interval;self.latest=None;self.error=None;self.thread=None
         self.isolated=isolated
         self.robot=robot
+        self.history=deque(maxlen=12 if retain_history else 1)
+        self.history_lock=threading.Lock()
         self.done=threading.Event()
 
     def start(self):
         if self.thread and self.thread.is_alive():return
         self.latest=None;self.error=None
+        with self.history_lock:self.history.clear()
         self.done.clear();self.thread=threading.Thread(target=self._run,daemon=True);self.thread.start()
 
     def _run(self):
@@ -169,6 +173,7 @@ class SensorFeed:
                     except Exception:
                         if alternate:packet=alternate.snapshot()
                         else:raise
+                    with self.history_lock:self.history.append(packet)
                     self.latest=packet;self.error=None
                 except Exception as exc:self.error=f'{type(exc).__name__}: {exc}'
                 self.done.wait(max(.05,self.interval-(time.monotonic()-start)))
@@ -180,6 +185,10 @@ class SensorFeed:
     def close(self):
         self.done.set()
         if self.thread:self.thread.join(timeout=4)
+
+    def at_or_before(self,observation_ns):
+        with self.history_lock:
+            return next((p for p in reversed(self.history) if p['received_ns']<=observation_ns),None)
 
 
 class SensorArchive:

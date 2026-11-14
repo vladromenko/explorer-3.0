@@ -9,12 +9,12 @@ from fastapi.responses import HTMLResponse
 from starlette.websockets import WebSocketDisconnected
 from nicegui import app
 from .rosmaster_control import operator, request, connection, ensure_agent
-from .rosmaster_session import RosmasterSession, PROFILES
+from .rosmaster_session import RosmasterSession, PROFILES,control_profile
 from .paths import DATA
 from . import local_work
 
 # Actions that open the robot (serial/camera/motors). STOP and status reads are never gated.
-HARDWARE_ACTIONS={'acquire','enable','prepare','mirror_on','mirror_toggle','leader','record_start','trial_start','preset','pair_capture'}
+HARDWARE_ACTIONS={'acquire','enable','prepare','mirror_on','mirror_toggle','leader','record_start','trial_start','preset','pair_capture','rgb'}
 
 recorder=RosmasterSession(operator)
 _plans={'at':0,'items':[]}
@@ -147,6 +147,9 @@ async def websocket(socket:WebSocket):
             elif action=='restore':
                 await asyncio.to_thread(operator.stop,'Возврат прежнего управления')
                 await asyncio.to_thread(request,'/restore',{},45);state['notice']='Прежнее управление восстановлено'
+            elif action=='rgb':
+                await asyncio.to_thread(request,'/accessories/rgb',{'rgb':value.get('rgb')})
+                state['notice']='Команда подсветки отправлена. Включение цвета проверяется визуально.'
             elif action=='prepare' and operator.owner==owner and operator.lease:
                 # Already enabled: raise the arm with a preset instead of a new session.
                 await asyncio.to_thread(request,'/preset',{'lease':operator.lease,'name':'up'})
@@ -179,12 +182,13 @@ async def websocket(socket:WebSocket):
                 else:name=value.get('profile');study=None
                 if name not in PROFILES:raise ValueError('Выберите задачу ROSMASTER')
                 source='policy' if plan else 'human'
+                motor_profile=control_profile(name)
                 current=operator.status or {}
-                if not (operator.owner==owner and operator.lease and current.get('profile')==name and current.get('source','human')==source):
+                if not (operator.owner==owner and operator.lease and current.get('profile')==motor_profile and current.get('source','human')==source):
                     if operator.lease:await asyncio.to_thread(operator.stop,'Переключение на задачу '+name)
                     health=await asyncio.to_thread(lambda:(ensure_agent(),request('/health'))[1])
                     if not health.get('hardware_open'):await asyncio.to_thread(request,'/acquire',{},45)
-                    await asyncio.to_thread(operator.enable,owner,name,state['mode'],value.get('observing') is True,source)
+                    await asyncio.to_thread(operator.enable,owner,motor_profile,state['mode'],value.get('observing') is True,source)
                 recorder.start(owner,name,str(value.get('scene','scene-01'))[:60],
                                'correction' if value.get('category')=='correction' else 'demonstration',
                                str(value.get('collection') or time.strftime('%Y-%m-%d')+'-'+name)[:80],plan=plan,study=study)

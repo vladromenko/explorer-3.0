@@ -2,6 +2,7 @@
 import threading
 import time
 import math
+import os
 import numpy as np
 import cv2
 
@@ -27,6 +28,9 @@ class Observer:
     def _run(self):
         node=None;context=None;executor=None
         try:
+            if os.environ.get('ROS_DISTRO')!='jazzy':
+                raise RuntimeError('ROSMASTER observer requires ROS Jazzy')
+            os.environ['ROS_DOMAIN_ID']='30'
             import rclpy
             from rclpy.context import Context
             from rclpy.executors import SingleThreadedExecutor

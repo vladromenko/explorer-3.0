@@ -93,7 +93,7 @@ async def scenario():
         assert get(AGENT+'/health')['armed']
         await page.locator('button.stop.big').click();await page.wait_for_timeout(500)
         # Render lifecycle states synchronously, without touching a real robot or creating a job.
-        for profile in ('rosmaster_dock','rosmaster_pick_place'):
+        for profile in ('rosmaster_dock','rosmaster_pick_place','rosmaster_dock_rgbd_lidar','rosmaster_pick_place_rgbd_lidar'):
             await page.get_by_label('Что управляем').select_option('rosmaster_manual')
             await page.wait_for_timeout(400)
             await page.select_option('#rprof',profile)
@@ -101,14 +101,14 @@ async def scenario():
             await page.wait_for_function("document.getElementById('rstate').textContent.includes('Запись идёт')",timeout=90000)
             assert await page.evaluate("document.activeElement.id!=='rscene'")
             assert await page.locator('#rscene').is_disabled()
-            assert await page.input_value('#control-profile')==profile
+            assert await page.input_value('#control-profile')==profile.removesuffix('_rgbd_lidar')
             assert await page.locator('#control-profile').is_disabled()
             n=len(get(AGENT+'/_requests'))
             for key in ('KeyW','ArrowUp','KeyN'):
                 await page.keyboard.down(key);await page.wait_for_timeout(250);await page.keyboard.up(key)
             packets=[r['value'] for r in get(AGENT+'/_requests')[n:] if r['kind']=='command']
             assert packets and get(AGENT+'/health')['armed']
-            if profile=='rosmaster_dock':
+            if profile.removesuffix('_rgbd_lidar')=='rosmaster_dock':
                 assert all(not any(p['arm']) and not p['grip'] for p in packets)
                 assert any(p['drive'][0]>0 for p in packets)
             else:
@@ -118,6 +118,15 @@ async def scenario():
             await page.wait_for_function("document.getElementById('rstate').textContent.startsWith('Сохранён показ')",timeout=90000)
             await page.locator('button.stop.big').click();await page.wait_for_timeout(500)
         assert not any(r['kind']=='profile_rejection' for r in get(AGENT+'/_requests'))
+        # Lighting is independent of enable/heartbeat; after STOP it cannot restart motion.
+        n=len(get(AGENT+'/_requests'))
+        await page.get_by_text('Подсветка робота',exact=True).click()
+        await page.get_by_role('button',name='Бирюзовый',exact=True).click()
+        await page.wait_for_timeout(300)
+        requests=get(AGENT+'/_requests')[n:]
+        assert any(r['kind']=='rgb' and r['value']['rgb']==[0,70,50] for r in requests)
+        assert not any(r['kind'] in ('acquire','session','command') for r in requests)
+        assert not get(AGENT+'/health')['armed']
         states=await page.evaluate('''() => {
           const result=[];
           for(const recording of [{phase:'preparing',frames:0},{phase:'recording',frames:0},
@@ -142,6 +151,8 @@ async def scenario():
                 'stop_cancels_pending_acquire_enable':True,'wrong_profile_inputs_ignored':True,
                 'intended_inputs_received':True,'held_key_not_replayed_after_stop':True,
                 'recording_preparation_and_saved_states':True,'recording_arm_base_profile_switches':True,
+                'recorded_profiles':['rosmaster_dock','rosmaster_pick_place','rosmaster_dock_rgbd_lidar','rosmaster_pick_place_rgbd_lidar'],
+                'lighting_after_stop_without_enable':True,
                 'enable_and_record_release_editor_focus':True,'editor_held_key_not_replayed':True,'errors':errors}
 def main():
     OUT.mkdir(exist_ok=True);data=Path(tempfile.mkdtemp(prefix='explorer3-profile-check-'));(data/'configs').mkdir()
@@ -152,6 +163,7 @@ def main():
     procs=[]
     try:
         for args,env,name in [([str(ROOT/'.venv/bin/python'),str(ROOT/'scripts/fake_rosmaster_agent.py'),'8050'],os.environ,'agent'),
+                ([str(ROOT/'.venv/bin/python'),str(ROOT/'tests/rosmaster_sensor_fixture.py')],{**os.environ,'EXPLORER3_DATA':str(data),'PYTHONPATH':str(ROOT)},'sensors'),
                 ([str(ROOT/'.venv/bin/python'),'-m','explorer3.app'],{**os.environ,'EXPLORER3_DATA':str(data),'EXPLORER3_PORT':'8051','EXPLORER3_HOST':'127.0.0.1'},'ui')]:
             procs.append(subprocess.Popen(args,cwd=ROOT,env=env,stdout=open(data/(name+'.log'),'w'),stderr=subprocess.STDOUT))
         wait(AGENT+'/health');wait(UI+'/api/health')

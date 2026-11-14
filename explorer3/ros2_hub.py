@@ -97,6 +97,14 @@ class Gateway:
                     msg=Image();header(msg,info)
                     msg.height,msg.width=value.shape[:2]
                     msg.encoding='rgb8' if key=='rgb' else info['encoding']
+                    if key=='depth':
+                        # Aurora names its millimetre depth mono16. Expose the
+                        # standard depth encoding; preserve the source in packets.
+                        if info.get('unit')=='mm' and value.dtype.kind=='u' and value.dtype.itemsize==2:
+                            msg.encoding='16UC1'
+                        elif info.get('unit')=='m' and value.dtype.kind=='f' and value.dtype.itemsize==4:
+                            msg.encoding='32FC1'
+                        else:raise ValueError('Unsupported depth units or dtype')
                     little=np.ascontiguousarray(value.astype(value.dtype.newbyteorder('<')))
                     msg.is_bigendian=0;msg.step=little.strides[0];msg.data=little.tobytes()
                 elif key in ('rgb_info','depth_info'):
@@ -157,6 +165,9 @@ class Gateway:
 
 
 def main():
+    import os
+    if os.environ.get('ROS_DISTRO')!='jazzy' or os.environ.get('ROS_DOMAIN_ID')!='73' or os.environ.get('ROS_LOCALHOST_ONLY')!='1':
+        raise RuntimeError('Hub requires Jazzy, isolated domain 73 and localhost-only discovery')
     import rclpy
     from std_msgs.msg import String
     rclpy.init();node=rclpy.create_node('explorer3_observation_hub');gateway=Gateway(node)
