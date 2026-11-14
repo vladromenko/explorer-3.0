@@ -85,15 +85,8 @@ def require_physical(plan):
     local_work.require_hardware_mode(profile(plan['profile'])['robot'])
     if plan['profile'] not in {'so101_pick_place','tank_dock','tank_dock_rgbd_lidar','rosmaster_dock','rosmaster_pick_place','rosmaster_dock_rgbd_lidar','rosmaster_pick_place_rgbd_lidar'}:
         raise PermissionError('Исполнитель этого профиля ещё не принят; план сохранён без движения')
-    approval=DATA/'configs'/('trial-'+plan['id']+'-authorized.json')
-    if not approval.exists():
-        raise PermissionError('Нужен отдельный физический блок для этого плана испытания')
-    value=json.loads(approval.read_text())
-    if value.get('trial_id')!=plan['id'] or value.get('expires_at',0)<=time.time():
-        raise PermissionError('Разрешение на испытание отсутствует или истекло')
-    if value.get('plan_sha256')!=plan_hash(plan):
-        raise PermissionError('План изменился или разрешение старого формата; требуется подтверждение точного плана')
-    if plan['kind']=='policy':verify_policy_artifacts(plan)
+    # The operator's own start click is the authorization; no separate expiring permit file.
+    if plan['kind']=='policy':verify_policy_artifacts(plan)   # weights still match the saved plan
 
 
 class ReplayActions:

@@ -42,13 +42,11 @@ def test_policy_bundle_includes_normalization_and_config(tmp_path):
     with pytest.raises(ValueError,match='Старый план'):trials.verify_policy_artifacts({'checkpoint':str(tmp_path)})
 
 
-def test_changed_trial_plan_invalidates_explicit_permission(tmp_path,monkeypatch):
+def test_trial_start_needs_no_separate_permit_file(tmp_path,monkeypatch):
     monkeypatch.setattr(trials,'DATA',tmp_path);monkeypatch.setattr(trials.local_work,'require_hardware_mode',lambda *_:None)
-    (tmp_path/'trials').mkdir();(tmp_path/'configs').mkdir()
     plan={'id':'a'*32,'kind':'replay','profile':'rosmaster_dock','max_duration_s':1.}
-    (tmp_path/'trials'/(plan['id']+'.json')).write_text(json.dumps(plan))
-    trials.authorize(plan['id']);trials.require_physical(plan)
-    with pytest.raises(PermissionError,match='План изменился'):trials.require_physical({**plan,'max_duration_s':60.})
+    assert trials.require_physical(plan) is None          # the operator's start click is the authorization
+    with pytest.raises(ValueError,match='Неизвестный профиль'):trials.require_physical({**plan,'profile':'unknown_profile'})
 
 
 def test_replay_refuses_incomplete_initial_measurement(tmp_path,monkeypatch):

@@ -40,9 +40,8 @@ def series(task=None):
 
 def create_series(task,profile,operator,description,repeat_layout=None):
     if task not in TASKS or profile not in TASKS[task][1]:raise ValueError('Выберите вариант этой задачи')
-    operator=operator.strip();description=description.strip()
-    if not operator or len(operator)>80:raise ValueError('Укажите оператора (до 80 знаков)')
-    if not description or len(description)>500:raise ValueError('Кратко опишите расстановку (до 500 знаков)')
+    operator=(operator or '').strip()[:80] or 'оператор'
+    description=(description or '').strip()[:500] or 'без описания'
     initialize()
     with catalog.connect() as db:
         db.execute('BEGIN IMMEDIATE')

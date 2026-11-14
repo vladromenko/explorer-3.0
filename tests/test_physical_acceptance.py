@@ -33,7 +33,7 @@ def test_charger_accepts_full_battery_but_requires_confirmation_and_fresh_power(
     assert evaluate('tank','charger',rows,True)['result']=='PASS'
     for row in rows:row['battery_fresh']=False
     assert evaluate('tank','charger',rows,True)['result']=='FAIL'
-    for row in rows:row.update(battery_fresh=True,battery_v=6.8)
+    for row in rows:row.update(battery_fresh=True,battery_v=6.0)   # below the 6.2 V deep-discharge stop
     assert evaluate('tank','charger',rows,True)['result']=='FAIL'
 
 

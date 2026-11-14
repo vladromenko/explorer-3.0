@@ -81,13 +81,14 @@ def test_tank_permission_does_not_enable_other_robots(tmp_path,monkeypatch):
     assert not local_work.hardware_allowed('so101') and not local_work.hardware_allowed('rosmaster')
 
 
-def test_tank_trial_still_requires_plan_specific_permission(tmp_path,monkeypatch):
+def test_tank_trial_needs_no_permit_files(tmp_path,monkeypatch):
     monkeypatch.setattr(trials,'DATA',tmp_path)
     monkeypatch.setattr(local_work,'require_hardware_mode',lambda robot:None)
     (tmp_path/'validation').mkdir();(tmp_path/'configs').mkdir()
     plan={'id':'1'*32,'profile':'tank_dock'}
-    # No separate Tank acceptance file any more: only the plan's own run permission.
-    with pytest.raises(PermissionError,match='отдельный физический блок'):trials.require_physical(plan)
+    # No acceptance or per-plan permit files: a replay plan for Tank is accepted as is.
+    plan['kind']='replay'
+    assert trials.require_physical(plan) is None
 
 
 def test_handoff_after_reboot_preserves_history_and_captures_current_services(tmp_path,monkeypatch):
