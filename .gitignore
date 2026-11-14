@@ -15,3 +15,5 @@ runtime/
 .playwright/
 
 MUJOCO_LOG.TXT
+
+.venv-browser/
