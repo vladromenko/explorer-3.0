@@ -57,7 +57,8 @@ def evaluate(checkpoint, datasets, destination, max_samples=32, role='diagnostic
             'action_min': np.min(predictions, axis=0).tolist(), 'action_max': np.max(predictions, axis=0).tolist(),
             'official_forward_loss_mean': float(np.mean(losses)),
             'replan_latency_seconds_p50_p95_max': np.percentile(durations, [50,95,100]).tolist()})
-    result = {'checkpoint': str(checkpoint), 'policy': cfg.type, 'role': role, 'datasets': reports,
+    from .training_drafts import checkpoint_hash
+    result = {'checkpoint': str(checkpoint), 'checkpoint_bundle_sha256':checkpoint_hash(checkpoint), 'policy': cfg.type, 'role': role, 'datasets': reports,
         'normalization': 'checkpoint_train_processors_only', 'motor_commands_sent': False,
         'physical_skill_verified': False, 'limitation': 'Offline ошибки относительно показов не измеряют успешность задачи; sampled replan latency includes postprocessing, excludes sensors/network.'}
     Path(destination).write_text(json.dumps(result, indent=2, ensure_ascii=False))

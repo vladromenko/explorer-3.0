@@ -54,9 +54,12 @@ class CooperationWorld:
         return str(path)
 
     def snapshot(self):
+        from .state_codec import dump
+        state_sha=dump(self.output/'initial-state.json',self.initial)
         self.overview('world-before')
         return {'scene':'shared_dock_'+self.scene+'_v2','seed':self.seed,'stage':self.stage,'domain':'sim',
             'model_sha256':self.world.manifest['xml_sha256'],
+            'initial_state_sha256':state_sha,
             'recipient':self.camera('tank','recipient-before'),
             'donor':self.camera('rosmaster','donor-before'),
             'conditions':{'recipient_stationary':bool(np.linalg.norm(self.world.views['tank'].env.data.qvel)<1e-6),'fixed_scene':True},

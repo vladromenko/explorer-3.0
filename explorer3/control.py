@@ -23,6 +23,8 @@ class Control:
         self.base_keys=set()
         self.base_inputs={}
         self.maintenance=False
+        self.activity=None
+        self.generation=0
 
     def authorized(self):
         if not local_work.hardware_allowed(self.robot):
@@ -45,8 +47,10 @@ class Control:
         self.stop('Смена робота: удержанные команды отменены')
         self.robot=robot
 
-    def acquire(self, owner: str):
+    def acquire(self, owner: str, *, expected_generation=None):
         with self.lock:
+            if expected_generation is not None and expected_generation!=self.generation:
+                raise PermissionError('Запуск отменён последним STOP')
             if self.maintenance:
                 raise RuntimeError('Идёт передача управления')
             if not self.authorized():
@@ -55,6 +59,9 @@ class Control:
                 raise RuntimeError('Ручное управление уже занято')
             if self.robot not in {'so101','tank'}:
                 raise RuntimeError('Драйвер этого робота ещё не проверен')
+            from .resources import ResourceLease
+            self.activity=ResourceLease('physical-activity',shared=True)
+            self.activity.__enter__()
             self.base_keys.clear()
             self.base_inputs.clear()
             self.last_stop_reason=None
@@ -79,6 +86,7 @@ class Control:
 
     def stop(self, reason='STOP'):
         with self.lock:
+            self.generation+=1
             if self.owner is not None or self.last_stop_reason is None:
                 self.last_stop_reason=reason
             self.base_keys.clear()
@@ -87,6 +95,8 @@ class Control:
             self.owner=None
             self.expires=0
             self.mode='Наблюдение'
+            if self.activity:
+                self.activity.__exit__(None,None,None);self.activity=None
         catalog.event('info',reason)
 
     def watchdog(self):

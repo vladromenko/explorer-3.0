@@ -66,15 +66,18 @@ class Operator:
         self.mirror=False;self.done=threading.Event();self.operation=threading.Lock()
         self.leader_count=0;self.leader_owner=None;self.leader_error=None
         self.direct=None;self.source=None;self.mirror_ref=None;self.arm_mode=None
+        self.activity=None
         self.thread=threading.Thread(target=self.run,daemon=True);self.thread.start()
 
     def input(self,owner,value):
         with self.lock:self.inputs[owner]=(time.monotonic(),value)
 
-    def enable(self,owner,profile,arm_mode,observing,source='human'):
+    def enable(self,owner,profile,arm_mode,observing,source='human',*,expected_generation=None):
         if not enabled():raise PermissionError('Ручное управление ROSMASTER ещё не разрешено')
         with self.operation:
             with self.lock:
+                if expected_generation is not None and expected_generation!=self.generation:
+                    raise PermissionError('Запуск отменён последним STOP')
                 if self.lease:
                     if self.owner==owner:return 'already'
                     raise RuntimeError('Управление уже включено в другой вкладке или на другом устройстве. Нажмите STOP и включите здесь')
@@ -83,16 +86,27 @@ class Operator:
                 if any(intent['drive']+intent['arm']+[intent['pitch'],intent['roll'],intent['grip']]):
                     raise RuntimeError('Отпустите клавиши и джойстик перед включением')
                 generation=self.generation
-            response=request('/session',{'profile':profile,'arm_mode':arm_mode,'observing':observing,'source':source})
+            from .resources import ResourceLease
+            activity=ResourceLease('physical-activity',shared=True)
+            activity.__enter__()
+            try:
+                response=request('/session',{'profile':profile,'arm_mode':arm_mode,'observing':observing,'source':source})
+                if not isinstance(response.get('lease'),str) or not response['lease']:raise ValueError('Агент не вернул идентификатор сессии')
+            except BaseException:
+                activity.__exit__(None,None,None)
+                raise
             with self.lock:
                 if generation!=self.generation:
-                    request('/stop',{})
+                    try:request('/stop',{})
+                    finally:activity.__exit__(None,None,None)
                     raise RuntimeError('STOP во время включения')
+                self.activity=activity
                 self.owner=owner;self.lease=response['lease'];self.sequence=0;self.error=None;self.direct=None;self.source=None;self.arm_mode=arm_mode
                 self.status={'profile':profile,'armed':True,'source':source}
 
     def stop(self,reason='STOP'):
         with self.lock:
+            activity=self.activity;self.activity=None
             stamp,_=self.inputs.get(self.owner,(0,ZERO))
             if self.lease is not None:
                 self.record({'reason':reason,'source':'homebrain','browser_age_s':round(time.monotonic()-stamp,3) if stamp else None,
@@ -102,6 +116,12 @@ class Operator:
         try:request('/stop',{},timeout=1)
         except (OSError,ValueError,httpx.HTTPError,RuntimeError) as exc:
             self.error=reason+'; подтверждение STOP не получено: '+str(exc)
+        finally:
+            if activity:activity.__exit__(None,None,None)
+
+    def release_activity(self):
+        if self.activity:
+            self.activity.__exit__(None,None,None);self.activity=None
 
     def lost(self,owner):
         with self.lock:
@@ -202,6 +222,7 @@ class Operator:
             if generation!=self.generation:return
             self.generation+=1;self.lease=None;self.owner=None;self.mirror=False
             self.error='Робот остановил сессию: '+str(reason)
+            self.release_activity()
         self.record({'reason':self.error,'source':'agent','detail':detail,**self.stats})
         try:request('/stop',{},timeout=1)
         except Exception:pass
@@ -263,6 +284,7 @@ class Operator:
                         reason=self.status.get('reason')
                         self.lease=None;self.owner=None;self.mirror=False;self.generation+=1
                         self.error='Сессия завершена: '+str(reason)
+                        self.release_activity()
                         done=True
                     else:done=False
                 else:done=False

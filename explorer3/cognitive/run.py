@@ -88,16 +88,24 @@ def model_proposal(work,request):
 def execute(config,work):
     store.initialize();m=None;sim=None;work=Path(work)
     started=time.monotonic()
+    experiment=None
+    if config.get('comparison_plan'):
+        from . import experiments
+        experiment=experiments.load(config['comparison_plan'])
+        if experiments.cell_config(config['comparison_plan'],config['comparison_cell'])!=config:
+            raise ValueError('Comparison cell parameters changed')
     try:
         with ResourceLease('cognitive-mission'):
             sim=Sim(work,config['seed'],config.get('scene','workshop'));snapshot=sim.request('snapshot')
             initial=[]
             for key in ('recipient','donor'):
                 camera=snapshot[key]
-                item=observe(camera['robot'],{**camera['measurement'],'conditions':snapshot['conditions'],
+                item=observe(camera['robot'],{**camera['measurement'],'conditions':{**snapshot['conditions'],
+                    'observation_skill_available':True,'recipient_can_continue':False},
                     'simulation_time_s':camera['simulation_time_s'],'scene':snapshot['scene'],'model_sha256':snapshot['model_sha256']},'mujoco_robot_rgb',camera['image'])
                 initial.append(item.id)
             m=broker.create_mission('ROSMASTER уточняет фиксированную цель, Tank подъезжает и останавливается',initial)
+            if experiment:m=update(m['id'],memory_snapshot=experiment['memory_snapshot'])
             m=update(m['id'],job_id=work.name,comparison=config['comparison'])
             (work/'mission.json').write_text(json.dumps({'mission_id':m['id']}))
             store.event(m['id'],'role_evidence',{'role':'SceneObserver','evidence_ids':initial})
@@ -108,7 +116,7 @@ def execute(config,work):
                 skill_versions={c.skill_id:c.version for c in registry.cards().values()},
                 scenes=[snapshot['scene']],seeds=[config['seed']],budgets={'model_steps':4,'format_repairs':1,'replans_per_reason':2,
                     'memory_cases':5,'helper_sim_seconds':5,'recipient_sim_seconds':30,'model_wall_seconds':100},
-                split='diagnostic',memory_updates=True,evaluator_version=registry.file_hash('explorer3/sim/cooperation.py'),
+                split=experiment['split'] if experiment else 'diagnostic',memory_updates=experiment is None,evaluator_version=registry.file_hash('explorer3/sim/cooperation.py'),
                 scene_sha256=snapshot['model_sha256'],
                 model_revision=json.loads((ROOT/'configs/cognitive-model.json').read_text())['revision'],
                 model_config_sha256=registry.file_hash('configs/cognitive-model.json'),
@@ -125,6 +133,9 @@ def execute(config,work):
                 [{'id':x['case']['id'],'status':x['case']['status'],
                     'effect':x['case']['effect'],'actual_effect':x['case']['actual_effect'],
                     'scope_problems':x['scope_problems']} for x in memory['accepted']],manifest.model_config_sha256)
+            from .assistance import select
+            request['assistance']=select(['continue','observe','human'],store.evidence(initial,domain='sim'))
+            store.event(m['id'],'assistance_ranked',{'role':'AssistanceBroker',**request['assistance']})
             allowed=request['allowed_choices']
             (work/'decision-protocol.json').write_text(store.encoded({'version':DECISION_PROTOCOL,
                 'source_sha256':registry.file_hash('explorer3/cognitive/protocol.py'),
@@ -146,6 +157,9 @@ def execute(config,work):
                 result={'mission_id':m['id'],'outcome':'unknown','proposal':proposal,'training_started':False}
             else:result=execute_graph(sim,m,initial,snapshot,proposal,memory,usable,config,work)
             result.update(wall_time_s=time.monotonic()-started,physical_robot_access=False,training_started=False)
+            if experiment:
+                result.update(comparison_plan=config['comparison_plan'],comparison_cell=config['comparison_cell'],
+                    initial_state_sha256=snapshot.get('initial_state_sha256'),memory_updates=False)
             (work/'result.json').write_text(json.dumps(result,indent=2,ensure_ascii=False))
             return result
     except Exception as exc:
@@ -188,11 +202,12 @@ def execute_graph(sim,m,initial,snapshot,proposal,memory,usable,config,work):
             compatibility=scope,assistance_type='observation',expected_effect='Fresh visible target before docking',
             actions_provenance='geometric',actual_effect={'direct_pose_verified':False,'scene':snapshot['scene'],
                 'model_sha256':snapshot['model_sha256'],'observation_evidence_id':helper_e.id})
-        tool(m,'MemoryCurator','add_memory_candidate',failed.model_dump())
+        if manifest.memory_updates:tool(m,'MemoryCurator','add_memory_candidate',failed.model_dump())
         evidence=observe('tank',{'helper':'failure','recipient':'unknown','task':'unknown','episode':work.name,
             'compatibility_sha256':store.digest(scope),'helper_evidence_id':helper_e.id,'recipient_started':False},'fixed_outcome_verifier')
-        store.verify_case(failed.id,work.name,helper='failure',recipient='unknown',task='unknown',evidence_ids=[evidence.id],
-            verifier_version='shared-dock-v1',mission_id=m['id'],generation=m['generation'])
+        if manifest.memory_updates:
+            store.verify_case(failed.id,work.name,helper='failure',recipient='unknown',task='unknown',evidence_ids=[evidence.id],
+                verifier_version='shared-dock-v1',mission_id=m['id'],generation=m['generation'])
         raise ValueError('Helper did not establish target visibility')
     # Source is explicitly the donor's measured RGB; no invented Tank camera.
     fact=store.put_fact(WorldFact(id=uuid.uuid4().hex,subject='fixed_dock_marker',relation='visible_in_camera',
@@ -218,20 +233,21 @@ def execute_graph(sim,m,initial,snapshot,proposal,memory,usable,config,work):
             'observed_pixels':measured['measurement']['detections'],'helper_skill_version':helper.version},
         delay_s=measured['simulation_time_s'],operator_active_s=0.)
     # Diagnostic memory updates only; independent outcome never comes from LLM.
-    tool(m,'MemoryCurator','add_memory_candidate',case.model_dump())
+    if manifest.memory_updates:tool(m,'MemoryCurator','add_memory_candidate',case.model_dump())
     verifier_ids=[]
     for candidate in [case,*[AssistanceCase.model_validate(x['case']) for x in usable[:1]
                             if not store.compatibility(x['case'],recipient,'fixed_dock','sim',{'scene':snapshot['scene'],'model_sha256':snapshot['model_sha256']})]]:
         payload={**outcomes,'episode':work.name,'compatibility_sha256':store.digest(candidate.compatibility)}
         evidence=observe('tank',payload,'fixed_outcome_verifier')
-        store.verify_case(candidate.id,work.name,helper=outcomes['helper'],recipient=outcomes['recipient'],task=outcomes['task'],
-            evidence_ids=[evidence.id],verifier_version=outcomes['version'],mission_id=m['id'],generation=m['generation'])
+        if manifest.memory_updates:
+            store.verify_case(candidate.id,work.name,helper=outcomes['helper'],recipient=outcomes['recipient'],task=outcomes['task'],
+                evidence_ids=[evidence.id],verifier_version=outcomes['version'],mission_id=m['id'],generation=m['generation'])
         verifier_ids.append(evidence.id)
     manifest=ExperimentManifest.model_validate_json((work/'experiment.json').read_text())
     store.event(m['id'],'outcomes_verified',{'role':'OutcomeVerifier','measurements':outcomes,'evidence_ids':verifier_ids})
-    update(m['id'],phase='completed',outcome=outcomes['task'],verified_nodes=['observe','dock'],case_id=case.id)
+    update(m['id'],phase='completed',outcome=outcomes['task'],verified_nodes=['observe','dock'],case_id=case.id if manifest.memory_updates else None)
     return {'mission_id':m['id'],'outcome':outcomes['task'],'helper':outcomes['helper'],'recipient':outcomes['recipient'],
-        'task':outcomes['task'],'proposal':proposal,'graph':graph,'memory':memory,'case_id':case.id,
+        'task':outcomes['task'],'proposal':proposal,'graph':graph,'memory':memory,'case_id':case.id if manifest.memory_updates else None,
         'evidence_ids':initial+m['snapshot_ids']+verifier_ids,'experiment':manifest.model_dump(),
         'scientific_hypothesis_tested':False,'limitations':['privileged scripted docking teacher','fixed nominal shared scene','uncalibrated hardware model']}
 

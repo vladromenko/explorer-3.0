@@ -34,25 +34,27 @@ def assert_hardware_available(paths: list[str]) -> None:
         raise ResourceBusy(f'Нет устройств: {missing}; владельцы: {busy}')
 
 class ResourceLease:
-    def __init__(self, name: str):
+    def __init__(self, name: str, *, shared=False):
         if not name.replace('-','').replace('_','').isalnum():
             raise ValueError('Invalid lease name')
         self.name,self.file=name,None
+        self.shared=shared
 
     def __enter__(self):
         directory=DATA/'locks'
         directory.mkdir(parents=True,exist_ok=True)
         self.file=(directory/f'{self.name}.lock').open('a+')
         try:
-            fcntl.flock(self.file,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            fcntl.flock(self.file,(fcntl.LOCK_SH if self.shared else fcntl.LOCK_EX)|fcntl.LOCK_NB)
         except BlockingIOError as exc:
             self.file.close()
             self.file=None
             raise ResourceBusy(f'Ресурс занят: {self.name}') from exc
-        self.file.seek(0)
-        self.file.truncate()
-        self.file.write(str(os.getpid()))
-        self.file.flush()
+        if not self.shared:
+            self.file.seek(0)
+            self.file.truncate()
+            self.file.write(str(os.getpid()))
+            self.file.flush()
         return self
 
     def __exit__(self,*args):

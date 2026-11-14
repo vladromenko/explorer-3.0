@@ -28,6 +28,7 @@ class Session:
         self.category="demonstration"
         self.pilot=None
         self.study=None
+        self.last_episode_id=None
 
     def start(self, owner: str, name: str, scene: str, record=True, collection_id=None, category="demonstration"):
         if profile(name)['robot']=='tank' and record and bench_authorized(DATA/'configs'):
@@ -56,7 +57,7 @@ class Session:
         self.thread=threading.Thread(target=self._run,args=(name,collection_id or session_id,scene),daemon=True)
         self.thread.start()
 
-    def start_trial(self,owner,trial_id,scene,study_id=None):
+    def start_trial(self,owner,trial_id,scene,study_id=None,*,expected_generation=None):
         from . import trials
         plan=trials.load(trial_id)
         trials.require_physical(plan)
@@ -66,7 +67,8 @@ class Session:
         if not scene.strip():raise ValueError('Нужно обозначение расстановки')
         from .tank_pilot import accepted_study
         study=accepted_study(study_id,plan) if study_id else None
-        session_id=self.control.acquire(owner)
+        session_id=self.control.acquire(owner,expected_generation=expected_generation)
+        self.last_episode_id=None
         self.study=study
         self.pilot=None
         self.trial_plan=plan
@@ -205,6 +207,7 @@ class Session:
                     provenance['stop_reason']=self.control.last_stop_reason
                     provenance['heartbeat_count']=self.control.heartbeat_count
                     writer.finish(self.outcome,provenance)
+                    self.last_episode_id=writer.id
                 except Exception as exc:
                     self.error=f'Finalize: {exc}'
                     catalog.event('error',self.error)

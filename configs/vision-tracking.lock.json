@@ -1,0 +1,10 @@
+{
+  "tracker": "ultralytics.ByteTrack",
+  "ultralytics": "8.4.14",
+  "lap": "0.5.12",
+  "wheel": "lap-0.5.12-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+  "sha256": "f721ed3fd2b4f6f614870d12aec48bc44c089587930512c3187c51583c811b1c",
+  "scope": "one camera sequence; no reidentification across robots",
+  "source": "installed ultralytics/trackers/byte_tracker.py",
+  "license": "AGPL-3.0"
+}

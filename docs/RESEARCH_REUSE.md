@@ -13,7 +13,7 @@
 | Visual/dynamics randomization | protocol_adaptation | Tobin 1703.06907 / Peng 1710.06537; собственный код | `sim.variation`, seeded параметры и snapshot/restore; контакты nominal/varied проверены без обучения | Диапазоны assumed, эффект на качество ACT пока не измерен |
 | AutoIntervene-adapted | ported_algorithm, partial | 2608.07065v1 §III; собственный код | `autointervene.Memory/SupportMonitor/calibrate`; настоящий ACT выдаёт frozen features и chunk; queue/snapshot/reload проверены без обучения | Математика и дисковый roundtrip проверены на явно маркированных fixtures; подготовка памяти/порогов из frozen plan подключена к UI; online switching в общем мире проверен на fixtures; на новых trained/held-out данных не запускалась. Использован ACT ResNet18 вместо авторского backbone; не воспроизведение чисел статьи |
 | RESCUE/Kintsugi branch protocol | protocol_adaptation, partial | собственная интеграция, не воспроизведение статьи | `sim.branching`: три сопоставимые ветви, бюджеты, повтор и импорт проверенного сегмента | Browser/replay/readback PASS; не исследование эффекта человека |
-| DART-inspired | unverified | дополнительная серия | Не запускался | После основных сценариев |
+| [DART-inspired](https://proceedings.mlr.press/v78/laskey17a.html) | protocol_adaptation | noise_demonstrations + sim.capture, без старого MuJoCo | Масштаб из validation RMSE, clean/noisy budget, отдельные intent/executed/response; software tests PASS | Не полный DART covariance optimization; новый сбор и обучение не запускались |
 
 Артефакты текущей проверки: runtime `validation/corrective-a/`. Три scripted-expert записи — именно исполнения MuJoCo с контактами, не fixtures и не человеческие демонстрации. После 50 шагов ACT save/reload прошли, три rollout на seeds 10000–10002 завершились failure/task_deadline. Это проверенный тракт с отрицательным результатом короткого обучения.
 
@@ -31,13 +31,20 @@ ROHE реализована по формуле (2) статьи Fleet-DAgger: (
 |---|---|---|---|
 | [RoboOS](https://arxiv.org/abs/2505.03673), [RoboOS-NeXT](https://arxiv.org/abs/2510.26536) | [FlagOpen/RoboOS](https://github.com/FlagOpen/RoboOS), Apache-2.0 | `cognitive.registry`, типизированный TaskGraph, роли, broker и временные evidence: план отделён от роботных навыков и памяти | Архитектурная адаптация, не установка RoboBrain/облачного RoboOS. Никакого объявления новой архитектуры |
 | [PhysMem](https://arxiv.org/abs/2602.20323) | [verification.py](https://github.com/haoyangli16/PhysMem/blob/main/physmem/learning/verification.py), [hypothesis.py](https://github.com/haoyangli16/PhysMem/blob/main/physmem/core/hypothesis.py); MIT согласно README | `store.add_case/verify_case`: опыт → candidate → независимые episode IDs → supported_in_scope / contradicted; тесты исключают самоподтверждение и повторный подсчёт | Адаптация логики verification/promotion с более строгой привязкой артефактов. Upstream исходники не скопированы, вероятности уверенности не выдумываются, raw experience не удаляется |
-| [RoboMemory](https://arxiv.org/abs/2508.01415) | [SP4595/RoboMemory-Code](https://github.com/SP4595/RoboMemory-Code), Apache-2.0 | Разделение evidence/facts/events/cases; FTS5 retrieve + замороженный снимок памяти реально добавляет выбор прямого наблюдения вместо ограниченного поиска | Адаптация memory→planning цикла; тяжёлые embedding/VLM сервера статьи не устанавливаются; это не полный upstream benchmark |
+| [RoboMemory](https://arxiv.org/abs/2508.01415) | [SP4595/RoboMemory-Code](https://github.com/SP4595/RoboMemory-Code), Apache-2.0 | Разделение evidence/facts/events/cases; FTS5 retrieve + замороженный снимок памяти меняют контекст выбора; варианты помощи одинаковы для M0–M3 | Адаптация memory→planning цикла; тяжёлые embedding/VLM сервера статьи не устанавливаются; это не полный upstream benchmark |
 | [ActiveAlign / Look Before You Act](https://arxiv.org/abs/2610.23378) | Статья, CC BY 4.0 по arXiv; код не перенесён | `run.execute_graph`: свежий вид цели допускает продолжение, но успех камеры, успех получателя и общий исход измеряются отдельно; сохраняются оба эпизода и совместимость камеры/политики/геометрии | Протокольная адаптация проверки продолжения; VLA adaptation/training запрещены и не выполнены |
 | [smolagents ToolCallingAgent](https://huggingface.co/docs/smolagents/v1.26.0/en/reference/agents) | `smolagents==1.26.0`, Apache-2.0 | `cognitive.model`: настоящий ToolCallingAgent, единственный закрытый proposal tool, максимум две генерации с одной коррекцией формата | CodeAgent отсутствует; ToolCallingAgent не исполняет моторные/обучающие команды |
-| [Qwen3-VL-2B-Instruct](https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct) | Apache-2.0, revision `89644892e4d85e24eaac8bacfd4f463576704203`, hashes в `configs/cognitive-assets.lock.json` | Локальный inference на Homebrain, исходный checkpoint без обновления весов | Первый тракт получает измерения роботных RGB как текст; прямое VLM понимание изображения этим тестом не заявляется |
+| [Qwen3-VL-2B-Instruct](https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct) | Apache-2.0, revision `89644892e4d85e24eaac8bacfd4f463576704203`, hashes в `configs/cognitive-assets.lock.json` | Локальный inference на Homebrain, исходный checkpoint без обновления весов | Исторический text-plan проверен; прямой RGB/VLM адаптер сохраняет pixels/grid/mask и прошёл processor-only проверку. Новая генерация запрещена и не выполнена |
 
 `sim.cooperation` использует один прежний FleetWorld, тот же ArmModel IK и DockExpert.
 Детектор — явно названный OpenCV color/shape baseline только для фиксированного
 оранжевого маркера в номинальной сцене; он не получает simulator segmentation IDs
 или истинную позу цели. DockExpert остаётся privileged scripted teacher. Истинные
 симуляционные distance/yaw/stable используются отдельно для оценки исхода.
+
+Новая R4-реализация опирается на [статью DART](https://proceedings.mlr.press/v78/laskey17a.html)
+и [официальный репозиторий](https://github.com/BerkeleyAutomation/DART), просмотренные 14.11.2026.
+Старые зависимости mjpro131/mujoco-py не устанавливались, код авторов не копировался.
+Метка action в R4 LeRobot — проверенное намерение эксперта до шума; исходная
+реально исполненная команда остаётся action в research.jsonl, отдельное поле
+expert_action явно связано с ней. На реальные записи переопределение запрещено.

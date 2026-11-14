@@ -27,7 +27,7 @@ class SimCapture:
                    'calibration':'uncalibrated','privileged_state_in_policy_observation':False,
                    'loaded_controller_sha256':hashlib.sha256(b''.join(marshal.dumps(getattr(env,name).__func__.__code__) for name in ('step','reset','observation','render'))).hexdigest()}
 
-    def add(self,env,action):
+    def add(self,env,action,*,annotations=None):
         if self.finished:raise RuntimeError('Capture already finished')
         timestamp=round(env.elapsed*1e9)+1
         image=env.render()
@@ -43,6 +43,9 @@ class SimCapture:
                 'camera':{'timestamp_ns':timestamp,'source_timestamp_ns':timestamp,'sequence':self.count},
                 'applied_command':env.applied_command(),
                 'task_phase':env.phase,'seed':self.meta['seed'],'lineage':self.meta['lineage']}
+        if annotations:
+            if set(annotations)-{'expert_action','noise_sigma','noise_delta','training_label'}:raise ValueError('Unknown expert annotation')
+            sample.update(annotations)
         self.rows.write(json.dumps(sample)+'\n')
         self.count+=1
 

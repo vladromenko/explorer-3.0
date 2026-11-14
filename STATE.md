@@ -1030,3 +1030,59 @@ YOLOE (2 файла) и SAM3 (10 файлов) также совпали с lock
 Артефакты: runtime validation/dataset-release-20261114/{dataset-tests.xml,
 real-readback.json,model-audit.json,vision-audit.json,browser/}.
 Главный :8030 не перезапущен: process_build всё ещё 35f2c22; исходники 732c2c3.
+
+## 2026-11-14 · закрытие программных пробелов полного аудита
+
+Сопоставлены master, sim/real correction, AG addendum и последующие ограничения.
+Таблица требований и границ обновлена в docs/AGENT_CONTRACTS.md. Проект и
+исходные данные сохранены; старые системы и моторные агенты не изменялись.
+
+Реализовано поверх прежних трактов:
+- SceneObserver: исходный RGB из реального эпизода/архива/одного read-only
+  пакета, сохранение timestamps/frame IDs/age/hash, YOLOE/SAM3 и прямой VLM
+  запрос с pixels/grid/mask; одна прежняя Jobs очередь, без motor tools.
+- ByteTrack upstream 8.4.14/lap0.5.12 по 2–32 соседним кадрам одной камеры,
+  без подмены ID общей 3D-идентичностью; закреплены зависимости venv-sim.
+- AssistanceBroker использует measured history/G/cost и фиксированный baseline;
+  числа из LLM не становятся оценкой G. Необученный G остаётся unavailable.
+- Frozen M0–M3: общая память/source prefix/choices/budgets/seeds/versions,
+  одинаковый начальный physics digest, без обновления памяти в сравнении;
+  пропущенные/технические исходы видны, исторические отчёты открываются.
+- Real TaskGraph: только прежние trials и controller/recorders, отдельное
+  разрешение, STOP generation, browser heartbeat, неизвестный исход блокирует
+  зависимые шаги, результат подтверждается finalized episode. Между шагами
+  требуется новое явное продолжение, возврат управления не скрыт.
+- Один Qwen-worker может предложить порядок зарегистрированных trials;
+  изменённый план/поздний ответ отбрасываются, предложение не разрешает движение.
+- Memory transfer создаёт новый recipient scope, сохраняет полную цепочку
+  source case/donor episode/recipient episode, не копирует моторные действия.
+  Неизвестный helper effect не выдаётся за доказанную пользу; failure сохраняется.
+- R4 noise-augmented demonstrations (DART-inspired): измеренный validation RMSE,
+  bounded paired clean/noisy seeds, expert intent/executed action/response,
+  explicit reviewed sim-only training target. Официальный trainer переиспользован,
+  новый fit/simulation не запускался. S2 использует прежний branching/expert
+  для четырёх сред; физическая передача стол↔пол не поддержана геометрией.
+- Shared physical-activity lock разрешает разные ручные роботы, исключает тяжёлый
+  worker; STOP освобождает свой lease, позднее включение отвергается.
+
+92 software tests и 2 subtests PASS (2 forward-теста намеренно deselected).
+После финальных изменений затронутые контракты повторно проверены отдельно.
+5 оригинальных real эпизодов ранее перечитаны, ещё 2 использованы для подготовки
+replay в isolated browser storage; ничего не отправлялось роботам.
+Три browser preparation-сценария PASS, jobs не изменялись. Подлинный pinned
+Qwen AutoProcessor проверен без весов/генерации, ByteTrack — числовой фикстурой.
+Модельные файлы Qwen 11/11, YOLOE и SAM3 прошли SHA; повторно скачивать не нужно.
+
+Read-only SSH/health: собственные agent/runtime/adapter/observer ROSMASTER и
+agent/native_driver/sensors/motion_permission Tank побайтово совпадают с repo.
+В текущей проверке доступны датчики обоих устройств. Перехвата управления,
+serial open, новых моторных команд и развёртывания старых служб не было.
+
+CURRENT_STATUS, инструкция датасета и конечный PHYSICAL_ACCEPTANCE_RU обновлены.
+Tank STOP/USB остаётся specific hardware blocker: независимый MCU timeout или
+отключение тяги не обнаружены/не подтверждены. OLED API отсутствует. Общая
+метрическая TF и динамическая калибровка требуют физических измерений.
+Новые VLM-generation/sim/research серии отложены по указанию оператора; никакого
+объявления научного превосходства, обученной моторики или полной аппаратной приёмки.
+Следующая техническая операция: холодный запуск собственной службы Homebrain
+после подтверждения пустой очереди и отсутствия активного управления, затем Git push.

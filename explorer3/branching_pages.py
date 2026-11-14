@@ -43,7 +43,8 @@ def install(css,jobs):
             with ui.column().classes('sim-panel'):
                 ui.label('Одно состояние · три варианта').classes('sim-title')
                 ui.label('Продолжение сохраняет очередь команд политики. Две другие ветви ждут одинаковое время: затем одна удерживает положение, другая получает ограниченную помощь. После этого обе очищают очередь и возвращаются к политике.').classes('muted')
-                profile=ui.select({'tank_dock_sim':'Tank · подъезд к цели','so101_pick_place_sim':'SO-101 · кубик в коробку'},
+                profile=ui.select({'tank_dock_sim':'Tank · подъезд к цели','so101_pick_place_sim':'SO-101 · кубик в коробку',
+                    'rosmaster_dock_sim':'ROSMASTER · подъезд к цели','rosmaster_pick_place_sim':'ROSMASTER · кубик в коробку'},
                     value='tank_dock_sim',label='Сцена',on_change=choices).classes('w-full')
                 policy=ui.select({},label='Что делает робот без помощи').classes('w-full');choices()
                 ui.label('Проверка механики использует удержание вместо обученной политики. Она проверяет повторяемость, а не качество обучения. Старый checkpoint от другой версии физики будет отклонён.').classes('muted')

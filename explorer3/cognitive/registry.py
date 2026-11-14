@@ -1,12 +1,33 @@
 """Cards for existing components, with explicit sim and real admission."""
 import hashlib
 from explorer3.paths import ROOT
-from explorer3.profiles import profile
+from explorer3.profiles import profile,PROFILES
 from .schemas import SkillCard
 from .store import digest
 
 
 def file_hash(relative):return hashlib.sha256((ROOT/relative).read_bytes()).hexdigest()
+
+
+def real_cards():
+    """Register existing operator paths honestly; no fabricated learned skills."""
+    result={}
+    sources={'so101':'explorer3/session.py','tank':'explorer3/session.py','rosmaster':'explorer3/rosmaster_session.py'}
+    for name,cfg in PROFILES.items():
+        robot=cfg['robot'];source=sources[robot];ident=name+'.manual.v1'
+        version=digest({'profile':cfg,'executor':file_hash(source),'trials':file_hash('explorer3/trials.py')})
+        result[ident]=SkillCard(skill_id=ident,robot=robot,version=version,kind='manual',source_ref=source,
+            profile=name,camera_sha256=digest({'camera':cfg['camera'],'profile':cfg}),
+            state_schema={'channels':cfg.get('state_channels',cfg['channels']),'provenance':cfg.get('state_provenance','profile contract')},
+            action_schema={'channels':cfg['channels'],'units':cfg['units']},
+            goals=['fixed_box' if 'pick_place' in name else 'fixed_dock'],cameras=[cfg['camera']],
+            verified_scope=['existing isolated operator controller; no trained autonomous skill implied'],
+            preconditions=['physical_permission','exclusive_owner','fresh_measurements','incident_cleared'],
+            postconditions=['operator_outcome_and_original_recording'],resources=[robot],timeout_s=60,
+            cancel_method='existing controller STOP and browser lease',verifier='operator-labelled recorded episode',
+            sim_admission='blocked',real_admission='blocked',
+            limitation='Manual data collection through existing panel only; agent execution requires a separately pinned trial and current physical authorization')
+    return result
 
 
 def cards():
@@ -50,17 +71,28 @@ def cards():
     result[ident]=base.model_copy(update={'skill_id':ident,
         'version':digest({'parent':base.version,'admission_source':sha}),
         'preconditions':[*base.preconditions,'target_observed_by_helper']})
-    return result
+    return {**result,**real_cards()}
 
 
 def get(identifier):
+    if identifier.startswith('trial.'):
+        from explorer3 import trials
+        plan=trials.load(identifier.removeprefix('trial.'))
+        base=real_cards().get(plan['profile']+'.manual.v1')
+        if base is None:raise ValueError('Unknown physical trial profile')
+        return base.model_copy(update={'skill_id':identifier,'version':digest({'trial':plan,'executor_version':base.version}),
+            'kind':'learned' if plan['kind']=='policy' else 'scripted',
+            'policy_sha256':plan.get('checkpoint_bundle_sha256'),
+            'source_ref':'explorer3/trials.py:'+('PolicyActions' if plan['kind']=='policy' else 'ReplayActions'),
+            'real_admission':'available','preconditions':['current_trial_authorization','fresh_executor_observation','exclusive_owner'],
+            'limitation':'Prepared trial only; runtime rechecks permission, incident, weights and measured initial pose. Replay is not a learned skill.'})
     result=cards()
     if identifier not in result:raise ValueError('Unknown skill: '+identifier)
     return result[identifier]
 
 
-def validate_graph(graph,domain):
-    if domain!='sim':raise PermissionError('Real execution blocked: AG0–AG2 is Homebrain only')
+def validate_graph(graph,domain,*,shadow=False):
+    if domain!='sim' and not shadow:raise PermissionError('Real graph needs the separately authorized physical executor')
     result=[]
     for node in graph.nodes:
         card=get(node.skill_id)
@@ -68,6 +100,7 @@ def validate_graph(graph,domain):
         if node.robot!=card.robot:raise ValueError('Skill belongs to another robot')
         if node.goal_id not in card.goals:raise ValueError('Skill does not accept this goal')
         if node.deadline_s>card.timeout_s:raise ValueError('Skill deadline exceeds its contract')
-        if card.sim_admission!='available':raise ValueError('Skill is '+card.sim_admission)
+        admission=card.sim_admission if domain=='sim' else card.real_admission
+        if admission!='available':raise ValueError('Skill is '+admission)
         result.append(card)
     return result

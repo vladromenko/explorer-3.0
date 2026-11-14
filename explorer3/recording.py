@@ -36,12 +36,15 @@ def source_snapshot():
 
 
 class EpisodeWriter:
-    def __init__(self, name: str, session: str, scene: str, category='demonstration', *, domain='real'):
+    def __init__(self, name: str, session: str, scene: str, category='demonstration', *, domain='real', training_label=None):
         from lerobot.datasets.lerobot_dataset import LeRobotDataset
         cfg=profile(name)
         if domain not in {'real','sim','fixture'} or cfg.get('domain','real') != ('sim' if domain=='fixture' else domain):
             raise ValueError('Profile/domain mismatch')
         self.domain=domain
+        if training_label is not None and (domain!='sim' or training_label!='expert_intent_before_noise'):
+            raise ValueError('Separate expert targets are simulation-only')
+        self.training_label=training_label
         if cfg['channels'] is None:
             raise RuntimeError('Feature contract unavailable')
         if category not in {'demonstration','rollout','correction'}:
@@ -92,8 +95,10 @@ class EpisodeWriter:
             raise ValueError('State/action channel contract mismatch')
         if not np.isfinite(state).all() or not np.isfinite(action).all():raise ValueError('Nonfinite state/action')
         rgb=image['image']
+        from .noise_demonstrations import training_target
+        target=training_target(sample,domain=self.domain,label=self.training_label)
         frame={'observation.state':np.asarray(sample['observation.state'],dtype=np.float32),
-                           'action':np.asarray(sample['action'],dtype=np.float32),
+                           'action':np.asarray(target,dtype=np.float32),
                            'observation.images.'+self.camera:rgb,'task':self.cfg['task']}
         sensor_ref=None
         if self.cfg.get('environment_channels'):
@@ -126,6 +131,9 @@ class EpisodeWriter:
             raise ValueError('Simulation provenance incomplete')
         if outcome not in {'success','failure','aborted'}:
             raise ValueError('Unknown outcome')
+        if self.training_label is not None and (provenance.get('segment_role')!='noise_demonstration' or
+                provenance.get('training_label')!=self.training_label or not provenance.get('review')):
+            raise ValueError('Separate expert labels require the reviewed noise-collection provenance')
         self.sidecar.flush()
         self.sidecar.close()
         if self.sensor_archive:self.sensor_archive.finish()
@@ -133,7 +141,7 @@ class EpisodeWriter:
             self.ds.save_episode()
             self.ds.finalize()
             (self.root/'provenance.json').write_text(json.dumps({'hardware':provenance,'profile':self.cfg,'outcome':outcome,
-                'category':self.category,'domain':self.domain,'synthetic':self.domain!='real','closed_at':time.time(),
+                'category':self.category,'domain':self.domain,'synthetic':self.domain!='real','closed_at':time.time(),'training_label':self.training_label,
                 'session_id':self.session,'scene_id':self.scene,'initial_state':self.initial_state,
                 'code_version':code_version(),'source_snapshot':source_snapshot(),'command_source':self.command_source},indent=2))
             catalog.add_episode(dict(id=self.id,profile=self.name,dataset=str(self.root),episode_index=0,

@@ -53,6 +53,9 @@ def validate(episode_id: str, *, domain='real'):
             raise ValueError('Unexpected claimed acknowledgement')
         if not all(math.isfinite(v) for v in row['action']+row['observation.state']):
             raise ValueError('Nonfinite action/state')
+        if provenance.get('training_label'):
+            from .noise_demonstrations import training_target
+            training_target(row,domain=domain,label=provenance['training_label'])
         if cfg.get('environment_channels'):
             from .sensors import decode_packet,environment_features
             ref=(root/row['sensor_packet']).resolve()
@@ -69,7 +72,9 @@ def validate(episode_id: str, *, domain='real'):
         frame=ds[index]
         shape=cfg.get('image_shape',[480,640,3])
         assert tuple(frame['observation.images.'+cfg['camera']].shape)==(shape[2],shape[0],shape[1])
-        assert np.allclose(frame['action'].numpy(),records[index]['action'],atol=1e-5)
+        from .noise_demonstrations import training_target
+        target=training_target(records[index],domain=domain,label=provenance.get('training_label'))
+        assert np.allclose(frame['action'].numpy(),target,atol=1e-5)
         assert np.allclose(frame['observation.state'].numpy(),records[index]['observation.state'],atol=1e-5)
         if cfg.get('environment_channels'):
             assert np.allclose(frame['observation.environment_state'].numpy(),records[index]['observation.environment_state'],atol=1e-5)

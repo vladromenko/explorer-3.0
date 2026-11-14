@@ -60,6 +60,71 @@ class Jobs:
         return self._insert('fleet_lab_sim','cognitive',{'kind':'cognitive_simulation','comparison':comparison,
             'seed':seed,'scene':scene,'device':'cuda','training_requested':False,'real_authorized':False})
 
+    def cognitive_observation(self,evidence_ids,question,method='vlm'):
+        from .cognitive import observer,store
+        if method not in {'vlm','yoloe','sam3'}:raise ValueError('Unknown observer')
+        request=observer.vlm_request(evidence_ids,question=question)
+        if method!='vlm' and len(evidence_ids)!=1:raise ValueError('Detector accepts one frame per job')
+        fingerprint=store.digest({'evidence':request['images'],'question':question,'method':method})
+        with catalog.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            old=db.execute("SELECT id FROM jobs WHERE status IN ('queued','running') AND json_extract(config,'$.observation_hash')=?",(fingerprint,)).fetchone()
+            if old:return old['id']
+            cfg={'kind':'cognitive_observation','method':method,'request':request,'device':'cuda',
+                'observation_hash':fingerprint,'training_requested':False,'real_authorized':False}
+            ident=uuid.uuid4().hex
+            db.execute('INSERT INTO jobs(id,profile,policy,status,config,created) VALUES(?,?,?,?,?,?)',
+                (ident,request['images'][0]['robot'],method,'queued',json.dumps(cfg),time.time()))
+        return ident
+
+    def cognitive_comparison(self,plan_id,cell_id):
+        from .cognitive.experiments import cell_config
+        cfg=cell_config(plan_id,cell_id)
+        with catalog.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            old=db.execute("SELECT id FROM jobs WHERE json_extract(config,'$.comparison_plan')=? AND json_extract(config,'$.comparison_cell')=?",(plan_id,cell_id)).fetchone()
+            if old:return old['id']
+            ident=uuid.uuid4().hex
+            db.execute('INSERT INTO jobs(id,profile,policy,status,config,created) VALUES(?,?,?,?,?,?)',
+                (ident,'fleet_lab_sim','cognitive','queued',json.dumps(cfg),time.time()))
+        return ident
+
+    def cognitive_tracking(self,job_ids):
+        from .cognitive.tracking import prepare
+        config=prepare(job_ids)
+        return self._insert(config['frames'][0]['source']['robot'],'bytetrack',config)
+
+    def cognitive_order(self,plan_id):
+        from .cognitive.real_execution import load
+        load(plan_id)
+        with catalog.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            old=db.execute("SELECT id FROM jobs WHERE status IN ('queued','running') AND json_extract(config,'$.kind')='cognitive_order' AND json_extract(config,'$.plan_id')=?",(plan_id,)).fetchone()
+            if old:return old['id']
+            ident=uuid.uuid4().hex;cfg={'kind':'cognitive_order','plan_id':plan_id,'device':'cuda','training_requested':False}
+            db.execute('INSERT INTO jobs(id,profile,policy,status,config,created) VALUES(?,?,?,?,?,?)',
+                (ident,'team_real_shadow','cognitive','queued',json.dumps(cfg),time.time()))
+        return ident
+
+    def collect_noise_demonstrations(self,plan_id):
+        from .noise_demonstrations import load
+        plan=load(plan_id)
+        return self._insert(plan['profile'],'scripted_expert',{'kind':'noise_demonstrations','plan_id':plan_id,'device':'cpu'})
+
+    def accept_noise_demonstration(self,source_job,index,reviewed=False):
+        from .noise_demonstrations import validate_review
+        from .branch_corrections import source_hash
+        source=self.get(source_job)
+        if reviewed is not True or source['status']!='completed' or json.loads(source['config']).get('kind')!='noise_demonstrations':
+            raise ValueError('Сначала просмотрите завершённый восстановительный показ')
+        report=json.loads((DATA/'jobs'/source_job/'result.json').read_text())
+        if type(index) is not int or not 0<=index<len(report['episodes']):raise ValueError('Нет такого показа')
+        root=Path(report['episodes'][index]['spool']).resolve()
+        if not root.is_relative_to(DATA/'staging/sim'):raise ValueError('Invalid simulation spool')
+        review={'decision':'accept_noise_demonstration','source_sha256':source_hash(root),'plan_id':report['plan_id']}
+        validate_review(root,review)
+        return self._insert(source['profile'],'dataset',{'kind':'sim_correction_import','profile':source['profile'],'spool':str(root),'review':review,'device':'cpu'})
+
     def fleet_execute(self,selected,**options):
         from .fleet_runs import prepare
         config=prepare(selected,**options)
@@ -268,8 +333,8 @@ class Jobs:
         ident = job['id']
         try:
             cfg=json.loads(job['config'])
-            gpu=cfg.get('kind','train') in {'train','evaluate','benchmark','vision','cognitive_simulation'} and cfg.get('device','cuda').startswith('cuda')
-            with ResourceLease('compute'), (ExistingTrainingLease() if gpu else contextlib.nullcontext()):
+            gpu=cfg.get('kind','train') in {'train','evaluate','benchmark','vision','cognitive_simulation','cognitive_observation','cognitive_order'} and cfg.get('device','cuda').startswith('cuda')
+            with ResourceLease('physical-activity'), ResourceLease('compute'), (ExistingTrainingLease() if gpu else contextlib.nullcontext()):
                 path = DATA/'jobs'/f'{ident}.json'
                 path.write_text(job['config'])
                 with (DATA/'logs'/f'{ident}.log').open('a') as log:

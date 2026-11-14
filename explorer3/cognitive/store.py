@@ -2,6 +2,7 @@
 import hashlib
 import contextlib
 import json
+import sqlite3
 import time
 import uuid
 from explorer3 import catalog
@@ -169,10 +170,19 @@ def retrieve(task,effect,skill,goal,domain,*,comparison='M3',limit=5,snapshot=No
     if comparison in ('M0','M1'):return {'accepted':[],'rejected':[],'memory_enabled':False}
     query=' OR '.join('"'+x.replace('"','""')+'"' for x in (task,effect))
     frozen={c['id']:c for c in snapshot['cases']} if snapshot is not None else None
-    with catalog.connect() as db:
+    # A frozen comparison must not rank using subsequently updated live memory.
+    connection=sqlite3.connect(':memory:') if frozen is not None else catalog.connect()
+    connection.row_factory=sqlite3.Row
+    with contextlib.closing(connection) as db:
+        if frozen is not None:
+            db.execute('CREATE TABLE cognitive_cases(id TEXT PRIMARY KEY,body TEXT,created REAL)')
+            db.execute('CREATE VIRTUAL TABLE cognitive_case_search USING fts5(id UNINDEXED,task,effect,reason)')
+            for index,case in enumerate(snapshot['cases']):
+                db.execute('INSERT INTO cognitive_cases VALUES(?,?,?)',(case['id'],encoded(case),-index))
+                db.execute('INSERT INTO cognitive_case_search VALUES(?,?,?,?)',(case['id'],case['task'],case['effect'],case['reason']))
         rows=db.execute('''SELECT c.body FROM cognitive_case_search f JOIN cognitive_cases c ON c.id=f.id
             WHERE cognitive_case_search MATCH ? AND (? IS NULL OR c.id IN (SELECT value FROM json_each(?)))
-            ORDER BY bm25(cognitive_case_search),c.created DESC LIMIT 40''',
+            ORDER BY bm25(cognitive_case_search),c.created DESC,c.id LIMIT 40''',
             (query,None if frozen is None else 1,encoded(list(frozen or {})))).fetchall()
     accepted=[];rejected=[]
     for row in rows:

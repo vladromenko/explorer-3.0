@@ -36,3 +36,24 @@ visibilitychange отменяют задачу; скрытие в headless мо�
 Отчёт `validation/cognitive/team-browser.json`, desktop/mobile/results PNG, browser
 errors=[], внешних browser requests нет, overflow на 390 px нет. Обучение и физические
 команды отсутствуют. Изменения после запрета запусков отмечаются отдельно как непроверенные.
+
+## Подготовка датасета и агентных заданий · 14 ноября, после уточнения разрешения
+
+Три Chromium-сценария в отдельном процессе :8038, без подключения исполнительных
+контроллеров и без Jobs.tick: `check_training_draft_browser.py`,
+`check_real_preparation_browser.py`, `check_cognitive_preparation_browser.py`.
+Использованы копии исходных real записей/датчиков и исторических sim записей.
+Новые данные сцены не генерировались. Проверены подготовка и повторное открытие
+плана, сброс подтверждения, отказ недостаточного real корпуса, мобильная
+инструкция, исходные RGB кадры, замороженный M0–M3 план и неполный отчёт,
+real TaskGraph из прежних replay trials, сброс при изменении выбора,
+отказ R4 без пригодного ACT validation. Кнопки выполнения не нажимались.
+Jobs неизменны, model calls=0, simulation runs=0, physical commands=0,
+external requests=0, page errors=0. Артефакты:
+`validation/dataset-release-20261114/browser/` (JSON, PNG, Chromium traces).
+
+Программные тесты: `final-software-tests.xml` — 92 PASS + 2 subtests,
+2 model-forward теста исключены; поздние затронутые контракты дополнительно
+проверены в `final-changed-contracts.xml`, `noise-target-tests.xml`.
+Эти результаты не доказывают качество новой VLM генерации, физическую
+совместимость роботов или успешность новых симуляционных траекторий.

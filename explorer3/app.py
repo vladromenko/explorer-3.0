@@ -115,7 +115,7 @@ sim_pages.install(stop_all,CSS,jobs)
 from . import fleet_pages
 fleet_pages.install(stop_all,CSS)
 from .cognitive import pages as cognitive_pages
-cognitive_pages.install(CSS,jobs)
+cognitive_pages.install(CSS,jobs,physical_session=session)
 from . import fleet_live_pages
 fleet_live_pages.install(stop_all,CSS)
 from . import vision_pages

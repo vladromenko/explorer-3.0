@@ -8,6 +8,7 @@ from .paths import DATA
 def source_hash(root):
     digest=hashlib.sha256()
     paths=[root/'manifest.json',root/'samples.jsonl',*sorted(root.glob('*.png'))]
+    if (root/'responses.jsonl').is_file():paths.append(root/'responses.jsonl')
     for path in paths:
         digest.update(path.name.encode());digest.update(path.read_bytes())
     return digest.hexdigest()

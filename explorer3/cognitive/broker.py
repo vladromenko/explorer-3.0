@@ -145,10 +145,8 @@ def _read_tool(call,mission):
         return {'job_id':store.digest({'mission':call.mission_id,'node':node.id,'generation':call.generation}),
             'skill_id':node.skill_id,'node_id':node.id,'domain':'sim','status':'prepared','execution_started':False}
     if call.tool=='propose_help':
-        options=args.get('candidates',[])
-        if not 1<=len(options)<=3 or any(x not in ('continue','observe','recovery','human') for x in options):raise ValueError('At most three registered assistance types')
-        return {'candidates':options,'selection':'observe' if 'observe' in options else options[0],
-                'baseline':'fixed_rules_v1','gain':None,'gain_status':'unavailable','execution_started':False}
+        from .assistance import select
+        return select(args['candidates'],store.evidence(call.snapshot_ids,domain=call.mode))
     if call.tool=='verify_postcondition':
         measurements=store.evidence(args.get('evidence_ids',[]),domain=call.mode)
         verified=[e for e in measurements if e.source=='fixed_outcome_verifier']

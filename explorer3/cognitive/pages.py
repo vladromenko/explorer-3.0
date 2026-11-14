@@ -11,7 +11,7 @@ from .run import ROLES
 
 LABELS={'queued':'В очереди','running':'Выполняется в симуляции','completed':'Проверка завершена',
     'failed':'Остановлено с ошибкой','cancelled':'Отменено','interrupted':'Прервано перезапуском'}
-OUTCOMES={'success':'подтверждён','failure':'не достигнут','unknown':'неизвестен','cancelled':'отменён'}
+OUTCOMES={'success':'подтверждён','failure':'не достигнут','unknown':'неизвестен','cancelled':'отменён','hardware_error':'сбой оборудования'}
 
 
 def history():
@@ -25,17 +25,29 @@ def cancel_job(jobs,ident,reason):
         jobs.cancel(ident)
 
 
-def install(css,jobs):
+def install(css,jobs,physical_session=None):
     store.initialize();store.recover_interrupted()
     install_archive_review(css)
+    from .observation_pages import install as install_observations
+    install_observations(css,jobs)
+    from .real_pages import install as install_real
+    install_real(css,physical_session,jobs)
+    from explorer3.noise_pages import install as install_noise
+    install_noise(css,jobs)
     @ui.page('/team')
-    async def page():
+    async def page(job: str | None=None):
         ui.add_css(css+STYLE+'''.team-grid{display:grid;grid-template-columns:1.5fr 1fr;gap:20px;width:100%}
         .team-cameras{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:100%}
         .team-tag{padding:5px 10px;border-radius:20px;background:#223d3d;color:#a5e7dc}
         @media(max-width:850px){.team-grid,.team-cameras{grid-template-columns:1fr}}''')
         ui.dark_mode().enable();ui.colors(primary='#2b9c8f',negative='#d45050')
         active=None;selected=None;last_heartbeat=0.;displayed=None;busy=False
+        if job:
+            loaded=jobs.get(job)
+            if json.loads(loaded['config']).get('kind')!='cognitive_simulation':raise ValueError('Not a team experiment')
+            selected=job
+            if loaded['status'] in ('queued','running'):
+                active=job;last_heartbeat=__import__('time').monotonic()
         async def stop(reason='Остановлено оператором'):
             nonlocal active
             if active:
@@ -71,6 +83,9 @@ def install(css,jobs):
         with ui.row():
             ui.link('Explorer','/');ui.link('Общий стенд','/sim/fleet');ui.link('Реальные датчики','/fleet/live')
             ui.link('Наблюдения ROSMASTER','/team/rosmaster')
+            ui.link('Кадры команды','/team/observations');ui.link('Подготовить сравнение','/team/comparison')
+            ui.link('Задача на роботах','/team/real')
+            ui.link('Восстановительные показы','/sim/recovery-data')
         ui.label('Симуляция · сценарные навыки · веса не изменяются').classes('team-tag')
         ui.label('SO-101 на столе; ROSMASTER и Tank на полу. Высота стола пока не измерена; общая калибровка не подтверждена.').classes('muted')
         with ui.tabs() as tabs:

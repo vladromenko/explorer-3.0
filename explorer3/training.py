@@ -67,6 +67,22 @@ def run_job(path: Path):
     cfg = json.loads(path.read_text())
     work = DATA/'jobs'/path.stem
     work.mkdir(exist_ok=True)
+    if cfg.get('kind')=='noise_demonstrations':
+        subprocess.run([str(ROOT/'.venv-sim/bin/python'),'-m','explorer3.noise_demonstrations',str(path),str(work)],
+            cwd=ROOT,env={**offline_environment(),'MUJOCO_GL':'egl'},check=True,timeout=1200)
+        return
+    if cfg.get('kind')=='cognitive_order':
+        from .cognitive.real_execution import propose_order
+        propose_order(cfg,work)
+        return
+    if cfg.get('kind')=='cognitive_tracking':
+        subprocess.run([str(ROOT/'.venv-sim/bin/python'),'-m','explorer3.cognitive.tracking',str(path),str(work)],
+            cwd=ROOT,env={**offline_environment(),'YOLO_AUTOINSTALL':'false'},check=True,timeout=30)
+        return
+    if cfg.get('kind')=='cognitive_observation':
+        from .cognitive.observation_job import execute
+        execute(cfg,work)
+        return
     if cfg.get('kind')=='cognitive_simulation':
         from .cognitive.run import execute
         execute(cfg,work)
