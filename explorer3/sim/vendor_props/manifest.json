@@ -1,0 +1,48 @@
+{
+  "repository": "ARISE-Initiative/robosuite",
+  "revision": "5ce6643f3092639d08f7b0f90ed1c6a84f50552c",
+  "license": "MIT; see LICENSE",
+  "files": {
+    "LICENSE": {
+      "sha256": "177978cbece0a4c454c2aaec5b3f145b39270814874c43109da9e829c39d9cba",
+      "bytes": 1474
+    },
+    "objects/bottle.xml": {
+      "sha256": "aa724e4080db8bf0bfbf917d047fad952f8bcf50f205310d4bbf5eed66b06d70",
+      "bytes": 987
+    },
+    "objects/lemon.xml": {
+      "sha256": "1c377709b2e2efd185b9cf7cad5e410d255d73d545fc841aad16c363575da374",
+      "bytes": 811
+    },
+    "objects/can.xml": {
+      "sha256": "c9401545f5e9b621d957e75432b0fc551ab94de96cd41833604080d0c16889a1",
+      "bytes": 777
+    },
+    "objects/meshes/bottle.stl": {
+      "sha256": "f2b6ca097b2d0d43b255fe3d605c8628117459b1d7369220ddf62ced5e84d962",
+      "bytes": 6684
+    },
+    "objects/meshes/lemon.msh": {
+      "sha256": "2a2dfa73cb1e6650180bdb67fe253c565c409cdc6d89f70937017afe5555780b",
+      "bytes": 57040
+    },
+    "objects/meshes/can.msh": {
+      "sha256": "3a0e736201604130d47abe6f93e9173b11b1d49df6e2f7093537a435c061cbb8",
+      "bytes": 103264
+    },
+    "textures/glass.png": {
+      "sha256": "9e12c4e1ed663ba3b690a701626e80189be02228f6d29c985273f15da4de423a",
+      "bytes": 89051
+    },
+    "textures/lemon.png": {
+      "sha256": "93a21938e5fe8d62a042c5591b13b9bec75d94791f7d08f375beb60fce523610",
+      "bytes": 1919770
+    },
+    "textures/soda.png": {
+      "sha256": "2774d29c6c16e1a3b3156e6679897a1695127ec59463d2de1a7ffd7f11b41b4d",
+      "bytes": 627792
+    }
+  },
+  "reuse": "source meshes and textures, adapted dynamics in room.py"
+}

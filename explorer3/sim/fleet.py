@@ -21,19 +21,22 @@ OPTIONS={'timestep':'.0005','integrator':'implicitfast','iterations':'100',
          'ls_iterations':'20','cone':'elliptic','impratio':'10'}
 
 
-def build():
+def build(scene='workshop'):
     root=ET.Element('mujoco',model='Explorer shared laboratory')
     ET.SubElement(root,'option',**OPTIONS)
     ET.SubElement(root,'statistic',center='.5 0 .15',extent='2.5')
     visual=ET.SubElement(root,'visual');ET.SubElement(visual,'global',offwidth='640',offheight='480')
     world=ET.SubElement(root,'worldbody')
     ET.SubElement(world,'geom',name='floor',type='plane',size='0 0 .05',solref='.001 1',solimp='.95 .99 .001 .5 2')
-    ET.SubElement(world,'camera',name='overview',pos='2.7 -3.5 3.0',xyaxes='.8 .6 0 -.35 .47 .8')
+    ET.SubElement(world,'camera',name='overview',pos='2.1 -2.6 2.4',xyaxes='.8 .6 0 -.35 .47 .8')
     laboratory(root)
+    from .room import furnish,dock_frame
+    room=furnish(root,scene)
     parent=mujoco.MjSpec.from_string(ET.tostring(root,encoding='unicode'))
     builders={'so101':so101_model,'rosmaster':rosmaster_arm_model,'tank':lambda:(model_xml('tank')[0],None)}
     for name,builder in builders.items():
         child=ET.fromstring(builder()[0])
+        if name=='tank':dock_frame(child)
         child.find('option').attrib.clear();child.find('option').attrib.update(OPTIONS)
         # One shared floor, lighting and sky. MjSpec namespaces all referenced
         # joints/meshes/equalities, including the manufacturer's mimic links.
@@ -51,7 +54,7 @@ def build():
         parent.attach(spec,prefix=name+'/',frame=parent.worldbody.add_frame(pos=ZONES[name]))
     model=parent.compile()
     manifest={'profile':'fleet_lab_sim','physics':'one MjModel / one integrated MjData',
-        'solver':OPTIONS,'zones':{k:v.tolist() for k,v in ZONES.items()},
+        'solver':OPTIONS,'room':room,'zones':{k:v.tolist() for k,v in ZONES.items()},
         'rosmaster_profile':PROFILES['rosmaster'],'variation':'nominal only',
         'xml_sha256':hashlib.sha256(parent.to_xml().encode()).hexdigest(),
         'limitations':['Tank uses original package CAD on an uncalibrated planar surrogate','no whole-body ROSMASTER control',
@@ -94,8 +97,8 @@ class FleetWorld:
     fps=20
     profile='fleet_lab_sim'
 
-    def __init__(self,seed=0):
-        self.model,self.manifest=build();self.data=mujoco.MjData(self.model)
+    def __init__(self,seed=0,scene='workshop'):
+        self.model,self.manifest=build(scene);self.data=mujoco.MjData(self.model)
         self.views={name:TaskView(name,make(profile),self.model,self.data) for name,profile in PROFILES.items()}
         self.manifest['tasks']={name:v.env.manifest for name,v in self.views.items()}
         self.renderer=None;self.agent_renderers={};self.operator=None;self.operator_switches=0

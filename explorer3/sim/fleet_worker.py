@@ -34,7 +34,7 @@ def run(api_port,viewer_port):
         def do_GET(self):
             with guard:self.respond(200,status())
         def do_POST(self):
-            nonlocal saved,manual
+            nonlocal saved,manual,world
             try:
                 size=int(self.headers.get('Content-Length','0'))
                 if not 0<size<10000:raise ValueError('Invalid request size')
@@ -58,6 +58,14 @@ def run(api_port,viewer_port):
                     elif cmd=='demonstrate':
                         world.reset(int(payload.get('seed',0)));world.demonstrate();manual=None
                         state.update(paused=False,mode='scripted_expert',error=None,frames=0)
+                        handle.set_model(world.model,data=world.data)
+                    elif cmd=='scene':
+                        from .room import PRESETS
+                        if payload.get('scene') not in PRESETS:raise ValueError('Unknown scene')
+                        pause();lease.claim(token)
+                        replacement=FleetWorld(int(payload.get('seed',0)),payload['scene'])
+                        world.close();world=replacement;saved=None
+                        state.update(error=None,snapshot_available=False,frames=0)
                         handle.set_model(world.model,data=world.data)
                     elif cmd=='reset':
                         pause();lease.claim(token);world.reset(int(payload.get('seed',0)),payload.get('agent'))

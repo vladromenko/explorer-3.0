@@ -34,9 +34,9 @@ def marker(rgb):
 
 
 class CooperationWorld:
-    def __init__(self,output,seed):
+    def __init__(self,output,seed,scene='workshop'):
         self.output=Path(output);self.output.mkdir(parents=True,exist_ok=True)
-        self.world=FleetWorld(seed);self.seed=seed;self.stage='waiting_for_observation'
+        self.world=FleetWorld(seed,scene);self.seed=seed;self.scene=scene;self.stage='waiting_for_observation'
         view=self.world.views['tank'];self.world.data.qpos[view.q[2]]=.9
         mujoco.mj_forward(self.world.model,self.world.data)
         for item in self.world.views.values():item.read(forward=True)
@@ -48,8 +48,14 @@ class CooperationWorld:
         return {'robot':robot,'frame_id':robot+'/camera','image':str(path),'measurement':marker(image),
                 'simulation_time_s':float(self.world.data.time)}
 
+    def overview(self,label):
+        path=self.output/(label+'.png')
+        cv2.imwrite(str(path),cv2.cvtColor(self.world.render(),cv2.COLOR_RGB2BGR))
+        return str(path)
+
     def snapshot(self):
-        return {'scene':'fixed_shared_dock_v1','seed':self.seed,'stage':self.stage,'domain':'sim',
+        self.overview('world-before')
+        return {'scene':'shared_dock_'+self.scene+'_v2','seed':self.seed,'stage':self.stage,'domain':'sim',
             'model_sha256':self.world.manifest['xml_sha256'],
             'recipient':self.camera('tank','recipient-before'),
             'donor':self.camera('rosmaster','donor-before'),
@@ -66,6 +72,7 @@ class CooperationWorld:
         self.world.hold_agent('rosmaster')
         result=self.camera('rosmaster','donor-observation')
         self.helper_visible=result['measurement']['target_visible'];self.stage='observed'
+        self.overview('world-observation')
         return {**result,'helper_outcome':'success' if self.helper_visible else 'failure',
             'recipient_held':bool(np.allclose(before,self.world.views['tank'].env.data.qpos,atol=1e-6)),
             'conditions':{'target_observed_by_helper':self.helper_visible,'fixed_scene':True,'recipient_stationary':True}}
@@ -80,7 +87,7 @@ class CooperationWorld:
                 if index%60==0:self.camera('tank',f'recipient-{index:04d}')
         world.stop();info=view.env.info();self.stage='completed'
         outcome=view.result[4]['outcome'] if view.result else 'unknown'
-        self.camera('tank','recipient-final');self.camera('rosmaster','donor-final')
+        self.camera('tank','recipient-final');self.camera('rosmaster','donor-final');self.overview('world-final')
         verifier={'source':'fixed_outcome_verifier','version':'shared-dock-v1','oracle_used_only_for_evaluation':True,
             'helper':'success' if self.helper_visible else 'failure','recipient':'success' if outcome=='success' else 'failure',
             'task':'success' if outcome=='success' else 'failure','raw_environment_outcome':outcome,
@@ -92,8 +99,8 @@ class CooperationWorld:
     def close(self):self.world.stop();self.world.close()
 
 
-def serve(output,seed):
-    world=CooperationWorld(output,seed)
+def serve(output,seed,scene='workshop'):
+    world=CooperationWorld(output,seed,scene)
     try:
         for line in sys.stdin:
             try:
@@ -110,4 +117,4 @@ def serve(output,seed):
     finally:world.close()
 
 
-if __name__=='__main__':serve(sys.argv[1],int(sys.argv[2]))
+if __name__=='__main__':serve(sys.argv[1],int(sys.argv[2]),sys.argv[3] if len(sys.argv)>3 else 'workshop')

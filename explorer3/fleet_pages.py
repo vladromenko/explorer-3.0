@@ -48,6 +48,9 @@ def install(stop_real,css):
             nonlocal active
             active=False
             if await claim():await call('reset',seed=int(seed.value),agent=robot.value if single else None)
+        async def change_scene():
+            await pause()
+            if await claim():await call('scene',scene=scene.value,seed=int(seed.value))
         async def simple(command):
             nonlocal active
             if command=='restore':active=False
@@ -82,6 +85,9 @@ def install(stop_real,css):
                 ui.label('Камера выбранного робота; общий вид не поступает политике').classes('muted text-xs')
                 result=ui.label('').classes('sim-status')
                 seed=ui.number('Расстановка',value=1,min=0,precision=0)
+                from .sim.room import PRESETS
+                scene=ui.select({k:v['label'] for k,v in PRESETS.items()},value='workshop',label='Окружение').classes('w-full')
+                ui.button('Применить окружение · сброс в паузу',on_click=change_scene).props('outline')
                 with ui.row():
                     ui.button('Сбросить выбранного',icon='restart_alt',on_click=lambda:reset(True)).props('outline')
                     ui.button('Сбросить всех',on_click=lambda:reset(False)).props('flat')

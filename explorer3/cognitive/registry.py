@@ -13,7 +13,8 @@ def cards():
     result={}
     model_sources=['explorer3/sim/factory.py','explorer3/sim/environment.py','explorer3/sim/models.py',
         'explorer3/sim/mobile.py','explorer3/sim/rosmaster_arm.py','explorer3/sim/fleet.py',
-        'explorer3/sim/tank_model.py','configs/tank-hardware-evidence.json']
+        'explorer3/sim/tank_model.py','configs/tank-hardware-evidence.json',
+        'explorer3/sim/room.py','explorer3/sim/vendor_props/manifest.json']
     geometry={name:file_hash(name) for name in model_sources}
     entries=[('tank','dock_fixed','tank_dock_sim','explorer3/sim/mobile.py','DockExpert'),
              ('rosmaster','dock_fixed','rosmaster_dock_sim','explorer3/sim/mobile.py','DockExpert'),
