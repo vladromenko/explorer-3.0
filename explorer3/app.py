@@ -360,6 +360,10 @@ def index(request:Request):
                     ui.button('Tank: исследовать комнату',icon='travel_explore',on_click=explore_tank).props('unelevated dense')
                     ui.button('Остановить задания',icon='stop',on_click=explore_stop).props('flat dense')
                     ui.button('Начать карту заново',icon='restart_alt',on_click=reset_map).props('flat dense')
+                    def forget_all():
+                        from . import world_memory
+                        world_memory.forget();ui.notify('Память о предметах очищена')
+                    ui.button('Забыть всё',icon='delete_sweep',on_click=forget_all).props('flat dense')
                 explore_state=ui.label('').classes('muted')
         ui.label('Эпизоды автономной работы').style('font-size:15px;font-weight:700;margin-top:6px')
         with ui.row().style('width:100%;justify-content:space-between;align-items:center'):
