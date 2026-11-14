@@ -1,0 +1,11 @@
+[Unit]
+Description=Homebrain hub: start/stop/open Explorer 3.0, Wristlab and ROSMASTER Cube (port 8000)
+After=network-online.target
+
+[Service]
+WorkingDirectory=/home/jetsonnx/Projects/explorer-3.0/hub
+ExecStart=/home/jetsonnx/Projects/explorer-3.0/.venv/bin/python -m uvicorn hub:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

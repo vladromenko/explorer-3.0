@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Homebrain</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.png">
+<link rel="apple-touch-icon" href="/icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0d1117">
+<style>
+:root{--bg:#0d1117;--card:#141b24;--line:#232f3e;--text:#e6edf3;--muted:#8b98a8;--accent:#2fb39f;--accent2:#63e0b8;--warn:#f2b65a;--bad:#ff7b72}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(1200px 600px at 10% -10%,#16302c 0%,transparent 60%),var(--bg);color:var(--text);font-family:Inter,-apple-system,"Segoe UI",system-ui,sans-serif;min-height:100vh}
+.wrap{max-width:1100px;margin:0 auto;padding:32px 18px 60px}
+header{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:26px}
+h1{margin:0;font-size:34px;letter-spacing:-.6px}
+.sub{color:var(--muted);margin-top:6px}
+.chip{padding:5px 11px;border-radius:999px;font-size:13px;border:1px solid var(--line);background:#111821;color:#c9d4e0;white-space:nowrap}
+.chip.on{color:#7fe0bd;border-color:#1f5a47;background:#0f2a22}
+.chip.off{color:var(--muted)}
+.chip.bad{color:#ff9b93;border-color:#6b2a26;background:#2a1312}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:12px;transition:border-color .2s}
+.card.running{border-color:#245c4a;box-shadow:0 0 0 1px #1f5a47 inset}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.title{font-size:20px;font-weight:700}
+.desc{color:var(--muted);font-size:14px;line-height:1.45;min-height:40px}
+.note{font-size:12.5px;color:var(--warn);background:#2a2010;border:1px solid #5c4416;border-radius:10px;padding:7px 10px}
+.units{font-size:12px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+button,a.btn{border:0;border-radius:11px;padding:10px 16px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.primary{background:var(--accent);color:#06221d}
+.primary:hover{background:var(--accent2)}
+.ghost{background:#1b2531;color:var(--text);border:1px solid var(--line)}
+.ghost:hover{border-color:#3a4d63}
+.danger{background:transparent;color:var(--bad);border:1px solid #5b2724}
+button:disabled{opacity:.45;cursor:default}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px;background:#53606f}
+.on .dot{background:#5fd4a8;box-shadow:0 0 10px #5fd4a8}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1b2531;border:1px solid var(--line);padding:10px 16px;border-radius:12px;display:none;max-width:90vw}
+footer{margin-top:28px;color:var(--muted);font-size:13px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div><h1>Homebrain</h1><div class="sub">Запуск и остановка всех систем роботов одной кнопкой</div></div>
+    <span class="chip" id="clock">обновление…</span>
+  </header>
+  <div class="grid" id="grid"></div>
+  <footer>
+    На Mac: откройте эту страницу в Safari → меню «Файл» → «Добавить в Dock». Появится приложение Homebrain.<br>
+    Ссылки внутри открывают системы в новой вкладке. Остановка системы не трогает моторы: роботы стоят, пока в системе не нажата кнопка движения.
+  </footer>
+</div>
+<div id="toast"></div>
+<script>
+const base = location.hostname;
+const url = (target) => target.startsWith('robot:') ? `http://192.168.0.177${target.slice(5)}` : `http://${base}${target}`;
+const toast = (t) => { const e = document.getElementById('toast'); e.textContent = t; e.style.display = 'block'; clearTimeout(e._t); e._t = setTimeout(() => e.style.display = 'none', 4000); };
+let busy = {};
+async function act(name, action) {
+  busy[name] = true; render(window._last || []);
+  try {
+    const r = await fetch(`/api/${name}/${action}`, {method: 'POST'});
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.detail || 'Ошибка');
+    toast({start: 'Запущено', stop: 'Остановлено', restart: 'Перезапущено'}[action] + ': ' + j.title);
+  } catch (e) { toast(e.message); }
+  busy[name] = false; load();
+}
+function render(items) {
+  window._last = items;
+  document.getElementById('grid').innerHTML = items.map(s => {
+    const units = Object.entries(s.units).map(([u, v]) => `${u.replace('.service', '')}: ${v}`).join(' · ');
+    const wait = busy[s.name];
+    return `<div class="card ${s.running ? 'running' : ''}">
+      <div class="top"><div class="title">${s.title}</div>
+        <span class="chip ${s.running ? 'on' : 'off'}"><span class="dot"></span>${wait ? 'выполняю…' : (s.running ? 'работает' : 'выключена')}</span></div>
+      <div class="desc">${s.subtitle}</div>
+      ${s.note ? `<div class="note">${s.note}</div>` : ''}
+      <div class="row">
+        ${s.running ? s.open.map(([t, target], i) => `<a class="btn ${i ? 'ghost' : 'primary'}" href="${url(target)}" target="_blank">${t}</a>`).join('')
+                    : `<button class="primary" ${wait ? 'disabled' : ''} onclick="act('${s.name}','start')">Запустить</button>`}
+        ${s.running ? `<button class="ghost" ${wait ? 'disabled' : ''} onclick="act('${s.name}','restart')">Перезапустить</button>
+                       <button class="danger" ${wait ? 'disabled' : ''} onclick="act('${s.name}','stop')">Остановить</button>` : ''}
+      </div>
+      <div class="units">${units}</div>
+    </div>`;
+  }).join('');
+}
+async function load() {
+  try { const r = await fetch('/api/state'); render(await r.json());
+        document.getElementById('clock').textContent = 'обновлено ' + new Date().toLocaleTimeString('ru-RU'); }
+  catch (e) { document.getElementById('clock').textContent = 'Homebrain не отвечает'; }
+}
+load(); setInterval(load, 5000);
+</script>
+</body>
+</html>
