@@ -1,0 +1,30 @@
+# Сценарий подъезда к цели для Tank и базы ROSMASTER (M3). Координаты — в системе цели:
+# щит цели в начале координат, нормаль щита смотрит в +x, зона остановки на +x на standoff.
+version: 1
+task: dock
+deadline_s: 20.0
+control_hz: 20
+starts:                       # распределение стартов практики (полное, после учебной программы)
+  distance_from_zone: [0.5, 2.0]
+  bearing_from_normal: [-1.05, 1.05]
+  heading_error: [-1.57, 1.57]
+curriculum:                   # начальное узкое распределение
+  distance_from_zone: [0.4, 0.8]
+  bearing_from_normal: [-0.3, 0.3]
+  heading_error: [-0.3, 0.3]
+obstacles:
+  count: [0, 3]
+  size_xy: [[0.10, 0.10], [0.40, 0.30]]
+  keep_clear_of_zone: 0.30
+success:
+  position_tolerance: 0.08
+  yaw_tolerance: 0.20
+  stationary_speed: 0.02
+  hold_s: 0.5
+disturbances:
+  marker_dropout_p: 0.05
+  marker_burst_loss_p: 0.01     # вероятность начала потери метки на 0.5–1.5 с
+  lidar_bin_dropout_p: 0.03
+  command_link_jitter_steps: [0, 1]
+evaluation:
+  frozen_seeds: [100000, 100100]  # 100 стартов; не использовать в обучении

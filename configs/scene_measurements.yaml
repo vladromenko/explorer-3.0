@@ -1,0 +1,33 @@
+# Explorer 3.0 — замеры реальной сцены для симуляции (M3).
+# Заполняет пользователь по docs/SCENE_MEASUREMENT_RU.md. Пока поле не измерено,
+# status: assumed и значение — разумное значение по умолчанию. Единицы: метры, радианы, кг.
+version: 1
+floor:
+  status: assumed
+  material: laminate          # laminate | tile | carpet | linoleum
+  friction_range: [0.5, 0.9]
+room:
+  status: assumed
+  free_area_xy: [3.0, 2.5]    # прямоугольник свободного пола, где ездят базы
+dock_target:                  # одинаковая цель для Tank и базы ROSMASTER
+  status: assumed
+  board_size_wh: [0.24, 0.40] # ширина и высота щита цели
+  marker: {family: DICT_4X4_50, id: 0, side: 0.10, center_height: 0.20}
+  zone_radius: 0.08           # радиус размеченной зоны остановки
+  standoff: 0.25              # расстояние от щита до центра зоны
+tank:
+  status: assumed
+  mass_kg: 1.88               # взвесить с Pi и аксессуарами
+  footprint_lw: [0.278, 0.195]
+  camera: {forward: 0.10, height: 0.15, hfov_rad: 1.313}
+  lidar: {forward: 0.0, height: 0.18, yaw_offset_rad: 0.0, direction: 1, range: [0.05, 8.0]}
+rosmaster:
+  status: assumed
+  footprint_lw: [0.31, 0.30]
+  camera: {forward: 0.12, height: 0.25, hfov_rad: 1.175}
+  lidar: {forward: 0.08, height: 0.20, yaw_offset_rad: 0.0, direction: 1, range: [0.05, 8.0]}
+arm_table:                    # стол SO-101
+  status: assumed
+  height: 0.75
+  cube: {side: 0.032, mass: 0.035, color: orange}
+  box: {inner_lwh: [0.068, 0.048, 0.04], position_in_base: [0.25, 0.12]}
