@@ -212,7 +212,7 @@ def install_physical(local_reader=lambda:{}):
         with ui.row():
             ui.link('Готовность парка','/recording/readiness');ui.link('Сбор датасета','/recording/collect',new_tab=True)
         ui.label('Проверка «всё ездит» · '+NAMES[robot]).style('font-size:28px;font-weight:650')
-        ui.label('Около 10 минут. Мастер только читает датчики. Управляете вы в панели ниже; оставайтесь рядом с выключателем.').classes('ready-action')
+        ui.label(('Только вперёд и назад. ' if robot=='tank' else 'Около 10 минут. ')+'Мастер только читает датчики. Управляете вы в панели ниже; оставайтесь рядом с выключателем.').classes('ready-action')
         if robot=='tank':
             ui.label('Зарядник должен быть отсоединён. Напряжение само по себе не доказывает это — нужно ваше подтверждение.').classes('ready-action')
         run=Run(robot,lambda:Reader(robot,local_reader))

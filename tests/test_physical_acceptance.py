@@ -72,3 +72,7 @@ def test_native_imu_units_and_sensor_freshness():
     value=normalize('tank',h)
     assert math.isclose(value['yaw_rate_rad_s'],math.pi/2)
     assert not value['scan_fresh'] and value['battery_fresh']
+
+
+def test_tank_operator_check_only_forward_backward():
+    assert [key for key,_ in physical.STEPS['tank']]==['forward','backward']

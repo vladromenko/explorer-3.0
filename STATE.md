@@ -1324,3 +1324,7 @@ User confirms Tank powered on and charger disconnected. Removed incorrect <8.3 V
 ## Direct Tank controls — 2026-11-14
 
 At user's explicit request removed charger step and its prerequisite from Tank physical wizard. Control panel loads immediately without enabling motors; ordinary direct Tank page remains available. Battery/USB/TTL/STOP guards in controller unchanged. Browser PASS (tests-20261114T140628Z), physical evaluator 6 PASS. User confirmed charger disconnected. No agent-issued movement.
+
+## Minimal Tank operator check — 2026-11-14
+
+User requested only forward/backward checks and direct controls. Tank wizard now has exactly these two steps; other robot checklists unchanged. Controller protections unchanged. Seven evaluator tests PASS, including exact two-step regression. Full hardware acceptance is not claimed by this abbreviated check. Browser opening unavailable: CUA inventory has no browsers/apps; direct URL supplied to operator.
