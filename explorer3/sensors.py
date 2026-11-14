@@ -115,10 +115,8 @@ def environment_features(packet,now_ns=None):
 class SensorClient:
     def __init__(self,isolated=False,robot='tank'):
         from .tank import config
-        from .local_work import hardware_allowed,homebrain_only
-        permit=DATA/'configs/sensor-observation-enabled.json'
-        extra=json.loads(permit.read_text()).get('robots',[]) if permit.exists() else []
-        if homebrain_only() or not (hardware_allowed(robot) or robot in extra):raise PermissionError('Наблюдение этого робота ещё не разрешено')
+        from .local_work import require_hardware_mode
+        require_hardware_mode(robot)
         if robot not in ('tank','rosmaster'):raise ValueError('Unknown robot')
         self.robot=robot
         cfg=config() if robot=='tank' else json.loads((DATA/'configs/rosmaster-agent.json').read_text())

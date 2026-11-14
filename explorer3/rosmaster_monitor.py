@@ -10,11 +10,9 @@ from .paths import DATA
 
 async def fetch(path):
     try:
-        from .local_work import hardware_allowed
-        if not hardware_allowed('rosmaster'):raise ValueError('Этап A: только Homebrain (нет согласованного исключения ROSMASTER)')
+        from .local_work import require_hardware_mode
+        require_hardware_mode('rosmaster')
         cfg = json.loads((DATA/'configs/rosmaster-agent.json').read_text())
-        if cfg.get('observation_enabled') is not True:
-            raise ValueError('Наблюдение ROSMASTER отключено')
         async with httpx.AsyncClient(base_url=f"http://{cfg['host']}:{cfg['port']}",
                 headers={'X-Explorer-Token':cfg['token']}, trust_env=False, timeout=2) as client:
             response = await client.get(path)

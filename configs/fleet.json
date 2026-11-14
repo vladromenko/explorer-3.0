@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "robots": {
+    "so101": {"enabled": true, "owner": "legacy_8020"},
+    "rosmaster": {"enabled": true},
+    "tank": {"enabled": true, "mode": "floor"}
+  },
+  "training_authorized": false,
+  "updated_by": "user",
+  "updated_at": "2026-11-14"
+}

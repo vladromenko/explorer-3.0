@@ -14,25 +14,30 @@ from .paths import DATA
 ZERO={'drive':[0,0,0],'arm':[0,0,0],'pitch':0,'roll':0,'grip':0,'slow':False}
 
 
-def connection(timeout=2):
-    from .local_work import hardware_allowed
-    # Stage A keeps the robot closed unless the operator-agreed ROSMASTER-only exception exists.
-    if not hardware_allowed('rosmaster'):raise PermissionError('Этап A: только Homebrain (нет согласованного исключения ROSMASTER)')
+def _connection(timeout=2):
     cfg=json.loads((DATA/'configs/rosmaster-agent.json').read_text())
     return httpx.Client(base_url=f"http://{cfg['host']}:{cfg['port']}",
                         headers={'X-Explorer-Token':cfg['token']},timeout=timeout,trust_env=False)
+
+
+def connection(timeout=2):
+    from .local_work import require_hardware_mode
+    require_hardware_mode('rosmaster')
+    return _connection(timeout)
 
 
 def enabled():
     from .local_work import hardware_allowed
     if not hardware_allowed('rosmaster'):return False
     path=DATA/'configs/rosmaster-agent.json'
-    return path.exists() and json.loads(path.read_text()).get('manual_control_enabled') is True
+    return path.exists()
 
 
 def request(path,value=None,timeout=2):
     if path in {'/acquire','/session','/command'} and not enabled():raise PermissionError('Ручное управление ROSMASTER ещё не разрешено')
-    with connection(timeout) as client:
+    # Revoking permission must not prevent a final emergency STOP.
+    factory=_connection if path=='/stop' else connection
+    with factory(timeout) as client:
         result=client.get(path) if value is None else client.post(path,json=value)
         if not result.is_success:
             raise RuntimeError(result.json().get('detail','ROSMASTER request failed'))
@@ -250,7 +255,7 @@ class Operator:
             if not hardware_allowed('rosmaster'):
                 # No new packet may use a previously cached connection after scope closes.
                 if client is not None:client.close();client=None
-                self.stop('Подключение ROSMASTER закрыто для локальной подготовки')
+                self.stop('ROSMASTER выключен в допуске парка')
                 continue
             stats=self.stats
             if not stats:stats.update(started=last,last_ok=last,commands=0,timeouts=0,held=0,max_rtt=0.,max_browser_gap=0.)

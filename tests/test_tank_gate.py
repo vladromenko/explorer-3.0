@@ -9,14 +9,13 @@ from agents.tank.agent import Hardware
 from agents.tank.serial_guard import CheckedSerial
 
 class TankGateTests(unittest.TestCase):
-    def test_bench_permission_does_not_override_workflow_platform_scope(self):
+    def test_control_uses_the_single_fleet_admission(self):
         from explorer3.control import Control
         control=Control();control.robot='tank'
-        with patch('explorer3.control.bench_authorized',return_value=True):
-            with patch('explorer3.control.local_work.hardware_allowed',return_value=False):
-                self.assertFalse(control.authorized())
-            with patch('explorer3.control.local_work.hardware_allowed',return_value=True):
-                self.assertTrue(control.authorized())
+        with patch('explorer3.control.local_work.hardware_allowed',return_value=False):
+            self.assertFalse(control.authorized())
+        with patch('explorer3.control.local_work.hardware_allowed',return_value=True):
+            self.assertTrue(control.authorized())
 
     def test_neutral_diagnostic_never_grants_movement_even_without_incident(self):
         from agents.tank.motion_permission import limited_command,require_motion_permission

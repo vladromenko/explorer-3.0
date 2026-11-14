@@ -1134,3 +1134,24 @@ sim 33 PASS, browser 1 PASS; 0 failed/errors. Четыре теста явно �
 Сводка docs/recording-r0-tests.json; механизм docs/SOFTWARE_TESTS_RU.md.
 Следующий пакет R1: единый fleet.json и обратимая миграция. Независимый
 неотслеживаемый scripts/sim_benchmark.py не изменялся и в коммит не включён.
+
+## 2026-11-14 · R1 единый допуск парка
+
+На копии 10 реальных старых файлов проверены миграция, повторный вызов и
+побайтовый откат: validation/recording-r1/real-config-copy.json PASS.
+После read-only health (idle, armed=false, без job) миграция применена к
+Homebrain. Архив: archive/permissions-20261114T113638Z-9f2bb4a8, README.json
+с контрольными суммами. fleet.json: все три enabled, Tank floor, SO-101
+owner=legacy_8020, training_authorized=false. Передачи управления и перезапуска
+:8020/:8090/:8030 не было. Старый процесс :8030 заменяется только пакетом R3.
+На самом Tank incident-block ещё НЕ снят: это пакет R2 после установки защит.
+
+Общие проверки допуска hardware/Leader/камер/клиентов теперь используют fleet.
+Отдельный тест подтверждает: выключение ROSMASTER не блокирует аварийный STOP,
+при этом /command не допускается. Проверка без сети через MockTransport.
+Старые тесты workflow/bench обновлены только под новый единый контракт.
+
+R1 финальная основная группа tests-20261114T113621Z: 189 PASS + 2 subtests,
+3 явных skip, 0 failed/errors. Контрактная выборка 33 PASS + 2 subtests;
+проверены восстановление после прерывания миграции, отказ отката поверх новых
+решений и запрет миграции при активном управлении.

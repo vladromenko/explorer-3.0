@@ -128,8 +128,8 @@ class CameraCapture:
         self.info = {}
 
     def start(self):
-        if (DATA/'configs/so101-external-owner.json').exists():
-            raise PermissionError('Камера оставлена прежнему управлению')
+        from .fleet_config import require_robot
+        require_robot('so101',DATA)
         configure_cv()
         import cv2
         assert_hardware_available([self.device])
@@ -257,8 +257,8 @@ class HardwareSource:
 
     def start(self, *, explicit_user_start: bool = False, stop=None):
         if not explicit_user_start: raise PermissionError('Нужен явный запуск записи/политики в UI')
-        if (DATA/'configs/so101-external-owner.json').exists():
-            raise PermissionError('Follower и камера оставлены прежнему управлению; полный SO-101 профиль заблокирован')
+        from .fleet_config import require_robot
+        require_robot('so101',DATA)
         def check_cancelled():
             if stop and stop(): raise InterruptedError('Запуск hardware отменён пользователем до дальнейших команд')
         check_cancelled()

@@ -121,7 +121,8 @@ async def websocket(socket:WebSocket):
                 try:
                     if not local_work.hardware_allowed('rosmaster'):
                         if client is not None:client.close();client=None
-                        payload=telemetry({},state['mode'],'Локальная подготовка: робот не опрашивается. Откройте «Подготовка без робота».')
+                        from .fleet_config import robot_allowed
+                        payload=telemetry({},state['mode'],robot_allowed('rosmaster')[1])
                         payload['offline']=True
                     else:
                         if client is None:client=connection(1)
@@ -137,7 +138,7 @@ async def websocket(socket:WebSocket):
     async def act(action,value):
         try:
             if action in HARDWARE_ACTIONS and not local_work.hardware_allowed('rosmaster'):
-                raise PermissionError('Подключение робота сейчас закрыто: идёт локальная подготовка. Физическая проверка выполняется отдельно.')
+                local_work.require_hardware_mode('rosmaster')
             if action=='stop':
                 reason='Браузер: '+str(value.get('reason','кнопка STOP'))[:100]
                 await asyncio.to_thread(operator.stop,reason);state['notice']='Остановлено · '+reason

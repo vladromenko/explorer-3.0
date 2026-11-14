@@ -17,9 +17,9 @@ def test_replay_never_moves_to_a_distant_start_pose(tmp_path,monkeypatch):
     with pytest.raises(StopIteration):replay.next({'observation.state':[90]*6})
 
 
-def test_local_mode_blocks_trial_before_loading_hardware(monkeypatch):
-    monkeypatch.setattr(trials.local_work,'enabled',lambda:True)
-    with pytest.raises(PermissionError,match='локальный режим'):
+def test_missing_fleet_blocks_trial_before_loading_hardware(tmp_path,monkeypatch):
+    monkeypatch.setattr(trials.local_work,'DATA',tmp_path)
+    with pytest.raises(PermissionError,match='Допуск парка'):
         trials.require_physical({'profile':'so101_pick_place','id':'0'*32})
 
 

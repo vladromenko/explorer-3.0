@@ -1,47 +1,25 @@
-"""Persistent local-only mode: no remote probes or physical resource acquisition."""
-import json
+"""Compatibility facade: all hardware admission comes from fleet.json."""
 from .paths import DATA
+from . import fleet_config
 
 
 def homebrain_only():
-    path=DATA/'configs/workflow.json'
-    return path.exists() and json.loads(path.read_text()).get('stage')=='A'
+    try:return not any(r['enabled'] for r in fleet_config.load(DATA)['robots'].values())
+    except ValueError:return True
 
 
 def workflow_stage():
-    path=DATA/'configs/workflow.json'
-    if not path.exists():return None
-    value=json.loads(path.read_text()).get('stage')
-    return value if value in ('A','B','C','D','E','F') else None
+    # Stage labels are not another authorization layer.
+    return None
 
 
-def enabled():
-    path = DATA/'configs/local-only.json'
-    return path.exists() and json.loads(path.read_text()).get('enabled') is True
+def enabled():return homebrain_only()
 
 
-def robot_exception(robot):
-    """Operator-agreed hardware exception for exactly one robot while the global stage keeps others closed."""
-    path=DATA/'configs'/f'{robot}-hardware-enabled.json'
-    return robot=='rosmaster' and path.exists() and json.loads(path.read_text()).get('enabled') is True
+def robot_exception(robot):return hardware_allowed(robot)
 
 
-def hardware_allowed(robot=None):
-    path=DATA/'configs/workflow.json'
-    workflow=json.loads(path.read_text()) if path.exists() else {}
-    # Current-stage scope wins over stale authorization files from older stages.
-    if 'allowed_robots' in workflow:
-        allowed=workflow['allowed_robots']
-        if not isinstance(allowed,list) or robot not in allowed:return False
-    if robot_exception(robot):return True
-    if homebrain_only():return False
-    if not enabled():return True
-    if robot=='tank':
-        path=DATA/'configs/tank-hardware-enabled.json'
-        return path.exists() and json.loads(path.read_text()).get('enabled') is True
-    return False
+def hardware_allowed(robot=None):return fleet_config.robot_allowed(robot,DATA)[0]
 
 
-def require_hardware_mode(robot=None):
-    if not hardware_allowed(robot):
-        raise PermissionError('Включён локальный режим: роботы не опрашиваются, управление не открывается')
+def require_hardware_mode(robot=None):fleet_config.require_robot(robot,DATA)

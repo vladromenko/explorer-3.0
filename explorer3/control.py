@@ -5,7 +5,7 @@ import uuid
 from . import catalog
 from .paths import DATA
 from . import local_work
-from agents.tank.motion_permission import bench_authorized, BENCH_V, BENCH_W
+from agents.tank.motion_permission import BENCH_V, BENCH_W
 
 class Control:
     def __init__(self):
@@ -27,17 +27,7 @@ class Control:
         self.generation=0
 
     def authorized(self):
-        if not local_work.hardware_allowed(self.robot):
-            return False
-        if self.robot=='tank' and bench_authorized(DATA/'configs'):
-            return True
-        if self.robot=='so101' and (DATA/'configs/so101-external-owner.json').exists():
-            return False
-        if self.robot=='tank' and (DATA/'validation/tank-motion-incident.json').exists():
-            return False
-        # Installed only after the operator authorizes the concrete physical block.
-        stage='b' if self.robot=='so101' else 'c' if self.robot=='tank' else 'd'
-        return (DATA/f'stage-{stage}-authorized.json').is_file()
+        return local_work.hardware_allowed(self.robot)
 
     def select(self, robot: str):
         if robot not in {'so101','tank','rosmaster'}:
@@ -54,7 +44,8 @@ class Control:
             if self.maintenance:
                 raise RuntimeError('Идёт передача управления')
             if not self.authorized():
-                raise PermissionError('Для выбранного робота ещё не разрешён физический блок')
+                local_work.require_hardware_mode(self.robot)
+                raise PermissionError('Запуск робота сейчас недоступен')
             if self.owner is not None:
                 raise RuntimeError('Ручное управление уже занято')
             if self.robot not in {'so101','tank'}:
@@ -100,8 +91,8 @@ class Control:
         catalog.event('info',reason)
 
     def watchdog(self):
-        if self.owner is not None and self.robot=='tank' and not self.authorized():
-            self.stop('Разрешение проверки Tank истекло')
+        if self.owner is not None and not self.authorized():
+            self.stop('Робот выключен в допуске парка')
         if self.owner is not None and self.expired():
             self.stop('Lease истёк: связь с оператором потеряна')
 

@@ -17,9 +17,8 @@ class LeaderReader:
         self.lease = None
 
     def start(self):
-        reservation = DATA/'configs/so101-external-owner.json'
-        if reservation.exists() and not json.loads(reservation.read_text()).get('temporary_leader_only_allowed'):
-            raise PermissionError('Leader оставлен прежнему управлению')
+        from .fleet_config import require_robot
+        require_robot('so101',DATA)
         snapshot = calibration_snapshot()
         assert_hardware_available([self.port])
         self.lease = ResourceLease('so101-leader')
