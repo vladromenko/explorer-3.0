@@ -28,3 +28,23 @@ def test_verifier_rejects_paths_and_links_without_extraction(tmp_path):
             output.addfile(entry, io.BytesIO(b''))
         with pytest.raises(ValueError):
             verify(path)
+
+
+def test_install_backup_and_rollback_preserve_secrets_and_legacy_history(tmp_path):
+    import hashlib,json
+    from scripts.install_tank_bundle import install,rollback
+    root=tmp_path/'robot';root.mkdir();stage=tmp_path/'stage';(stage/'payload').mkdir(parents=True)
+    (root/'agent.py').write_text('old agent');(root/'config.json').write_text('secret remains')
+    (root/'incident-block.json').write_text('old incident')
+    files={'agent.py':b'new agent','limits.py':b'new limits'}
+    for name,data in files.items():(stage/'payload'/name).write_bytes(data)
+    manifest={'platform':'tank','files':{'payload/'+name:hashlib.sha256(data).hexdigest() for name,data in files.items()}}
+    (stage/'MANIFEST.json').write_text(json.dumps(manifest))
+    result=install(stage,root)
+    assert not (root/'incident-block.json').exists() and (root/'config.json').read_text()=='secret remains'
+    assert (root/'agent.py').read_text()=='new agent'
+    rollback(result['archive'])
+    assert (root/'agent.py').read_text()=='old agent' and not (root/'limits.py').exists()
+    assert (root/'incident-block.json').read_text()=='old incident'
+    (stage/'payload/agent.py').write_text('tampered')
+    with pytest.raises(ValueError,match='hash'):install(stage,root)

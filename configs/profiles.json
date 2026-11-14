@@ -62,7 +62,36 @@
       0.2,
       0.5
     ],
-    "label": "Tank · подъезд по камере"
+    "label": "Tank · подъезд по камере",
+    "control_limits": {
+      "version": 1,
+      "manual": {
+        "v": 0.2,
+        "w": 0.5
+      },
+      "policy": {
+        "v": 0.3,
+        "w": 1.0
+      },
+      "absolute": {
+        "v": 0.6,
+        "w": 2.0
+      },
+      "acceleration": {
+        "v": 0.5,
+        "w": 2.0
+      },
+      "command_ttl_s": 0.35,
+      "lidar_stop_m": 0.15,
+      "dock_stop_m": 0.05,
+      "dock_max_speed_m_s": 0.1,
+      "sector_half_angle_deg": 30.0,
+      "tilt_stop_deg": 20.0,
+      "battery_stop_v": 6.9,
+      "battery_warning_v": 7.2,
+      "sensor_max_age_s": 0.5
+    },
+    "measured_response_fields": []
   },
   "rosmaster_dock": {
     "robot": "rosmaster",
@@ -395,7 +424,39 @@
       "depth_age_s",
       "imu_age_s"
     ],
-    "sensor_schema": "tank_environment_v1"
+    "sensor_schema": "tank_environment_v1",
+    "control_limits": {
+      "version": 1,
+      "manual": {
+        "v": 0.2,
+        "w": 0.5
+      },
+      "policy": {
+        "v": 0.3,
+        "w": 1.0
+      },
+      "absolute": {
+        "v": 0.6,
+        "w": 2.0
+      },
+      "acceleration": {
+        "v": 0.5,
+        "w": 2.0
+      },
+      "command_ttl_s": 0.35,
+      "lidar_stop_m": 0.15,
+      "dock_stop_m": 0.05,
+      "dock_max_speed_m_s": 0.1,
+      "sector_half_angle_deg": 30.0,
+      "tilt_stop_deg": 20.0,
+      "battery_stop_v": 6.9,
+      "battery_warning_v": 7.2,
+      "sensor_max_age_s": 0.5
+    },
+    "measured_response_fields": [
+      "yaw_rate_imu",
+      "forward_displacement_lidar"
+    ]
   },
   "rosmaster_dock_rgbd_lidar": {
     "robot": "rosmaster",

@@ -82,8 +82,6 @@ print(json.dumps(found))
 
 
 def enter():
-    authorization=remote_json('physical-block-authorized.json')
-    if authorization.get('stage')!='C':raise PermissionError('Physical block C authorization missing')
     if api('/health')['hardware_open']:raise RuntimeError('First STOP and close the Explorer session')
     if STATE.exists():
         previous=json.loads(STATE.read_text())

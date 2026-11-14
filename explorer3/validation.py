@@ -44,7 +44,13 @@ def validate(episode_id: str, *, domain='real'):
         if row['camera']['timestamp_ns']>obs:
             raise ValueError('Future camera data')
         if domain=='real' and cfg['robot']=='tank':
-            if row['measured_response_kind']!='previous_command_estimate_no_wheel_feedback':
+            kind=row['measured_response_kind']
+            if kind=='imu_and_front_scan_pair_estimate_not_wheel_odometry':
+                if not cfg.get('environment_channels') or row.get('state_valid') is not False or row.get('state_kind')!='previous_transmitted_command_estimate':
+                    raise ValueError('Tank command state must remain separate from measured sensor response')
+                for field in ('yaw_rate_imu','forward_displacement_lidar'):
+                    if row.get(field) is not None and not math.isfinite(row[field]):raise ValueError('Invalid derived Tank response')
+            elif kind!='previous_command_estimate_no_wheel_feedback':
                 raise ValueError('Tank command estimate mislabeled as measurement')
             if row['agent_accepted_command'] is not True or row['battery_voltage']<6.9:
                 raise ValueError('Unaccepted command or low battery')

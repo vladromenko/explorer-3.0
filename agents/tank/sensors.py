@@ -4,6 +4,8 @@ Factory topics and isolated Explorer camera topics are observed; missing streams
 remain absent. Raw depth is preserved in millimetres as emitted by Aurora930.
 """
 import hmac
+import hashlib
+from collections import deque
 import io
 import json
 import os
@@ -27,22 +29,34 @@ class SensorStore:
     def __init__(self,robot='tank'):
         if robot not in ('tank','rosmaster'):raise ValueError('Unsupported robot')
         self.robot=robot
+        self.source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
         self.ros_clock_reader=None
         self.use_sim_time=False
         self.lock=threading.Lock();self.entries={};self.sequence=0
+        self.history={name:deque(maxlen=400 if name=='imu' else 60) for name in ('imu','scan','scan_rear')}
         self.boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip()
 
     def put(self,name,array,metadata):
         with self.lock:
             self.sequence+=1
-            self.entries[name]=(array,{**metadata,'sequence':self.sequence,'received_ns':time.monotonic_ns()})
+            now=time.monotonic_ns();previous=self.entries.get(name)
+            old=previous[1] if previous else {}
+            interval=(now-old['received_ns'])/1e9 if previous else None
+            rate=1/interval if interval and interval>0 else None
+            if rate is not None and old.get('rate_hz') is not None:rate=.2*rate+.8*old['rate_hz']
+            self.entries[name]=(array,{**metadata,'sequence':self.sequence,'received_ns':now,
+                'frame_count':old.get('frame_count',0)+1,'rate_hz':rate})
+            if name in self.history and array is not None:
+                self.history[name].append((np.asarray(array).copy(),now,metadata.get('source_timestamp_ns',0)))
 
-    def capture(self):
-        with self.lock:entries=dict(self.entries)
+    def capture(self,include_history=True):
+        with self.lock:
+            entries=dict(self.entries)
+            histories={name:list(values) for name,values in self.history.items()} if include_history else {}
         now=time.monotonic_ns()
         ros_now=self.ros_clock_reader() if self.ros_clock_reader else None
         clock_after=time.monotonic_ns()
-        meta={'version':1,'robot':self.robot,'boot_id':self.boot_id,'monotonic_ns':now,
+        meta={'version':1,'robot':self.robot,'source_sha256':self.source_sha256,'boot_id':self.boot_id,'monotonic_ns':now,
               'clock_pair':{'monotonic_ns':(now+clock_after)//2,'ros_time_ns':ros_now,
                             'uncertainty_ns':(clock_after-now)//2,'system_time_ns':time.time_ns(),
                             'use_sim_time':self.use_sim_time},
@@ -51,6 +65,16 @@ class SensorStore:
         for key,(value,metadata) in entries.items():
             meta['streams'][key]={**metadata,'age_s':(now-metadata['received_ns'])/1e9}
             if value is not None:arrays[key]=value
+        for name,values in histories.items():
+            if values:
+                shape=values[-1][0].shape
+                compatible=[item for item in values if item[0].shape==shape]
+                arrays[name+'_history']=np.stack([item[0] for item in compatible])
+                arrays[name+'_history_received_ns']=np.array([item[1] for item in compatible],dtype=np.int64)
+                arrays[name+'_history_source_ns']=np.array([item[2] for item in compatible],dtype=np.int64)
+                meta.setdefault('history',{})[name]={'samples':len(compatible),
+                    'kind':'all_received_samples_in_bounded_window_not_all_published',
+                    'clock':'robot_monotonic_ns','source_clock':entries[name][1].get('source_clock')}
         return meta,arrays
 
 
@@ -184,7 +208,7 @@ def make_app(store,token):
             return Response(status_code=403)
         return await call_next(request)
     @app.get('/health')
-    def health():return store.capture()[0]
+    def health():return store.capture(include_history=False)[0]
     @app.get('/microphone.wav')
     def microphone():
         if __package__:from .microphone import capture

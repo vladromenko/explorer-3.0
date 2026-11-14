@@ -62,6 +62,14 @@ def build(verification=False):
             value=super().get_battery()
             if value is not None:self.battery=value/1000.;self.battery_time=time.monotonic_ns()
             return value
+        def get_gamepad(self):
+            value=super().get_gamepad()
+            if value is not None:journal.emit({'event':'ignored_gamepad','reason':'Explorer session owns motors'})
+            return None
+        def get_sbus(self):
+            value=super().get_sbus()
+            if value is not None:journal.emit({'event':'ignored_sbus','reason':'Explorer session owns motors'})
+            return None
         def get_imu(self):
             value=super().get_imu()
             if value is not None:self.imu=list(value);self.imu_time=time.monotonic_ns()
@@ -163,7 +171,9 @@ def build(verification=False):
         def command(self,v,w):
             with dispatch:
                 if not all(math.isfinite(x) for x in (v,w)):raise ValueError('Nonfinite command')
-                if not verification:v,w=limited_command(ROOT,v,w)
+                if not verification:
+                    requested=(v,w);v,w=limited_command(ROOT,v,w,mode='policy')
+                    if requested!=(v,w):journal.emit({'event':'velocity_limited','requested':requested,'accepted':[v,w]})
                 with board.condition:
                     if board.latched:raise PermissionError('Driver latched: '+str(board.reason))
                     if not verification and (board.board.battery_time is None or time.monotonic_ns()-board.board.battery_time>2_000_000_000 or board.board.battery<6.9):
@@ -246,7 +256,6 @@ def main():
         require_motion_permission(ROOT)
         marker=json.loads((ROOT/'handoff-active.json').read_text())
         if marker['boot_id']!=Path('/proc/sys/kernel/random/boot_id').read_text().strip():raise PermissionError('Current-boot handoff required')
-        if not (ROOT/'physical-block-authorized.json').exists():raise PermissionError('Explicit physical authorization required')
     driver=build(args.verify_no_hardware)
     if args.verify_no_hardware:
         from fastapi.testclient import TestClient

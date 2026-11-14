@@ -1155,3 +1155,81 @@ R1 финальная основная группа tests-20261114T113621Z: 189 
 3 явных skip, 0 failed/errors. Контрактная выборка 33 PASS + 2 subtests;
 проверены восстановление после прерывания миграции, отказ отката поверх новых
 решений и запрет миграции при активном управлении.
+
+## 2026-11-14 · R2 в работе, пока НЕ установлен на Tank
+
+R0 ab80827 и R1 2864704 отправлены origin/main. Tank доступен SSH (raspberrypi,
+MentorPi Up 12 hours, собственная агентская служба active); выполнены только
+hostname/service/list-files/udevadm-path read-only команды. udevadm доступен
+в контейнере. Перехвата, запуска serial/native driver и движения агент не делал.
+
+Текущий незакоммиченный R2:
+- configs/tank-limits.json и agents/tank/limits.py: пределы manual .2/.5,
+  policy .3/1., абсолютный потолок .6/2., рампа .5/2., мгновенный ноль;
+- локальные scan/IMU guards, SDK units проверены по исходному производителю
+  (ax/ay/az в g, gyro degrees/s; не выдуманные SI единицы);
+- motor_link.py: udev monitor и сохраняемая recoverable latch; agent.py
+  восстанавливает только нули, сохраняет запрет старой lease, подтверждение
+  /motor-link/continue не включает новое движение;
+- ограничение native boundary, игнорирование gamepad/SBUS с журналом;
+- tank_response.py: консервативное сравнение передних сканов, явные invalid
+  при разрыве/повороте; command state не выдаётся за измеренное положение;
+- Homebrain STOP failure пишется в журнал tank-link-events, не создаёт вечный
+  файл допуска; validation различает measured response и command state;
+- staging builder включает новые файлы/limits, не вносит старую incident-block.
+Проверка tests/test_tank_limits.py + tank_gate/source/staging: 27 PASS + 2
+subtests, без реальных команд. Это ещё не закрытие R2 и не физический PASS.
+
+До завершения R2 нужны: проверить полный жизненный цикл/гонки recovery и
+STOP, нейтральный старт и возраст всех датчиков; журнал/метаданные aborted;
+добавить отчёты calibration/health и производные данные в профили; проверить
+штатный handoff по инструкции (не отключать сенсоры пользователя); установка
+staging с backup/hash/rollback; только затем архивировать старые разрешения
+на самом Tank. Нужна UI-кнопка подтверждения восстановления, дальше R3–R9.
+Текущий :8030 по-прежнему старый процесс 7305589; не перезапускался.
+
+R2 дополнительные read-only выводы: штатный ~/.stop_ros.sh реально выполняет
+массовый kill -9 по всем строкам `ps ... | grep ros`; запускать его для
+перехвата небезопасно. Сохранён адресный SIGINT конкретного bringup launch и
+штатная остановка его службы; wifi.service также открывает Board через SDK,
+поэтому нельзя оставлять второго владельца serial во время сессии. Изменения
+настроек Wi-Fi/производительских файлов не выполняются.
+
+Read-only отчёты calibration.json и health-before.json в validation/recording-r2:
+IMU/скоростные YAML найдены, install и src имеют разные SHA (ничего не изменено).
+/odom_raw — интеграл команд, linear_correction_factor_tank=0.52, не энкодеры.
+Pi: CPU ~75%, 60.6°C, throttled=0, HTTP RTT p95 105.6 ms; в штатном стеке
+joystick_control занимает ~95% одного ядра. Узлы не отключались.
+
+### R2 установлен и проверен программно
+
+Tank deployment: archive/deploy-recording-20261114T120848Z-3174cdd9;
+host helper backup handoff.py.before-recording-20261114T120845Z. Предыдущая
+резервная копия archive/deploy-recording-20261114T120501Z-d07abc27 сохраняет
+исходные блокировки и код до R2. На Tank архивированы incident-block, bench,
+physical-block-authorized и authorization-suspended-incident; код старых систем
+и NetworkManager не менялся. Пакет умеет rollback, тест восстановления PASS.
+
+После перезапуска только своих explorer3-* служб: armed=false, hardware_open=false,
+новых native serial команд нет; software SHA агента и обоих наблюдателей
+проверены. Установленная версия читает udev и остаётся инертной при старте.
+Три проверки copied native chain с CaptureSerial в ROS_DOMAIN_ID=97: STOP,
+TTL, unsolicited ROS PASS; доказательство нулевых пакетов относится к фейку,
+не к реальному контроллеру. Калибровка не запускалась, движение не отправлялось.
+
+Основная группа tests-20261114T120303Z: 200 PASS + 2 subtests, 4 skip, 0 failed.
+Три skip — запрет обучения/ACT inference; ещё один — test_simlab_dock из
+соседней разработки, недоступная зависимость в main (не считать PASS).
+Последние R2 контракты: 30 PASS + 2 subtests; датчики 18 PASS, 2 запретных
+ACT skip; штатный SDK проверен только с фейковым serial. Отчёты находятся
+в validation/recording-r2, изменения R2 не являются физической приёмкой.
+
+RGB на штатном стеке местами 7–9 Hz, CPU 75–86%, 60°C, throttled=0; RTT
+p95 после обновления 24 ms. Ненужные заводские узлы не выключались. В R5
+это должен быть красный пункт с конкретным действием; фактическая частота
+после пользовательской передачи управления проверяется в R8.
+
+UI-кнопка подтверждения USB добавлена в исходники Homebrain, но :8030 ещё
+не перезапускался — применение в R3. Мастер физической проверки и накопленный
+угол при проезде 1 м относятся к R8; сейчас ни проезд, ни калибровка не делались.
+Дальше R3 (ROSMASTER) → R4 (владение SO-101) → R5–R9.

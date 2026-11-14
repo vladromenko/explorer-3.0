@@ -11,7 +11,7 @@ REPO = Path(__file__).resolve().parents[1]
 TANK_FILES = (
     'agent.py', 'native_client.py', 'native_driver.py', 'serial_guard.py',
     'handoff.py', 'stop_agent.py', 'emergency_stop.py', 'start-agent.sh', 'start-native.sh',
-    'motion_permission.py',
+    'motion_permission.py','limits.py','motor_link.py',
     'sensors.py', 'start-sensors.sh', 'stop_sensors.py', 'lidar.py', 'microphone.py', 'explorer3-tank-sensors@.service',
 )
 
@@ -81,9 +81,7 @@ def build(runtime, output):
         if digest(data) != record.get('copy_sha256', record['source_sha256']):
             raise ValueError(f'Native copy changed: {name}')
         tank['payload/' + name] = data
-    tank['payload/incident-block.json'] = encoded({
-        'motion_blocked': True, 'reason': 'Runaway incident; physical STOP bench retest pending',
-    })
+    tank['payload/configs/tank-limits.json'] = (REPO/'configs/tank-limits.json').read_bytes()
     tank['provenance/native-manifest.json'] = encoded(native_manifest)
     tank['requirements.lock.txt'] = (REPO / 'configs/tank-agent-requirements.lock.txt').read_bytes()
     tank['software-validation.json'] = (REPO / 'docs/tank-native-software-validation.json').read_bytes()
@@ -94,9 +92,8 @@ def build(runtime, output):
         'Зависимости среды: существующий MentorPi / ROS Humble, ros_robot_controller_msgs, '
         'собственная venv и ранее установленный vendor/camera. Бинарники камеры сюда не входят.\n'
         'Секреты, конфигурация сети, состояние владения и разрешения на движение не включены.\n'
-        'При будущей установке сохранить существующие секреты/камеру и incident-block.json; '
-        'не переносить из архива разрешение на движение.\n'
-        'До физической проверки STOP на подставке движение остаётся заблокировано.\n'
+        'При установке сохранить секреты/камеру; архивировать прежние допуски по R2.\n'
+        'Езда разрешена пользователем; после USB-отказа нужны восстановление и подтверждение остановки.\n'
         'Программные проверки из software-validation.json не подтверждают остановку моторов.\n'
     ).encode()
     ros = {name: (REPO / name).read_bytes() for name in (

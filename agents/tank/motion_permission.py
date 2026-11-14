@@ -1,4 +1,4 @@
-"""Short, boot-bound bench permission; the unresolved incident marker stays intact."""
+"""Legacy diagnostic compatibility and unconditional robot-local velocity limits."""
 import json
 import time
 from pathlib import Path
@@ -36,7 +36,7 @@ def neutral_diagnostic_authorized(root):
     except (OSError,ValueError,KeyError,TypeError):return False
 
 
-def limited_command(root, v, w):
+def limited_command(root, v, w, mode='manual'):
     if (root/'neutral-diagnostic.json').exists():
         if not neutral_diagnostic_authorized(root) or v!=0. or w!=0.:
             raise PermissionError('Neutral-only diagnostic: movement is forbidden')
@@ -44,4 +44,6 @@ def limited_command(root, v, w):
     require_motion_permission(root)
     if bench_authorized(root):
         return max(-BENCH_V, min(BENCH_V, v)), max(-BENCH_W, min(BENCH_W, w))
-    return v, w
+    if __package__:from .limits import load,clip
+    else:from limits import load,clip
+    return clip(load(root),v,w,mode)

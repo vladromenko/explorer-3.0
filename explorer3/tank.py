@@ -36,6 +36,8 @@ class TankSource:
         self.stop_requested=lambda:False
         self.environment=environment
         self.sensors=None
+        from .tank_response import ScanResponse
+        self.scan_response=ScanResponse()
 
     def start(self,explicit_user_start=False,stop=lambda:False):
         if not explicit_user_start or stop():raise InterruptedError('Explicit live operator required')
@@ -87,8 +89,11 @@ class TankSource:
                'source_timestamp_ns':info['source_timestamp_ns'],'source_clock':info['source_clock'],
                'agent_receive_timestamp_ns':info['received_ns'],'homebrain_receive_timestamp_ns':received,
                'timestamp_kind':'available_at_homebrain','age_at_agent_response_ns':status['monotonic_ns']-info['received_ns']}
+        for key in ('limits','motor_link','initial_battery_voltage','minimum_battery_voltage','minimum_battery_under_load','limit_events'):
+            if key in status:self.provenance[key]=status[key]
         result={'observation_timestamp_ns':observation_time,
                 'observation.state':status['action'],'images':{'front':image},
+                'state_kind':'previous_transmitted_command_estimate','state_valid':False,
                 'measured_response_kind':'previous_command_estimate_no_wheel_feedback',
                 'battery_voltage':status['battery_voltage'],'battery_source':'RRC packet voltage_mV/1000',
                 'battery_agent_received_ns':status['battery_received_ns'],'imu_raw':status['imu'],
@@ -100,6 +105,7 @@ class TankSource:
                 raise RuntimeError('Нет причинно допустимого пакета датчиков')
             if any(stream_age(packet,k,observation_time)>2. for k in ('scan','depth','imu')):
                 raise RuntimeError('Depth/lidar/IMU устарели: профиль окружения остановлен')
+            result.update(self.scan_response.observe(packet))
             result.update({'observation.environment_state':environment_features(packet,observation_time).tolist(),
                            '_sensor_packet':packet})
         return result
@@ -159,11 +165,28 @@ class TankSource:
         except Exception as exc:
             reason='STOP Tank не подтверждён. Выключите питание выключателем. '+str(exc)
             errors.append(reason)
-            marker=DATA/'validation/tank-motion-incident.json'
+            self.provenance['termination_reason']='motor_link_lost' if 'motor_link_lost' in str(exc) or 'serial' in str(exc).lower() else 'control_link_lost_unknown'
+            marker=DATA/'validation/tank-link-events'/f'{time.time_ns()}.json'
             marker.parent.mkdir(parents=True,exist_ok=True)
-            marker.write_text(json.dumps({'blocked':True,'reason':reason,'created_at':time.time(),
+            marker.write_text(json.dumps({'event':self.provenance['termination_reason'],'operator_ack_required':True,'reason':reason,'created_at':time.time(),
                                           'physical_stop_confirmed':False},ensure_ascii=False,indent=2))
         finally:
+            try:
+                health=self.http.get('/health',timeout=1);health.raise_for_status();status=health.json()
+                for key in ('limits','motor_link','initial_battery_voltage','minimum_battery_voltage','minimum_battery_under_load','limit_events'):
+                    if key in status:self.provenance[key]=status[key]
+                if status.get('motor_link',{}).get('pending'):self.provenance['termination_reason']='motor_link_lost'
+            except Exception:pass
             self.http.close()
             if self.sensors:self.sensors.close()
         return errors
+
+
+def acknowledge_motor_link(stationary):
+    if stationary is not True:raise PermissionError('Подтвердите, что Tank стоит')
+    from .tank_handoff import invoke
+    invoke('enter')  # Explicit user confirmation also handles a rebooted factory owner.
+    with client() as http:
+        response=http.post('/motor-link/continue',json={'stationary':True},timeout=20)
+        require_response(response,'восстановление связи')
+        return response.json()

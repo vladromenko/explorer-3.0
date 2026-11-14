@@ -48,7 +48,8 @@ class TankGateTests(unittest.TestCase):
             self.assertFalse(h.neutral_written)
             self.assertEqual(h.last_action,[.2,-.5])
             self.assertFalse(h.status()['physical_stop_confirmed'])
-            self.assertTrue((Path(directory)/'incident-block.json').exists())
+            self.assertFalse((Path(directory)/'incident-block.json').exists())
+            self.assertTrue(json.loads((Path(directory)/'motor-link-state.json').read_text())['pending'])
             with self.assertRaises(PermissionError):h.command('live',2,0.,0.)
             with self.assertRaises(RuntimeError):h.close()
             self.assertIsNone(h.board)
@@ -125,7 +126,12 @@ class TankGateTests(unittest.TestCase):
                         self.assertEqual(h.command('operator',1,.2,.5)['action'],[0.,0.])
                         self.assertTrue(h.motion_paused)
                         h.command('operator',2,0.,0.);self.assertFalse(h.motion_paused)
-                        self.assertEqual(h.command('operator',3,.2,.5)['action'],[.2,.5])
+                        h.imu=[0.,0.,1.,0.,0.,0.];h.imu_time=time.monotonic_ns()
+                        h.scan_front=h.scan_rear=1.;h.scan_time=time.monotonic_ns()
+                        h.ramp.updated=time.monotonic()-.05
+                        resumed=h.command('operator',3,.2,.5)['action']
+                        self.assertGreater(resumed[0],0.);self.assertLessEqual(resumed[0],.05)
+                        self.assertGreater(resumed[1],0.);self.assertLessEqual(resumed[1],.2)
                 finally:h.done.set();h.watchdog.join(timeout=1)
 
     def test_key_release_switch_and_expiration_clear_motion(self):

@@ -209,6 +209,18 @@ def index():
             with ui.row():
                 tank_start=ui.button('Включить управление',on_click=teleop_check)
                 ui.button('STOP',color='negative',on_click=lambda:lost('STOP Tank'))
+            with ui.column().classes('notice text-red-4') as tank_link_controls:
+                tank_link_notice=ui.label('Связь с моторной платой прервалась')
+                tank_stationary=ui.checkbox('Tank стоит; подтверждаю остановку гусениц')
+                async def resume_tank_link():
+                    try:
+                        if session.thread and session.thread.is_alive():raise RuntimeError('Дождитесь сохранения прерванной записи')
+                        await asyncio.to_thread(tank.acknowledge_motor_link,tank_stationary.value)
+                        tank_stationary.value=False
+                        ui.notify('Связь восстановлена. Нажмите «Включить управление» для новой сессии.')
+                    except Exception as exc:notify_error(exc)
+                ui.button('Продолжить после восстановления USB',on_click=resume_tank_link)
+            tank_link_controls.set_visibility(False)
             tank_motion_state=ui.label('Управление выключено').classes('notice')
             tank_pilot_state=ui.label('').classes('notice')
             with ui.row() as correction_controls:
@@ -531,7 +543,8 @@ def index():
         job_table.rows=catalog.rows('jobs');job_table.update()
         event_table.rows=catalog.rows('events')[:20];event_table.update()
         mode_label.set_text((session.error or phase_text) if control.robot=='tank' else control.mode+' · '+(session.error or phase_text))
-        tank_motion_state.set_text((session.error or phase_text).removeprefix('RuntimeError: '))
+        pause_reason=(session.latest or {}).get('pause_reason')
+        tank_motion_state.set_text((session.error or pause_reason or phase_text).removeprefix('RuntimeError: '))
         tank_motion_state.classes('text-red-4' if session.error else 'text-green-4',remove='text-red-4 text-green-4')
         if control.robot=='tank' and not tank_bench and (DATA/'validation/tank-motion-incident.json').exists():
             tank_motion_state.set_text('Tank заблокирован после отказа STOP. Соединение с моторной платой пропало; закрытие программы не подтверждает остановку гусениц. Повторный запуск запрещён до проверки причины.')
@@ -557,6 +570,13 @@ def index():
                     response=http.get('/health');response.raise_for_status();return response.json()
             try:
                 observed=await asyncio.to_thread(probe)
+                link=observed.get('motor_link',{})
+                tank_link_controls.set_visibility(bool(link.get('pending')))
+                if link.get('pending'):
+                    stamp=link.get('last_failure_at')
+                    when=time.strftime('%H:%M:%S',time.localtime(stamp)) if stamp else 'неизвестное время'
+                    warning=' Частые отказы USB: проверьте кабель и питание.' if link.get('frequent_failures') else ''
+                    tank_link_notice.set_text('Связь с моторной платой прервалась в '+when+'. Убедитесь, что Tank стоит, затем подтвердите продолжение.'+warning)
                 voltage=observed['battery_voltage']
                 fresh=observed['battery_received_ns'] is not None and observed['monotonic_ns']-observed['battery_received_ns']<2_000_000_000
                 battery=f' · батарея {voltage:.2f} В' if fresh else ''
