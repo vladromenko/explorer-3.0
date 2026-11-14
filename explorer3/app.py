@@ -358,6 +358,28 @@ def index(request:Request):
                 # ROSMASTER: the same full control page (camera, keyboard/gamepad, poses, Leader mirror)
                 # embedded here; it connects the robot on «Включить управление». Loaded only while shown.
                 with ui.column().style('width:100%') as rosmaster_panel:
+                    with ui.card().style('background:#122123;border:1px solid #2fb39f;border-radius:14px;padding:12px 14px;width:100%;max-width:760px'):
+                        ui.label('ROSMASTER · подъехать к предмету').style('font-size:17px;font-weight:700')
+                        ui.label('Напишите, к чему ехать. ROSMASTER найдёт предмет камерой на руке, подъедет и остановится примерно в 30 см. Ручное управление в панели ниже должно быть выключено. STOP в панели или «Отменить» прерывают поездку.').classes('muted')
+                        with ui.row().style('width:100%;align-items:center'):
+                            ros_goto_text=ui.input(placeholder='к кубику').props('dense outlined').style('min-width:260px;flex:1')
+                            async def ros_goto_start():
+                                try:
+                                    if not (ros_goto_text.value or '').strip():raise ValueError('Напишите, к чему ехать')
+                                    from .rosmaster_goto import runner
+                                    ros_goto_state.set_text('Загружаю распознавание и включаю ROSMASTER…')
+                                    await asyncio.to_thread(runner.start,ros_goto_text.value)
+                                except Exception as exc:notify_error(exc)
+                            ui.button('Поехали',icon='near_me',on_click=ros_goto_start).props('unelevated')
+                            def ros_goto_cancel():
+                                from .rosmaster_goto import runner
+                                runner.cancel()
+                            ui.button('Отменить',on_click=ros_goto_cancel).props('flat')
+                        ros_goto_state=ui.label('').classes('muted')
+                        def ros_goto_refresh():
+                            from .rosmaster_goto import runner
+                            if runner.goal is not None or runner.error:ros_goto_state.set_text(runner.status()['message'])
+                        ui.timer(.5,ros_goto_refresh)
                     ui.label('ROSMASTER: щёлкните по панели, затем клавиши/джойстик. Уход фокуса из панели = STOP.').classes('muted')
                     rosmaster_frame=ui.element('iframe').props('src="about:blank" allow="gamepad"').style(
                         'width:100%;height:1250px;border:0;border-radius:10px;background:#0e1116')

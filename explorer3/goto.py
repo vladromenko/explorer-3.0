@@ -21,7 +21,7 @@ from .paths import DATA, ROOT
 # Russian -> English prompts for the detector's text encoder, matched by word stem so any case
 # form works («к носку», «носок», «носки»). Unknown words (and English input) pass through.
 STEMS = [
-    ('носк', 'sock'), ('носок', 'sock'), ('кубик', 'cube'), ('куб', 'cube'), ('мяч', 'ball'), ('коробк', 'box'),
+    ('носк', 'sock'), ('носок', 'sock'), ('чемодан', 'suitcase'), ('флакон', 'bottle'), ('порошк', 'detergent bottle'), ('кубик', 'cube'), ('куб', 'cube'), ('мяч', 'ball'), ('коробк', 'box'),
     ('коробок', 'box'), ('ящик', 'box'), ('стул', 'chair'), ('кресл', 'armchair'), ('табурет', 'stool'),
     ('бутыл', 'bottle'), ('кружк', 'mug'), ('чашк', 'cup'), ('стакан', 'glass'), ('игрушк', 'toy'),
     ('тап', 'slipper'), ('ботин', 'shoe'), ('туфл', 'shoe'), ('обув', 'shoe'), ('кроссов', 'sneaker'), ('кед', 'sneaker'),
@@ -49,7 +49,23 @@ SKIP = {'подъедь', 'подъехать', 'подъезжай', 'езжа�
 
 
 # Camera geometry (MentorPi T1 manufacturer model; replace when measured).
-CAMERAS = {'tank': {'height': .139, 'forward': .079, 'pitch_down': 0.0, 'fx': 415.3, 'fy': 416.1, 'cx': 320, 'cy': 200}}
+CAMERAS = {'tank': {'height': .139, 'forward': .079, 'lateral': 0.0, 'yaw': 0.0, 'pitch_down': 0.0,
+                    'fx': 415.3, 'fy': 416.1, 'cx': 320, 'cy': 200},
+           # ROSMASTER: camera on the arm; pose recomputed from measured servos (rosmaster_camera)
+           'rosmaster': {'height': .35, 'forward': .123, 'lateral': 0.0, 'yaw': 0.0, 'pitch_down': 25.0,
+                         'fx': 480.71, 'fy': 480.71, 'cx': 320, 'cy': 240}}
+
+
+def rosmaster_camera(servo):
+    """Camera pose from the measured arm servos with the manufacturer arm model (matches the
+    MuJoCo model to the millimetre). Returns the CAMERAS-style dict."""
+    from .sim.vendor_rosmaster.arm_model import ArmModel
+    P = np.asarray(ArmModel().camera_pose([float(v) for v in servo]))
+    fwd = P[:3, 2]                                     # optical z = viewing direction
+    cam = dict(CAMERAS['rosmaster'])
+    cam.update(height=float(P[2, 3]), forward=float(P[0, 3]), lateral=float(P[1, 3]),
+               yaw=math.atan2(fwd[1], fwd[0]), pitch_down=math.degrees(math.asin(max(-1., min(1., -fwd[2])))))
+    return cam
 
 
 def to_prompt(text):
@@ -111,6 +127,9 @@ def iou(a, b):
 class GoTo:
     """Controller state for one «подъедь к …» request. command(rgb) -> [v, w] for the base."""
 
+    def set_camera(self, cam):
+        self.cam = cam
+
     def __init__(self, robot, text, *, stop_m=.30, v_max=.18, w_max=.8, search_w=.6):
         if robot not in CAMERAS:
             raise ValueError('Камера этого робота ещё не описана')
@@ -156,12 +175,16 @@ class GoTo:
                     self.fresh = True
 
     def geometry(self, box, height):
+        """Object foot point on the floor -> distance and bearing from the robot centre."""
         c = self.cam
         u = (box[0] + box[2]) / 2
-        bearing = math.atan2(-(u - c['cx']), c['fx'])                    # left of centre = positive (CCW)
+        cam_bearing = math.atan2(-(u - c['cx']), c['fx'])                # left of centre = positive (CCW)
         below = math.atan2(box[3] - c['cy'], c['fy']) + math.radians(c['pitch_down'])
-        distance = c['height'] / math.tan(below) + c['forward'] if below > math.radians(1.5) else 9.9
-        return distance, bearing, box[3] >= height * .97
+        ground = c['height'] / math.tan(below) if below > math.radians(1.5) else 9.9
+        a = c.get('yaw', 0.) + cam_bearing
+        x = c['forward'] + ground * math.cos(a)
+        y = c.get('lateral', 0.) + ground * math.sin(a)
+        return math.hypot(x, y), math.atan2(y, x), box[3] >= height * .97
 
     # ---- control (called every frame by the session loop)
     def command(self, rgb):
