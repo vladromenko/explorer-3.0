@@ -22,6 +22,7 @@ async def main():
         await context.route('**/*',local);page=await context.new_page();page.on('pageerror',lambda x:errors.append(str(x)))
         try:
             await page.goto('http://127.0.0.1:8035/sim/training')
+            await expect(page.get_by_role('button',name='Запустить подготовленное обучение',exact=True)).to_be_disabled()
             await page.get_by_label('Задача',exact=True).click();await page.get_by_role('option',name='Tank · подъезд к цели',exact=True).click()
             await page.get_by_label('Показы и исправления для нового плана',exact=True).click()
             await expect(page.get_by_role('option')).to_have_count(3)
@@ -43,6 +44,11 @@ async def main():
             assert not await page.get_by_role('checkbox',name='Запустить обучение сейчас по показанному неизменяемому плану',exact=True).is_checked()
             assert jobs()==before and not errors and not external
             await page.screenshot(path=str(root/'prepared.png'),full_page=True)
+            await page.get_by_role('checkbox',name='Запустить обучение сейчас по показанному неизменяемому плану',exact=True).check()
+            await page.get_by_role('button',name='Подготовить другой план',exact=True).click()
+            await expect(page.get_by_role('button',name='Запустить подготовленное обучение',exact=True)).to_be_disabled()
+            assert not await page.get_by_role('checkbox',name='Запустить обучение сейчас по показанному неизменяемому плану',exact=True).is_checked()
+            assert jobs()==before
             (root/'result.json').write_text(json.dumps({'actual_browser':True,'prepare_and_reopen':'PASS',
                 'steps':1234,'split_counts':draft['split_counts'],'no_jobs_created':True,'training_started':False,
                 'errors':errors,'external':external},indent=2))

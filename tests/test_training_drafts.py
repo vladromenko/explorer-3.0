@@ -111,3 +111,23 @@ def test_dataset_fingerprint_includes_raw_sensor_packets(tmp_path,monkeypatch):
     outside=tmp_path/'outside.npz';outside.write_bytes(b'external')
     (root/'sensors'/'linked.npz').symlink_to(outside)
     with pytest.raises(ValueError,match='outside'):datasets.fingerprint(root)
+
+
+def test_double_submission_of_prepared_plan_queues_one_job(tmp_path,monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from explorer3 import catalog
+    from explorer3.jobs import Jobs
+    monkeypatch.setattr(catalog,'DATA',tmp_path)
+    monkeypatch.setattr(catalog,'prepare',lambda:None)
+    catalog.initialize()
+    monkeypatch.setattr(drafts,'load',lambda ident:{'profile':'rosmaster_dock','policy':'act',
+        'preparation_only':True,'training_started':False,'kind':'train'})
+    jobs=Jobs(None)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        ids=list(pool.map(jobs.start_prepared_training,['d'*64,'d'*64]))
+    assert ids[0]==ids[1]
+    assert len(catalog.rows('jobs'))==1
+    assert catalog.rows('jobs')[0]['status']=='queued'
+    assert jobs.process is None and jobs.thread is None
+    with catalog.connect() as db:db.execute("UPDATE jobs SET status='completed' WHERE id=?",(ids[0],))
+    assert jobs.start_prepared_training('d'*64)!=ids[0]

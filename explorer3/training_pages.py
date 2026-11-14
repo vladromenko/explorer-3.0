@@ -27,7 +27,7 @@ def install(css,jobs):
 
     async def builder_page(domain):
         ui.add_css(css+STYLE);ui.dark_mode().enable();ui.colors(primary='#2b9c8f',secondary='#748aa4',negative='#d45050')
-        draft_id=None;preparing=False
+        draft_id=None;preparing=False;loading=False;starting=False;selection_generation=0
         def refresh():
             available={}
             for ident,label in POLICIES.items():
@@ -45,23 +45,30 @@ def install(css,jobs):
             source.set_options(sources,value='new')
         async def prepare():
             nonlocal draft_id,preparing
-            if preparing:return
+            if preparing or loading or starting:return
+            draft_id=None;confirmed.value=False;start_button.disable()
             preparing=True;prepare_button.disable();status.set_text('Проверка данных и сохранение плана · обучение не запущено')
             try:
                 parent=None if source.value=='new' else jobs.get(source.value)
                 draft_id,draft=await asyncio.to_thread(training_drafts.prepare,profile.value,policy.value,episodes.value,
                     steps=int(steps.value),batch=int(batch.value),seed=int(seed.value),device=device.value,source=parent)
-                show(draft);history.set_options(saved(),value=None);status.set_text('План сохранён · обучение не запущено')
-            except Exception as exc:status.set_text(str(exc))
+                show(draft);history.set_options(saved(),value=draft_id);status.set_text('План сохранён · обучение не запущено')
+            except Exception as exc:
+                draft_id=None;confirmed.value=False;start_button.disable();status.set_text(str(exc))
             finally:preparing=False;prepare_button.enable()
         async def start():
+            nonlocal starting
+            if preparing or loading or starting:return
             try:
                 if not confirmed.value:raise ValueError('Сначала подтвердите запуск выбранного плана')
                 if draft_id is None:raise ValueError('Сначала подготовьте или откройте план')
-                ident=await asyncio.to_thread(jobs.start_prepared_training,draft_id)
+                selected_draft=draft_id;starting=True;start_button.disable();confirmed.value=False
+                ident=await asyncio.to_thread(jobs.start_prepared_training,selected_draft)
                 confirmed.value=False;status.set_text('Обучение поставлено в очередь · '+ident[:8])
                 with job_links:ui.link('Открыть задание · ход работы, отмена и продолжение','/jobs/'+ident)
             except Exception as exc:status.set_text(str(exc))
+            finally:
+                starting=False;start_button.set_enabled(draft_id is not None and not preparing and not loading)
         with ui.element('div').classes('hero'):
             with ui.column():
                 ui.label('HOMEBRAIN / ПОДГОТОВКА ОБУЧЕНИЯ').classes('kicker');ui.html('<h1>Explorer 3.0</h1>')
@@ -99,22 +106,39 @@ def install(css,jobs):
                 if json.loads(p.read_text()).get('profile','') in names
                 and json.loads(p.read_text()).get('mode') in ('new_training','fine_tune_new_optimizer')} if directory.exists() else {}
         async def open_saved():
-            nonlocal draft_id
-            if history.value:
+            nonlocal draft_id,loading,selection_generation
+            if preparing or starting:return
+            selected_draft=history.value
+            if selected_draft is not None and selected_draft==draft_id:return
+            selection_generation+=1;generation=selection_generation
+            draft_id=None;confirmed.value=False;start_button.disable()
+            summary.clear();summary.set_visibility(False);loading=bool(selected_draft)
+            if selected_draft:
+                status.set_text('Проверка выбранного плана · запуск недоступен')
                 try:
-                    draft_id=history.value;draft=await asyncio.to_thread(training_drafts.load,draft_id)
+                    draft=await asyncio.to_thread(training_drafts.load,selected_draft)
+                    if generation!=selection_generation:return
+                    draft_id=selected_draft
                     show(draft);status.set_text('Сохранённый план проверен · обучение не запущено')
-                except Exception as exc:draft_id=None;status.set_text(str(exc))
+                except Exception as exc:
+                    if generation==selection_generation:draft_id=None;status.set_text(str(exc))
+                finally:
+                    if generation==selection_generation:
+                        loading=False;start_button.set_enabled(draft_id is not None)
         history=ui.select(saved(),label='Открыть подготовленный план',on_change=open_saved).classes('w-full')
         def another():
-            nonlocal draft_id
+            nonlocal draft_id,loading,selection_generation
+            if preparing or starting:return
+            selection_generation+=1;loading=False;start_button.disable()
             draft_id=None;summary.clear();summary.set_visibility(False);builder.set_visibility(True)
+            history.value=None
             confirmed.value=False;status.set_text('Выберите параметры нового плана · обучение не запущено')
         ui.button('Подготовить другой план',icon='edit',on_click=another).props('outline')
         summary=ui.column().classes('sim-panel');summary.set_visibility(False)
         with ui.column().classes('sim-panel'):
             confirmed=ui.checkbox('Запустить обучение сейчас по показанному неизменяемому плану')
-            ui.button('Запустить подготовленное обучение',icon='play_arrow',on_click=start)
+            start_button=ui.button('Запустить подготовленное обучение',icon='play_arrow',on_click=start)
+            start_button.disable()
             status=ui.label('Подготовка не запускает обучение.').classes('sim-status')
             job_links=ui.column().classes('w-full')
             ui.label('Продолжение прерванного задания выполняется отдельно через его карточку: оно сохраняет optimizer и прежний план. Дообучение здесь создаёт новое задание из выбранных весов.').classes('muted')
@@ -133,3 +157,4 @@ def install(css,jobs):
                         'episodes':count,'frames':draft['frames'][role]} for role,count in draft['split_counts'].items()],row_key='part').classes('w-full')
                 mix=draft['mixture'];ui.label(f"Обучающие кадры: {mix['old_train_frames']} прежних + {mix['new_train_frames']} новых. Нормировка только по обучающей части.")
                 ui.button('Скачать план',icon='download',on_click=lambda:ui.download.file(DATA/'training-drafts'/(draft_id+'.json'))).props('outline')
+            start_button.enable()

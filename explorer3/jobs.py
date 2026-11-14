@@ -80,7 +80,17 @@ class Jobs:
         draft=load(draft_id)
         config={**draft,'draft_id':draft_id,'preparation_only':False,'training_requested':True}
         config.pop('training_started',None)
-        return self._insert(draft['profile'],draft['policy'],config)
+        # One active execution per immutable draft, including requests from two
+        # browser tabs/processes. Completed experiments may be repeated explicitly.
+        with catalog.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row=db.execute("""SELECT id FROM jobs WHERE status IN ('queued','running')
+                AND json_extract(config,'$.draft_id')=?""",(draft_id,)).fetchone()
+            if row:return row['id']
+            ident=uuid.uuid4().hex
+            db.execute('INSERT INTO jobs(id,profile,policy,status,config,created) VALUES(?,?,?,?,?,?)',
+                (ident,draft['profile'],draft['policy'],'queued',json.dumps(config),time.time()))
+        return ident
 
     def sim_ppo(self, name, sim_model_hash=None,variation='nominal'):
         if name not in {'so101_pick_place_sim','rosmaster_pick_place_sim','rosmaster_dock_sim','tank_dock_sim'}:
