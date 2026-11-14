@@ -61,10 +61,10 @@ class RunningNorm(nn.Module):
 
 
 class ActorCritic(nn.Module):
-    def __init__(self, actor_dim, critic_dim, act_dim):
+    def __init__(self, actor_dim, critic_dim, act_dim, actor_hidden=(256, 256)):
         super().__init__()
         self.actor_norm, self.critic_norm = RunningNorm(actor_dim), RunningNorm(critic_dim)
-        self.actor = mlp(actor_dim, act_dim)
+        self.actor = mlp(actor_dim, act_dim, actor_hidden)
         self.critic = mlp(critic_dim, 1)
         self.log_std = nn.Parameter(torch.full((act_dim,), -0.5))
 
@@ -78,14 +78,15 @@ class ActorCritic(nn.Module):
 
 def train(make_env, *, robot, out_dir, total_steps=50_000_000, n=4096, horizon=32, history=3, epochs=5,
           minibatches=4, lr=3e-4, gamma=0.99, lam=0.95, clip=0.2, ent=0.003, max_minutes=None, seed=0,
-          curriculum_up=0.7, log=print, bc=None, bc_epochs=30, bc_coef=1.0, critic_warmup=10, init_log_std=None):
+          curriculum_up=0.7, log=print, bc=None, bc_epochs=200, bc_coef=1.0, critic_warmup=10, init_log_std=None,
+          actor_hidden=(256, 256)):
     torch.manual_seed(seed)
     env = make_env(n=n, seed=seed, curriculum=0.0)
     obs, priv = env.reset_all(desync=True)
     dev = obs.device
     hist = History(n, obs.shape[1], history, dev)
     a_obs = hist.push(obs, torch.ones(n, dtype=torch.bool, device=dev))
-    model = ActorCritic(a_obs.shape[1], priv.shape[1], env.adim).to(dev)
+    model = ActorCritic(a_obs.shape[1], priv.shape[1], env.adim, actor_hidden).to(dev)
     if init_log_std is not None:
         model.log_std.data.fill_(init_log_std)
     BX = BY = None
@@ -95,13 +96,15 @@ def train(make_env, *, robot, out_dir, total_steps=50_000_000, n=4096, horizon=3
         model.actor_norm.update(BX)
         model.actor_norm.frozen = True          # keep the cloned mapping stable during PPO
         bopt = torch.optim.Adam(model.actor.parameters(), lr=1e-3)
+        sched = torch.optim.lr_scheduler.CosineAnnealingLR(bopt, bc_epochs)
         for e in range(bc_epochs):
             perm = torch.randperm(len(BX), device=dev)
-            for j in range(0, len(BX), 4096):
-                idx = perm[j:j + 4096]
+            for j in range(0, len(BX), 1024):
+                idx = perm[j:j + 1024]
                 loss = ((model.actor(model.actor_norm(BX[idx])) - BY[idx]) ** 2).mean()
                 bopt.zero_grad(); loss.backward(); bopt.step()
-            if e % 10 == 0 or e == bc_epochs - 1:
+            sched.step()
+            if e % 50 == 0 or e == bc_epochs - 1:
                 log(f'behaviour cloning epoch {e}: mse {float(loss):.4f}')
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     out_dir = Path(out_dir)

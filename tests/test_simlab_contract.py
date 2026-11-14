@@ -27,3 +27,13 @@ def test_contract_indices_match_sensor_channels():
     assert CHANNELS[contract.REAL_LIDAR][0] == 'lidar_min_m_00'
     assert CHANNELS[contract.REAL_IMU] == ['gyro_x', 'gyro_y', 'gyro_z', 'accel_x', 'accel_y', 'accel_z']
     assert CHANNELS[contract.REAL_IMU_VALID] == 'imu_valid'
+
+
+def test_arm_contract_layout_and_hash():
+    vec = contract.build_arm(np.zeros(6), np.zeros(6), [0.24, -0.06, 0.017], 1, 0.0, [0.24, 0.10, 0.0], 0.5)
+    assert vec.shape == (contract.size('so101'),) == (21,)
+    assert contract.names('so101')[-1] == 'elapsed' and vec[-1] == 0.5
+    assert contract.version('so101') == 'arm_v2' and contract.version('tank') == contract.VERSION
+    assert contract.contract_hash('so101') != contract.contract_hash('rosmaster_arm')
+    with pytest.raises(ValueError):
+        contract.build_arm(np.zeros(5), np.zeros(6), [0, 0, 0], 1, 0, [0, 0, 0], 0)

@@ -28,11 +28,11 @@ import torch
 
 CONTROL_HZ = 30
 SUBSTEPS = 67
-MAX_STEP = np.deg2rad([2.0, 2.0, 2.0, 2.5, 3.0, 6.0])   # per 1/30 s
+MAX_STEP = np.deg2rad([1.5, 1.5, 1.5, 1.5, 1.5, 3.0])   # per 1/30 s (SO-101): 45 deg/s joints, 90 deg/s gripper
 ARM_OBS = 21
 ROBOTS = {
-    'so101': {'hz': 30, 'substeps': 67, 'max_step_deg_s': [60, 60, 60, 75, 90, 180]},
-    'rosmaster': {'hz': 20, 'substeps': 100, 'max_step_deg_s': [60, 60, 60, 75, 90, 180]},
+    'so101': {'hz': 30, 'substeps': 67, 'max_step_deg_s': [45, 45, 45, 45, 45, 90]},
+    'rosmaster': {'hz': 20, 'substeps': 100, 'max_step_deg_s': [45, 45, 45, 45, 45, 90]},
 }
 
 

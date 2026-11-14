@@ -42,7 +42,7 @@ def main():
             X, Y, kept = collect(a.demos)
             cache.parent.mkdir(parents=True, exist_ok=True)
             np.savez(cache, X=X, Y=Y)
-        extra = {'bc': (X, Y), 'init_log_std': -1.6}
+        extra = {'bc': (X, Y), 'init_log_std': -2.0, 'actor_hidden': (512, 512, 512)}
     model, meta = train(make, robot=a.robot, out_dir=out, total_steps=a.steps, n=a.n or (1024 if a.robot == 'so101' else 4096), seed=a.seed,
                         max_minutes=a.minutes, **extra)
     best = out / 'best.pt'

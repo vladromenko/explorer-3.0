@@ -24,7 +24,7 @@ def export(model, meta, out_dir, *, scenario, scenario_fingerprint, extra=None):
         arrays[f'b{i}'] = layer.bias.detach().cpu().numpy()
     np.savez(out_dir / 'policy.npz', **arrays)
     digest = hashlib.sha256((out_dir / 'policy.npz').read_bytes()).hexdigest()
-    info = {'format': 'explorer3.simlab.mlp_elu.v1', 'robot': meta['robot'], 'contract_version': contract.VERSION,
+    info = {'format': 'explorer3.simlab.mlp_elu.v1', 'robot': meta['robot'], 'contract_version': contract.version(meta['robot']),
             'contract_hash': contract.contract_hash(meta['robot']), 'history': meta['history'],
             'layers': len(linear), 'scenario': scenario, 'scenario_fingerprint': scenario_fingerprint,
             'weights_sha256': digest, 'train': meta, **(extra or {})}
@@ -39,7 +39,7 @@ class Policy:
         path = Path(path)
         self.info = json.loads((path / 'policy.json').read_text())
         robot = self.info['robot']
-        if self.info['contract_version'] != contract.VERSION or self.info['contract_hash'] != contract.contract_hash(robot):
+        if self.info['contract_version'] != contract.version(robot) or self.info['contract_hash'] != contract.contract_hash(robot):
             raise ValueError('Policy contract does not match this Explorer version')
         raw = (path / 'policy.npz').read_bytes()
         if hashlib.sha256(raw).hexdigest() != self.info['weights_sha256']:
@@ -70,3 +70,7 @@ class Policy:
             if i < len(self.layers) - 1:
                 x = np.where(x > 0, x, np.expm1(x))  # ELU
         return np.clip(x, -1, 1).astype(np.float32)
+
+    def act_target(self, observation):
+        """Arms: the action is an absolute joint target in [-1, 1]; the robot side rate-limits it."""
+        return self.act(observation)

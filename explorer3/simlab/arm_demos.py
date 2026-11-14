@@ -10,7 +10,7 @@ import numpy as np
 from .arm_warp import MAX_STEP
 
 
-def collect(episodes=200, seed=0, history=3, log=print):
+def collect(episodes=200, seed=0, history=3, log=print, noise=0.3):
     from explorer3.sim.environment import SO101PickPlace
     from explorer3.sim.expert import ScriptedSO101
     env = SO101PickPlace()
@@ -39,8 +39,13 @@ def collect(episodes=200, seed=0, history=3, log=print):
             free_v = int(env.model.joint('cube_free').dofadr[0])
             obs = np.concatenate([norm(env.data.qpos[:6]), env.data.qvel[:6] / 3, held / 0.3,
                                   [float(visible), age], box / 0.3, [t / (env.deadline_s * env.fps)]]).astype(np.float32)
-            target = np.clip(env.to_radians(np.asarray(expert.action())), lo, hi)
-            label = norm(target)                         # absolute normalized joint target
+            expert.action()                              # advances the teacher's phase and solves its IK target
+            # Label = the phase's IK target (depends on the cube/box and time, not on where the
+            # arm currently is). The demo is executed through the SAME rate limiter the clone and
+            # the robot use, with small execution noise (DART) so the clone also sees deviations.
+            phase_target = np.clip(env.to_radians(np.asarray(expert.targets[expert.phase])), lo, hi)
+            label = norm(phase_target)
+            target = phase_target + rng.normal(0, noise, 6) * MAX_STEP * 3
             command = command + np.clip(target - command, -MAX_STEP, MAX_STEP)
             frames.append(obs)
             actions.append(label.astype(np.float32))

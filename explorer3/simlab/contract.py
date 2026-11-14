@@ -42,17 +42,40 @@ REAL_IMU = slice(36 + 36 + 48 + 48, 36 + 36 + 48 + 48 + 6)  # gyro xyz, accel xy
 REAL_IMU_VALID = 36 + 36 + 48 + 48 + 6
 
 
+ARM_VERSION = 'arm_v2'
+ARMS = {
+    'so101': {'joints': ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll', 'gripper'],
+              'control_hz': 30, 'max_step_deg_s': [45, 45, 45, 45, 45, 90]},
+    'rosmaster_arm': {'joints': ['arm1', 'arm2', 'arm3', 'arm4', 'arm5', 'gripper'],
+                      'control_hz': 20, 'max_step_deg_s': [45, 45, 45, 45, 45, 90]},
+}
+ARM_NAMES = ([f'joint_pos_{i}' for i in range(6)] + [f'joint_vel_{i}' for i in range(6)]
+             + ['cube_x', 'cube_y', 'cube_z', 'cube_visible', 'cube_age', 'box_x', 'box_y', 'box_z', 'elapsed'])
+
+
 def size(robot):
+    if robot in ARMS:
+        return len(ARM_NAMES)
     return 6 + LIDAR_BINS + 3 + len(ROBOTS[robot]['action'])
 
 
 def names(robot):
+    if robot in ARMS:
+        return list(ARM_NAMES)
     return (['target_distance', 'target_sin_bearing', 'target_cos_bearing', 'target_yaw', 'target_visible', 'target_age']
             + [f'lidar_{i:02}' for i in range(LIDAR_BINS)] + ['gyro_z', 'accel_x', 'accel_y']
             + [f'previous_{a}' for a in ROBOTS[robot]['action']])
 
 
+def version(robot):
+    return ARM_VERSION if robot in ARMS else VERSION
+
+
 def contract_hash(robot):
+    if robot in ARMS:
+        spec = {'version': ARM_VERSION, 'robot': robot, 'names': ARM_NAMES, 'robot_spec': ARMS[robot],
+                'scales': {'velocity': 3.0, 'position_m': 0.3, 'age_s': 1.0}, 'action': 'absolute_normalized_joint_target'}
+        return hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()
     spec = {'version': VERSION, 'robot': robot, 'names': names(robot), 'robot_spec': ROBOTS[robot],
             'scales': [TARGET_SCALE_M, LIDAR_MAX_M, AGE_CLIP_S]}
     return hashlib.sha256(json.dumps(spec, sort_keys=True).encode()).hexdigest()
@@ -108,3 +131,14 @@ def from_real_features(robot, features, target, previous_action, lidar_calibrati
 def scale_action(robot, normalized):
     a = np.clip(np.asarray(normalized, dtype=np.float32), -1, 1)
     return a * np.asarray(ROBOTS[robot]['policy_limits'], np.float32)
+
+
+def build_arm(joint_pos_norm, joint_vel, cube_base_m, cube_visible, cube_age_s, box_base_m, elapsed_fraction):
+    """Arm observation (arm_v2). joint_pos_norm: positions normalized to [-1, 1] over the
+    actuator/calibrated range; joint_vel rad/s; positions in the arm base frame, metres."""
+    out = np.concatenate([np.asarray(joint_pos_norm, np.float32), np.asarray(joint_vel, np.float32) / 3.0,
+                          np.asarray(cube_base_m, np.float32) / 0.3, [float(cube_visible), min(float(cube_age_s), 1.0)],
+                          np.asarray(box_base_m, np.float32) / 0.3, [float(elapsed_fraction)]]).astype(np.float32)
+    if out.shape != (len(ARM_NAMES),) or not np.isfinite(out).all():
+        raise ValueError('Invalid arm observation')
+    return out

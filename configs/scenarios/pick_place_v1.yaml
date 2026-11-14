@@ -1,0 +1,17 @@
+# Сценарий «кубик в коробку» для SO-101 и руки ROSMASTER (M3). Координаты — в системе основания руки.
+version: 1
+task: pick_place
+deadline_s: 20.0
+starts:
+  cube_center: [0.24, -0.06]
+  cube_half_range_easy: 0.02      # учебная программа 0
+  cube_half_range_full: 0.05      # учебная программа 1
+  cube_yaw_full: 0.6
+success:                          # те же условия, что у реального детектора успеха
+  inside_box: true
+  gripper_open_and_away_m: 0.055
+  cube_still_mps: 0.025
+  hold_s: 0.5
+perception_noise: {cube_position_sigma_m: 0.005, dropout_p: 0.05}
+evaluation:
+  frozen_seeds: [200000, 200100]
