@@ -25,6 +25,7 @@ def test_missing_fleet_blocks_trial_before_loading_hardware(tmp_path,monkeypatch
 
 def test_recording_rejects_source_switch_before_writing_frame():
     writer=object.__new__(EpisodeWriter)
+    writer.disk_checked_at=float('inf')  # This test isolates source changes, not storage admission.
     writer.camera='wrist';writer.category='rollout';writer.command_source='policy';writer.domain='real'
     sample={'images':{'wrist':{}},'command_source':'human'}
     with pytest.raises(ValueError,match='segment'):

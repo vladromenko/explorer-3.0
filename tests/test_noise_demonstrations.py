@@ -29,6 +29,7 @@ def test_expert_target_never_relabels_real_commands():
 def test_writer_keeps_actual_command_sidecar_and_separate_training_target():
     from explorer3.recording import EpisodeWriter
     writer=EpisodeWriter.__new__(EpisodeWriter);frames=[]
+    writer.collection_context=None
     writer.camera='front';writer.domain='sim';writer.category='correction';writer.command_source=None
     writer.training_label='expert_intent_before_noise';writer.initial_state=None;writer.last_observation=-1
     writer.cfg={'channels':['v','w'],'task':'fixture'};writer.ds=SimpleNamespace(add_frame=frames.append)
