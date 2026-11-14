@@ -90,6 +90,7 @@ class Grid:
     def __init__(self):
         self.hits = np.zeros((SIZE, SIZE), np.float32)
         self.free = np.zeros((SIZE, SIZE), np.float32)     # how often a beam passed through the cell
+        self.seen = np.zeros((SIZE, SIZE), bool)            # floor the cameras have looked at (object search)
         self.field = np.zeros((SIZE, SIZE), np.float32)
         self.coarse = {}
         self.scans = 0
@@ -115,6 +116,20 @@ class Grid:
         """Walls and furniture: hit often enough compared with beams passing through
         (a person who walked by is cleared by later scans)."""
         return (self.hits >= 1) & (self.hits * 4 >= self.free)
+
+    def look(self, pose, fov=math.radians(35), reach=2.5, rays=25):
+        """Mark the floor a camera at `pose` (looking along its heading) can see, up to walls."""
+        occ = self.occupied()
+        x, y, t = pose
+        steps = np.arange(.1, reach, RES)
+        for a in np.linspace(t - fov, t + fov, rays):
+            px, py = x + steps * math.cos(a), y + steps * math.sin(a)
+            cx, cy = np.floor(px / RES).astype(int) + SIZE // 2, np.floor(py / RES).astype(int) + SIZE // 2
+            ok = (cx >= 0) & (cx < SIZE) & (cy >= 0) & (cy < SIZE)
+            cx, cy = cx[ok], cy[ok]
+            hit = np.nonzero(occ[cy, cx])[0]
+            n = hit[0] if len(hit) else len(cx)
+            self.seen[cy[:n], cx[:n]] = True
 
     def known_free(self):
         return (self.free >= 1) & ~self.occupied()
@@ -264,6 +279,7 @@ class FleetMap:
             if self.grid.empty():
                 pose = (0., 0., 0.)                       # the first robot that scans defines the room frame
                 self.grid.add(transform(pts, pose), pose)
+                self.grid.look(compose(pose, CAMERA.get(robot, (0., 0., 0.))))
                 self.last_key[robot] = pose
                 self.contrib[robot] = self.contrib.get(robot, 0) + 1
                 return self._set(robot, pose=pose, quality=1., state='mapping', odom=odom, scan=fine,
@@ -315,6 +331,8 @@ class FleetMap:
                 self.grid.add(self._without_robots(robot, transform(pts, pose)), pose)
                 self.last_key[robot] = pose
             state = 'tracking' if inl > .45 else 'weak'
+            if state == 'tracking':
+                self.grid.look(compose(pose, CAMERA.get(robot, (0., 0., 0.))))
             note = s.pop('merged_note', '') if time.time() - s.get('global_at', 0) > 8 else s.get('merged_note', '')
             out = self._set(robot, pose=pose, quality=round(inl, 2), state=state, odom=odom, scan=fine, sub_pose=None,
                             message=f'На карте: {inl:.0%} точек совпало' + (f' · {note}' if note else ''))
@@ -446,7 +464,7 @@ class FleetMap:
         MAP_DIR.mkdir(parents=True, exist_ok=True)
         with self.lock:
             tmp = MAP_DIR / 'map.tmp.npz'                  # atomic: a stop mid-write never corrupts the map
-            np.savez_compressed(tmp, hits=self.grid.hits, free=self.grid.free, scans=self.grid.scans)
+            np.savez_compressed(tmp, hits=self.grid.hits, free=self.grid.free, seen=self.grid.seen, scans=self.grid.scans)
             tmp.replace(MAP_DIR / 'map.npz')
 
     def load(self):
@@ -458,9 +476,15 @@ class FleetMap:
         with self.lock:
             self.grid.hits = data['hits'].astype(np.float32)
             self.grid.free = data['free'].astype(np.float32) if 'free' in data else np.zeros_like(self.grid.hits)
+            self.grid.seen = data['seen'].astype(bool) if 'seen' in data else np.zeros(self.grid.hits.shape, bool)
             self.grid.scans = int(data['scans'])
             self.grid.refresh()
         return True
+
+    def forget_seen(self):
+        """A new search: the camera has to look again (the object may have moved)."""
+        with self.lock:
+            self.grid.seen[:] = False
 
     def reset(self):
         with self.lock:
@@ -471,6 +495,10 @@ class FleetMap:
             self.contrib.clear()
         (MAP_DIR / 'map.npz').unlink(missing_ok=True)
 
+
+# Camera in the base frame (x, y, yaw) for the «seen floor» layer; the ROSMASTER arm camera looks
+# forward in its search pose.
+CAMERA = {'tank': (.079, 0., 0.), 'rosmaster': (.10, 0., 0.)}
 
 HIDDEN = ('odom', 'scan', 'global_at', 'path', 'global_note', 'merged_note', 'candidate')
 

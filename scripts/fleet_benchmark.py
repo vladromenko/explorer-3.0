@@ -146,6 +146,7 @@ def run(args):
         for table in (nav.RADIUS, nav.BODY_FRONT, nav.BODY_HALF_W):
             table.setdefault(r, table[kind])
         wm.POSES.setdefault(r, wm.Pose(r))
+        fm.CAMERA.setdefault(r, fm.CAMERA[kind])
     fleet = fm.FleetMap()
     fm.FLEET = fleet
     ex.FLEET = fleet
@@ -182,7 +183,9 @@ def run(args):
     def stop_when():
         return 'found' if found['by'] else None
 
-    tasks = {r: ex.Explore(r, record=False, time_limit_s=900, stop_when=stop_when if task == 'find' else None) for r in robots}
+    visual = task == 'find' and os.environ.get('FLEET_BENCH_VISUAL', '1') == '1'
+    tasks = {r: ex.Explore(r, record=False, time_limit_s=900, stop_when=stop_when if task == 'find' else None,
+                           visual_search=visual) for r in robots}
     for r in robots:
         ex.ACTIVE[r] = tasks[r]
     curve, t0, collisions = [], clock.t, 0

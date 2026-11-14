@@ -21,7 +21,7 @@ ROSMASTER = {'host': '192.168.0.177', 'user': 'vlad', 'key': str(Path.home() / '
 SYSTEMS = {
     'explorer': {'title': 'Explorer 3.0', 'subtitle': 'Tank, ROSMASTER и SO-101 вместе: управление, «подъехать к …», запись, обучение, симуляция',
                  'where': 'homebrain', 'units': ['explorer3-ui.service', 'explorer3-ros2-hub.service'], 'port': 8030,
-                 'open': [('Открыть', ':8030/'), ('Обучение', ':8030/learn')]},
+                 'open': [('Рой', ':8030/swarm'), ('Открыть', ':8030/'), ('Сбор датасета', ':8030/recording/collect')]},
     'wristlab': {'title': 'Wristlab · SO-101', 'subtitle': 'Прежняя система обучения руки SO-101 и журнал экспериментов MLflow',
                  'where': 'homebrain', 'units': ['so101-ai-learning-ui.service', 'so101-ai-learning-mlflow.service'], 'port': 8020,
                  'open': [('Открыть', ':8020/'), ('MLflow', ':5020/')]},

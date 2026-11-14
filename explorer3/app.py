@@ -228,8 +228,9 @@ def index(request:Request):
             ui.label('Показы → обучение → проверяемые испытания').classes('muted')
         ui.button('STOP · всё управление Explorer',icon='stop_circle',color='negative',on_click=stop_all).props('size=lg')
     ui.html('<div class="nav">'
-            '<a class="main" href="/learn">Обучение</a>'
-            '<a href="/recording/collect">Сбор датасета</a>'
+            '<a class="main" href="/swarm">Рой</a>'
+            '<a class="main" href="/recording/collect">Сбор датасета</a>'
+            '<a href="/learn">Обучение</a>'
             '<a href="/recording/readiness">Готовность парка</a>'
             '<a href="/fleet/live">Обзор роботов</a>'
             '<a href="/tank/sensors">Датчики Tank</a>'
@@ -957,6 +958,8 @@ app.timer(60,scheduled_backup)
 app.on_startup(lambda:catalog.event('info','Explorer 3.0 запущен без открытия аппаратуры'))
 from . import swarm as _swarm_module
 _swarm_module.install(control,session)
+from . import swarm_pages as _swarm_pages
+_swarm_pages.install(app,ui,control,notify_error,CSS)
 def _start_fleet_localizer():
     from .fleet_map import LOCALIZER
     LOCALIZER.start()

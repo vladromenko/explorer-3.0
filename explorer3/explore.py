@@ -40,7 +40,7 @@ def pose_now(robot, last_cmd, max_age=3.):
 
 class Explore:
     def __init__(self, robot, *, v_max=.15, w_max=.7, time_limit_s=600, record=True, scout=False,
-                 look_for=None, stop_when=None, kind='explore', text='исследовать комнату'):
+                 look_for=None, stop_when=None, kind='explore', text='исследовать комнату', visual_search=False):
         self.robot = robot
         self.text = text
         self.prompt = 'explore'
@@ -59,6 +59,7 @@ class Explore:
         self.retried = False
         self.distance = self.bearing = None
         self.stop_when = stop_when
+        self.visual = bool(look_for) or visual_search
         self.scout = None
         if scout:
             from .scout import Scout
@@ -118,7 +119,7 @@ class Explore:
         where = 'общей карте' if frame == 'main' else 'своей карте (общие стены пока не видны)'
         if self.target is None or now - self.planned_at > 2.:
             self.planned_at = now
-            fronts = navigation.frontiers(grid, self.robot, pose, banned=self.banned)
+            fronts = navigation.frontiers(grid, self.robot, pose, banned=self.banned, visual=self.visual and frame == 'main')
             if self.target is not None and not any(math.hypot(f[0] - self.target[0], f[1] - self.target[1]) < .4 for f in fronts):
                 self.targets_done += 1                     # the place got mapped meanwhile (maybe by the other robot)
                 self.target = None

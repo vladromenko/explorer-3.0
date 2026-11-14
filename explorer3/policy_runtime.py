@@ -59,7 +59,9 @@ class PolicyCore:
             key = name if name.startswith('observation.images.') else 'observation.images.' + name
             b[key] = torch.from_numpy(np.array(rgb, copy=True)).permute(2, 0, 1).float().unsqueeze(0) / 255.
         missing = [k for k in self.image_keys if k not in b]
-        if missing:
+        # SmolVLA keeps the base model's camera slots (camera1..3) next to ours and, exactly as in
+        # training, uses only the cameras present; every other policy needs all of its cameras.
+        if missing and (self.type != 'smolvla' or len(missing) == len(self.image_keys)):
             raise ValueError('Policy camera missing: ' + ', '.join(missing))
         return b
 

@@ -155,10 +155,20 @@ def guard(points, robot, v, w, stop_m=.18):
     return 0., (w if abs(w) > .2 else turn), f'препятствие впереди в {gap:.2f} м'
 
 
-def frontiers(grid, robot, pose, min_size_m=.3, banned=()):
+def frontiers(grid, robot, pose, min_size_m=.3, banned=(), visual=False):
     """Reachable places where known free space meets unknown space, best first.
+    visual=True (object search): also floor the cameras have not looked at yet counts as unknown,
+    so the search goes on until the cameras — not only the lidars — have covered the room.
     Returns [(x, y, size_m, path_m)]."""
     blocked, free, unknown = layers(grid, robot)
+    free_all = free
+    if visual:
+        n = SIZE // STEP
+        seen = grid.seen.reshape(n, STEP, n, STEP).any(axis=(1, 3))
+        unseen = free & ~seen
+        # unseen floor next to walls is fine (cameras look at the floor from a distance)
+        unknown = unknown | (unseen & ~blocked)
+        free = free & seen
     n = blocked.shape[0]
     un = unknown.astype(np.uint8)
     near_unknown = cv2.dilate(un, np.ones((3, 3), np.uint8)).astype(bool)
@@ -168,7 +178,7 @@ def frontiers(grid, robot, pose, min_size_m=.3, banned=()):
         return []
     # Travel distance from the robot over known free, unblocked space (BFS).
     s = _cell(pose[:2])
-    passable = (free | edge) & ~blocked
+    passable = (free_all | edge) & ~blocked
     r = int(math.ceil(RADIUS[robot] / PRES))
     passable[max(0, s[1] - r):s[1] + r + 1, max(0, s[0] - r):s[0] + r + 1] = True
     dist = np.full((n, n), np.inf)

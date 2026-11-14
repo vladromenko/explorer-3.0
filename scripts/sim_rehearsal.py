@@ -116,7 +116,7 @@ def real_inputs_check(checkpoint, real_profile, instruction=None, shadow_steps=4
         import cv2
         from explorer3 import rosmaster_control
         try:
-            client = rosmaster_control._connection(2)
+            client = rosmaster_control._connection(4)
         except Exception as exc:
             out['source'] = f'ROSMASTER недоступен: {exc}'
             return out
@@ -124,8 +124,12 @@ def real_inputs_check(checkpoint, real_profile, instruction=None, shadow_steps=4
         try:
             for _ in range(shadow_steps):
                 started = time.monotonic()
-                arm = (client.get('/health').json().get('observation') or {}).get('arm_measured')
-                frame = client.get('/frame.jpg')
+                try:                                     # a slow Wi-Fi reply skips one step, it is not a failure
+                    arm = (client.get('/health').json().get('observation') or {}).get('arm_measured')
+                    frame = client.get('/frame.jpg')
+                except Exception:
+                    out['network_skips'] = out.get('network_skips', 0) + 1
+                    continue
                 if not arm or frame.status_code != 200:
                     continue
                 rgb = cv2.cvtColor(cv2.imdecode(np.frombuffer(frame.content, np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
@@ -167,7 +171,7 @@ def main():
     for name in a.skills.split(','):
         collect(name, need)
     for name in a.skills.split(','):
-        real = profile(name).get('sim_of')
+        real = profile(name).get('real_profile')
         for policy in a.policies.split(','):
             entry = {'skill': name, 'real_profile': real, 'policy': policy}
             report['results'].append(entry)

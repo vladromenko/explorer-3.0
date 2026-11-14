@@ -284,6 +284,11 @@ class Swarm:
     def _search(self, prompt, stages):
         """Team search until somebody has placed the object on the map. Returns the sighting."""
         started = time.time()
+        try:
+            from .fleet_map import FLEET
+            FLEET.forget_seen()                  # the object may have moved: the cameras look again
+        except Exception:
+            pass
         self._stage(stages, 'search', f'Ищем «{prompt}» вдвоём')
 
         def found():
