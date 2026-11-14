@@ -78,14 +78,31 @@ class ActorCritic(nn.Module):
 
 def train(make_env, *, robot, out_dir, total_steps=50_000_000, n=4096, horizon=32, history=3, epochs=5,
           minibatches=4, lr=3e-4, gamma=0.99, lam=0.95, clip=0.2, ent=0.003, max_minutes=None, seed=0,
-          curriculum_up=0.7, log=print):
+          curriculum_up=0.7, log=print, bc=None, bc_epochs=30, bc_coef=1.0, critic_warmup=10, init_log_std=None):
     torch.manual_seed(seed)
     env = make_env(n=n, seed=seed, curriculum=0.0)
-    obs, priv = env.reset_all()
+    obs, priv = env.reset_all(desync=True)
     dev = obs.device
     hist = History(n, obs.shape[1], history, dev)
     a_obs = hist.push(obs, torch.ones(n, dtype=torch.bool, device=dev))
     model = ActorCritic(a_obs.shape[1], priv.shape[1], env.adim).to(dev)
+    if init_log_std is not None:
+        model.log_std.data.fill_(init_log_std)
+    BX = BY = None
+    if bc is not None:
+        BX = torch.as_tensor(bc[0], device=dev)
+        BY = torch.as_tensor(bc[1], device=dev)
+        model.actor_norm.update(BX)
+        model.actor_norm.frozen = True          # keep the cloned mapping stable during PPO
+        bopt = torch.optim.Adam(model.actor.parameters(), lr=1e-3)
+        for e in range(bc_epochs):
+            perm = torch.randperm(len(BX), device=dev)
+            for j in range(0, len(BX), 4096):
+                idx = perm[j:j + 4096]
+                loss = ((model.actor(model.actor_norm(BX[idx])) - BY[idx]) ** 2).mean()
+                bopt.zero_grad(); loss.backward(); bopt.step()
+            if e % 10 == 0 or e == bc_epochs - 1:
+                log(f'behaviour cloning epoch {e}: mse {float(loss):.4f}')
     opt = torch.optim.Adam(model.parameters(), lr=lr)
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -134,22 +151,30 @@ def train(make_env, *, robot, out_dir, total_steps=50_000_000, n=4096, horizon=3
                 ratio = (lp - LP[idx]).exp()
                 pg = -torch.min(ratio * ADV[idx], ratio.clamp(1 - clip, 1 + clip) * ADV[idx]).mean()
                 vl = 0.5 * ((model.value(P[idx]) - RET[idx]) ** 2).mean()
-                loss = pg + vl - ent * d.entropy().sum(-1).mean()
+                if it < critic_warmup and BX is not None:
+                    loss = vl                       # let the critic catch up before moving the cloned actor
+                else:
+                    loss = pg + vl - ent * d.entropy().sum(-1).mean()
+                if BX is not None:
+                    bi = torch.randint(0, len(BX), (min(4096, len(BX)),), device=dev)
+                    coef = bc_coef * max(0.05, 1 - it / max(1, iters // 2))
+                    loss = loss + coef * ((model.actor(model.actor_norm(BX[bi])) - BY[bi]) ** 2).mean()
                 opt.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad_norm_(model.parameters(), 1.0)
                 opt.step()
-        episodes = max(1, ep_succ + ep_coll + ep_to)
+        episodes = ep_succ + ep_coll + ep_to
         for k, v in (('success', ep_succ), ('collision', ep_coll), ('timeout', ep_to)):
-            window[k] = (window[k] + [v / episodes])[-10:]
-        rate = float(np.mean(window['success']))
+            window[k] = (window[k] + [v])[-10:]
+        total = max(1, sum(window['success']) + sum(window['collision']) + sum(window['timeout']))
+        rate = sum(window['success']) / total
         if rate > curriculum_up and env.curriculum < 1.0 and len(window['success']) == 10:
             env.curriculum = min(1.0, env.curriculum + 0.1)
             window = {k: [] for k in window}
         steps = (it + 1) * n * horizon
         row = {'iter': it, 'steps': steps, 'minutes': (time.time() - start) / 60, 'curriculum': env.curriculum,
-               'success': rate, 'collision': float(np.mean(window['collision'] or [0])),
-               'timeout': float(np.mean(window['timeout'] or [0])), 'episodes': episodes,
+               'success': rate, 'collision': sum(window['collision']) / total,
+               'timeout': sum(window['timeout']) / total, 'episodes': episodes,
                'std': float(model.log_std.exp().mean())}
         history_log.append(row)
         if it % 10 == 0:

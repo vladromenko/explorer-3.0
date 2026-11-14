@@ -146,10 +146,13 @@ class DockBatch:
             near_start = self._box_dist(box, x, y) < self.radius + 0.15
             self.boxes[idx, 4 + j] = box
             self.box_active[idx, 4 + j] = (j < count) & ~near_zone & ~near_start
-        self.prev_goal_dist[idx] = self._goal_error()[0][idx]
+        dist0, yaw0 = self._goal_error()
+        self.prev_goal_dist[idx] = (-dist0 - 0.3 * torch.exp(-dist0 / 0.3) * yaw0.abs())[idx]
 
-    def reset_all(self):
+    def reset_all(self, desync=False):
         self.reset(torch.ones(self.n, dtype=torch.bool, device=self.device))
+        if desync:   # spread episode ends over the deadline so batches are not synchronized
+            self.steps = torch.randint(0, self.deadline_steps // 2, (self.n,), generator=self.g, device=self.device)
         return self.observe()
 
     @staticmethod
@@ -215,7 +218,7 @@ class DockBatch:
         drop = torch.rand(self.n, generator=self.g, device=self.device) < dis['marker_dropout_p']
         visible = (bearing.abs() < 0.45 * self.hfov) & facing & (view_angle < 1.2) & los & dist_ok & ~drop & (self.burst <= 0)
         noise = lambda s: torch.randn(self.n, generator=self.g, device=self.device) * s
-        meas = torch.stack([dist + noise(0.01 + 0.02 * dist), bearing + noise(0.01), wrap(yaw - math.pi + noise(0.05))], 1)
+        meas = torch.stack([dist + noise(0.01 + 0.02 * dist), bearing + noise(0.01), wrap(yaw - math.pi + noise(0.03 + 0.04 * dist))], 1)
         self.held[:, :3] = torch.where(visible[:, None], meas, self.held[:, :3])
         self.held[:, 3] = torch.where(visible, torch.zeros_like(dist), (self.held[:, 3] + self.dt).clamp(max=contract.AGE_CLIP_S))
         return visible
@@ -322,11 +325,15 @@ class DockBatch:
         in_zone = (dist < su['position_tolerance']) & (yaw_err.abs() < su['yaw_tolerance']) & (speed < su['stationary_speed']) & (self.vel[:, 2].abs() < 0.05)
         self.stable = torch.where(in_zone, self.stable + self.dt, torch.zeros_like(self.stable))
         success = self.stable >= su['hold_s'] - 1e-6
-        progress = self.prev_goal_dist - dist
-        self.prev_goal_dist = dist
-        near = (dist < 0.3).float()
-        reward = (2.0 * progress - 0.05 * near * yaw_err.abs() - 0.01 * ((action - self.prev_action) ** 2).sum(1)
-                  - 0.005 - 0.05 * self.safety_events - 5.0 * collided.float() + 10.0 * success.float())
+        # Potential-based shaping (does not change the optimal policy) + dense hold bonus.
+        near = torch.exp(-dist / 0.3)
+        potential = -dist - 0.3 * near * yaw_err.abs()
+        progress = 0.99 * potential - self.prev_goal_dist
+        self.prev_goal_dist = potential
+        zone = (dist < su['position_tolerance']) & (yaw_err.abs() < su['yaw_tolerance'])
+        reward = (5.0 * progress + 0.1 * zone.float() * torch.exp(-speed / 0.05)
+                  - 0.01 * ((action - self.prev_action) ** 2).sum(1) - 0.002
+                  - 0.05 * self.safety_events - 2.0 * collided.float() + 10.0 * success.float())
         terminated = success | collided
         truncated = (self.steps >= self.deadline_steps) & ~terminated
         self.prev_action = action

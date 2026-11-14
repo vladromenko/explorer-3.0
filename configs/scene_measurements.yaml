@@ -12,7 +12,7 @@ room:
 dock_target:                  # одинаковая цель для Tank и базы ROSMASTER
   status: assumed
   board_size_wh: [0.24, 0.40] # ширина и высота щита цели
-  marker: {family: DICT_4X4_50, id: 0, side: 0.10, center_height: 0.20}
+  marker: {family: DICT_4X4_50, id: 0, side: 0.15, center_height: 0.20}  # >= 15 cm: pose ambiguity at 1.5 m
   zone_radius: 0.08           # радиус размеченной зоны остановки
   standoff: 0.25              # расстояние от щита до центра зоны
 tank:
