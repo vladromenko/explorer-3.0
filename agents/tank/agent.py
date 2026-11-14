@@ -65,7 +65,7 @@ class Hardware:
         self.recovery_enabled=False;self.last_recovery=0.
         self.udev=UdevMonitor(self.usb_removed)
         self.neutral_written=None
-        self.mode='manual'
+        self.mode='manual';self.task_profile=''
         self.motion_paused=False
         self.image=None
         self.image_info=None
@@ -83,7 +83,7 @@ class Hardware:
         with self.lock:
             return {'robot':'tank','software':self.software,'armed':self.armed,'hardware_open':self.board is not None,
                     'bench_mode':bench_authorized(ROOT),
-                    'motion_paused':self.motion_paused,'mode':self.mode,
+                    'motion_paused':self.motion_paused,'mode':self.mode,'task_profile':self.task_profile,
                     'reason':self.reason,'action':self.last_action,'motor_acknowledged':False,
                     'fault':self.fault,'neutral_written':self.neutral_written,
                     'motor_link':self.link.status(),'usb_monitor_error':self.udev.error,
@@ -275,12 +275,15 @@ class Hardware:
         finally:
             log.close()
 
-    def start(self,mode='manual',environment=False):
+    def start(self,mode='manual',environment=False,profile=None):
         if mode not in {'manual','policy','replay'}:raise ValueError('Unknown control mode')
+        if profile not in {None,'tank_dock','tank_dock_rgbd_lidar'}:raise ValueError('Unknown Tank task')
         if not self.lifecycle.acquire(blocking=False):
             raise RuntimeError('Another lifecycle operation is in progress')
         try:
+            if self.board is not None:raise RuntimeError('Hardware session already open; close it first')
             self.cancel_start.clear()
+            self.task_profile=profile or ''
             self.environment=environment
             return self._start(mode)
         finally:
@@ -344,7 +347,7 @@ class Hardware:
         acceleration=[x*9.80665 for x in self.imu[:3]] if self.imu and len(self.imu)>=6 else None
         return sensor_guard(self.limits,v,w,battery=self.battery,battery_age=age(self.battery_time),
             tilt=tilt_degrees(acceleration),imu_age=age(self.imu_time),front=self.scan_front,rear=self.scan_rear,
-            scan_age=age(self.scan_time))
+            scan_age=age(self.scan_time),profile=self.task_profile)
 
     def command(self,lease,sequence,v,w):
         with self.lock:
@@ -455,6 +458,7 @@ class Command(BaseModel):
 class SessionStart(BaseModel):
     mode:Literal['manual','policy','replay']='manual'
     environment:bool=False
+    profile:Literal['tank_dock','tank_dock_rgbd_lidar']|None=None
 
 @app.get('/health')
 def health():return hardware.status()
@@ -466,8 +470,10 @@ def image():
 @app.post('/session')
 def start(value:SessionStart|None=None):
     try:
-        if value and value.environment:return hardware.start(value.mode,environment=True)
-        return hardware.start(value.mode if value else 'manual')
+        options={}
+        if value and value.environment:options['environment']=True
+        if value and value.profile:options['profile']=value.profile
+        return hardware.start(value.mode if value else 'manual',**options)
     except (PermissionError,RuntimeError) as exc:raise HTTPException(409,str(exc)) from exc
 @app.post('/command')
 def command(value:Command):

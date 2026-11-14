@@ -135,3 +135,18 @@ def test_startup_with_saved_fault_is_inert(tmp_path,monkeypatch):
         time.sleep(.05)
         assert not h.armed and h.board is None and h.link.pending and not h.recovery_enabled
     finally:h.done.set();h.watchdog.join(timeout=1)
+
+
+def test_docking_profile_reaches_agent_guard_without_relaxing_speed_condition(tmp_path,monkeypatch):
+    from agents.tank import agent
+    import time
+    monkeypatch.setattr(agent,'ROOT',tmp_path)
+    h=agent.Hardware();h.done.set();h.watchdog.join(1)
+    h.task_profile='tank_dock'
+    h.battery=7.8;h.imu=[0,0,1,0,0,0]
+    h.battery_time=h.imu_time=h.scan_time=time.monotonic_ns()
+    h.scan_front=h.scan_rear=.08
+    assert h.guarded(.1,0)==((.1,0),None)
+    assert h.guarded(.2,0)[0]==(0.,0.)
+    h.task_profile=''
+    assert h.guarded(.1,0)[0]==(0.,0.)

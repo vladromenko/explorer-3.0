@@ -69,7 +69,7 @@ def evaluate(robot,evidence,allowed,reason):
     checks.append(item('latency','Задержка связи',finite(rtt) and rtt<=150,rtt,'Поднесите робот ближе к точке Wi-Fi'))
     clock=evidence.get('clock') or {}
     checks.append(item('clock','Согласование времени',clock.get('ok',False),clock,'Синхронизируйте часы Homebrain и робота; повторите проверку сети'))
-    fault=h.get('fault') or status.get('error') or h.get('guard_reason') or status.get('base_guard') or status.get('arm_blocked')
+    fault=h.get('fault') or status.get('error') or h.get('guard_reason') or status.get('base_guard') or status.get('guard') or status.get('arm_blocked')
     checks.append(item('guard','Последняя защита',not fault,{'reason':fault,'observed_at':now},
         'Устраните указанную причину и заново включите управление; после USB-отказа подтвердите остановку'))
     if robot=='tank':
@@ -80,7 +80,7 @@ def evaluate(robot,evidence,allowed,reason):
             {k:machine.get(k) for k in ('temperature_c','throttled','cpu_percent','sampled_at')},
             'Проверьте питание и охлаждение Tank'))
     else:
-        measured=status.get('arm_measured');ages=status.get('arm_measured_ages_s')
+        measured=status.get('arm_measured');ages=status.get('arm_measured_ages_s',status.get('arm_feedback_age_s'))
         arm_ok=isinstance(measured,list) and len(measured)==6 and all(finite(v) for v in measured)
         if ages is not None:arm_ok=arm_ok and all(finite(v) and v<=.5 for v in ages)
         else:arm_ok=arm_ok and status.get('arm_complete',False)

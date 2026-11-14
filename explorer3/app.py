@@ -46,6 +46,16 @@ def recording_local_state():
 
 recording_pages.install(RecordingReadiness(recording_local_state))
 recording_pages.install_collection()
+
+def physical_so_snapshot():
+    with session.lock:
+        sample=session.latest if control.robot=='so101' else None
+        return {'armed':control.owner is not None and control.robot=='so101',
+            'arm':list(sample['observation.state']) if sample else None,
+            'camera_fresh':bool(sample and time.monotonic_ns()-sample['observation_timestamp_ns']<500_000_000),
+            'sample_ns':sample.get('observation_timestamp_ns') if sample else None,'command':None}
+
+recording_pages.install_physical(physical_so_snapshot)
 live_preview=LivePreview(session,stop_requested=lambda:Server.instance.should_exit)
 ROBOT_NAMES={'so101':'SO-101','tank':'Tank','rosmaster':'ROSMASTER'}
 DEVICE_PATHS={'leader':'/dev/so101-leader','follower':'/dev/so101-follower',

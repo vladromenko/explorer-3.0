@@ -137,8 +137,8 @@ def install_collection():
         ui.label('В панели ниже: «Начать показ», затем «Успех», «Неуспех» или «Прервать». F9 — начать, F10 — успех, F11 — неуспех; пробел — STOP. Клавиши записи работают при фокусе в панели.').style('color:#a6b6c6')
         frame=ui.element('iframe').props('id="collection-control" src="about:blank" allow="gamepad"').style('width:100%;height:1250px;border:1px solid #344253;border-radius:14px;background:#10161f')
         ui.add_body_html('''<script>window.addEventListener('keydown',e=>{
-          if(e.code==='Space'&&!['INPUT','TEXTAREA'].includes(e.target.tagName)){
-            e.preventDefault();document.getElementById('collection-control')?.contentWindow.postMessage({explorerRecordingStop:true},location.origin);
+          if(e.code==='Space'){
+            if(!['INPUT','TEXTAREA'].includes(e.target.tagName))e.preventDefault();document.getElementById('collection-control')?.contentWindow.postMessage({explorerRecordingStop:true},location.origin);
           }
         });</script>''')
         review=ui.column().classes('ready-card')
@@ -198,3 +198,70 @@ def install_collection():
             except Exception as exc:progress.set_text('Не удалось обновить серию: '+str(exc))
             finally:loading[0]=False
         ui.timer(1,refresh)
+
+
+def install_physical(local_reader=lambda:{}):
+    from .physical_acceptance import Run,Reader,STEPS
+    from .paths import ROOT
+
+    @ui.page('/recording/check/{robot}')
+    async def physical_page(robot:str):
+        if robot not in STEPS:
+            ui.label('Выберите SO-101, Tank или ROSMASTER');return
+        ui.add_css(STYLE);ui.dark_mode().enable();ui.colors(primary='#2b9c8f',negative='#d45050')
+        with ui.row():
+            ui.link('Готовность парка','/recording/readiness');ui.link('Сбор датасета','/recording/collect',new_tab=True)
+        ui.label('Проверка «всё ездит» · '+NAMES[robot]).style('font-size:28px;font-weight:650')
+        ui.label('Около 10 минут. Мастер только читает датчики. Управляете вы в панели ниже; оставайтесь рядом с выключателем.').classes('ready-action')
+        if robot=='tank':
+            ui.label('Зарядник должен быть отсоединён. Напряжение само по себе не доказывает это — нужно ваше подтверждение.').classes('ready-action')
+        run=Run(robot,lambda:Reader(robot,local_reader))
+        steps=dict(STEPS[robot])
+        selector=ui.select({k:str(i+1)+'. '+v for i,(k,v) in enumerate(STEPS[robot])},value=STEPS[robot][0][0],label='Шаг').classes('w-full')
+        instruction=ui.label(steps[selector.value]).style('font-size:18px')
+        confirmation=ui.checkbox('Я выполнил шаг и лично увидел указанный результат')
+        status=ui.label('Измерение ещё не началось')
+        result_box=ui.column().classes('ready-card')
+        def selected():
+            instruction.set_text(steps[selector.value]);confirmation.value=False
+            confirmation.set_text('Зарядник физически отсоединён' if selector.value=='charger' else 'Я выполнил шаг и лично увидел указанный результат')
+        selector.on_value_change(selected);selected()
+        def start():
+            try:
+                run.start(selector.value);selector.disable();start_button.disable();confirmation.value=False
+                status.set_text('Измерение идёт. Выполните шаг в панели, затем подтвердите результат.')
+            except Exception as exc:ui.notify(str(exc),type='negative')
+        async def finish():
+            finish_button.disable()
+            try:
+                result=await asyncio.to_thread(run.finish,confirmation.value)
+                result_box.clear()
+                with result_box:
+                    ui.label(result['result']).classes('ready-green' if result['result']=='PASS' else 'ready-red')
+                    for check in result['checks']:
+                        ui.label(('✓ ' if check['pass'] else '• ')+check['label']+((' · '+str(check['value'])) if 'value' in check else ''))
+                        if check['action']:ui.label(check['action']).classes('ready-action')
+                    ui.label('Сохранено: '+str(run.path.relative_to(DATA)))
+                    ui.label('FAIL можно повторить. Автоматического продолжения управления нет.')
+                selector.enable();start_button.enable()
+                if robot=='tank' and run.results.get('charger',{}).get('result')=='PASS':
+                    control_frame.props('src='+json.dumps(src))
+                status.set_text('Шаг сохранён; выберите следующий или повторите этот')
+            except Exception as exc:ui.notify(str(exc),type='negative')
+            finally:finish_button.enable()
+        with ui.row():
+            start_button=ui.button('Начать измерение шага',on_click=start)
+            finish_button=ui.button('Проверить и сохранить результат',on_click=finish)
+        progress=ui.label('0 показаний')
+        def refresh():
+            with run.lock:samples=list(run.samples)
+            progress.set_text(str(len(samples))+' показаний'+(' · '+samples[-1]['read_error'] if samples and samples[-1].get('read_error') else ''))
+            if run.thread and not run.thread.is_alive() and run.current:status.set_text('Чтение закончено; подтвердите и сохраните результат или отметьте FAIL')
+        ui.timer(.5,refresh)
+        ui.label('Панель управления · движение только по вашим кнопкам').style('font-size:20px')
+        src='/rosmaster/control' if robot=='rosmaster' else '/?robot='+robot
+        control_frame=ui.element('iframe').props('id="physical-control" src='+json.dumps('about:blank' if robot=='tank' else src)+' allow="gamepad"').style('width:100%;height:1250px;border:1px solid #344253;border-radius:14px;background:#10161f')
+        ui.add_body_html('''<script>window.addEventListener('keydown',e=>{
+          if(e.code==='Space'){e.preventDefault();document.getElementById('physical-control')?.contentWindow.postMessage({explorerRecordingStop:true},location.origin);}
+        });</script>''')
+        ui.context.client.on_disconnect(lambda:run.done.set())

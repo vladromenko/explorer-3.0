@@ -55,6 +55,17 @@ def test_preparation_and_guides_without_execution(tmp_path):
                 assert 'series=tank_dock-s01' in page.locator('#collection-control').get_attribute('src')
                 # Isolated server has no motor routes; creating a series never calls one.
                 assert page.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
+                page.goto('http://127.0.0.1:8037/recording/check/tank')
+                expect(page.get_by_text('Проверка «всё ездит» · Tank',exact=True)).to_be_visible()
+                assert page.locator('#physical-control').get_attribute('src')=='about:blank'
+                assert page.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
+                page.goto('http://127.0.0.1:8037/recording/check/so101')
+                page.get_by_role('button',name='Начать измерение шага',exact=True).click()
+                time.sleep(.7)
+                page.get_by_role('button',name='Проверить и сохранить результат',exact=True).click()
+                expect(page.get_by_text('FAIL',exact=True)).to_be_visible()
+                report=next((tmp_path/'validation/physical').glob('so101-*.json'))
+                assert not json.loads(report.read_text())['complete']
                 assert not errors
                 browser.close()
         finally:

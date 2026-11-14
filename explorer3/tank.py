@@ -51,7 +51,7 @@ class TankSource:
             'clock_mapping_kind':'midpoint_estimate_not_shared_clock','physical_skill_verified':False,
             'state_kind':'previous_transmitted_command_estimate','wheel_feedback':'unavailable',
             'motor_acknowledgement':False,'odometry_integral_excluded':True}
-        request={'mode':self.mode}
+        request={'mode':self.mode,'profile':'tank_dock_rgbd_lidar' if self.environment else 'tank_dock'}
         if self.environment:request['environment']=True
         r=self.http.post('/session',json=request,timeout=20);require_response(r,'запуск');self.lease=r.json()['lease']
         if self.environment:

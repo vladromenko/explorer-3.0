@@ -19,5 +19,6 @@ class FixtureReadiness:
         return {'general':[item('disk','Свободное место',False,7,'Перенесите записи на внешний диск')],'robots':robots}
 recording_pages.install(FixtureReadiness())
 recording_pages.install_collection()
+recording_pages.install_physical()
 ui.run(host='127.0.0.1', port=8037, reload=False, show=False, tailwind=False,
        language='ru', title='Explorer software checks')
