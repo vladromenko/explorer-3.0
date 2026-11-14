@@ -27,30 +27,39 @@ CONTROL_HZ = 30
 SUBSTEPS = 67
 MAX_STEP = np.deg2rad([2.0, 2.0, 2.0, 2.5, 3.0, 6.0])   # per 1/30 s
 ARM_OBS = 32
+ROBOTS = {
+    'so101': {'hz': 30, 'substeps': 67, 'max_step_deg_s': [60, 60, 60, 75, 90, 180]},
+    'rosmaster': {'hz': 20, 'substeps': 100, 'max_step_deg_s': [60, 60, 60, 75, 90, 180]},
+}
 
 
-def build_model(lag_s=0.04):
-    from explorer3.sim.models import so101_model
-    xml, manifest = so101_model()
+def build_model(robot='so101', lag_s=0.04):
+    from explorer3.sim import models
+    xml, manifest = (models.so101_model if robot == 'so101' else models.rosmaster_arm_model)()
     root = ET.fromstring(xml)
     for act in root.find('actuator'):
-        act.set('timeconst', str(lag_s))       # first-order command filter inside MuJoCo
+        if act.tag in ('position', 'general'):
+            act.set('timeconst', str(lag_s))   # first-order command filter inside MuJoCo
     model = mujoco.MjModel.from_xml_string(ET.tostring(root, encoding='unicode'))
-    model.opt.timestep = 1.0 / (CONTROL_HZ * SUBSTEPS)
+    spec = ROBOTS[robot]
+    model.opt.timestep = 1.0 / (spec['hz'] * spec['substeps'])
     return model, manifest
 
 
 class ArmBatch:
     home_deg = np.array([-11.00079, -15.01149, 14.49583, 64.74423, 4.54356, 50.76047])
 
-    def __init__(self, n=1024, seed=0, curriculum=0.0, deadline_s=20.0, nconmax=None, njmax=None):
+    def __init__(self, n=1024, seed=0, curriculum=0.0, deadline_s=20.0, nconmax=None, njmax=None, robot='so101'):
         import warp as wp
         import mujoco_warp as mjw
         self.wp, self.mjw = wp, mjw
         self.n, self.curriculum = n, curriculum
         self.device = torch.device('cuda')
         self.g = torch.Generator(device=self.device).manual_seed(seed)
-        self.mjm, self.manifest = build_model()
+        self.robot = robot
+        spec = ROBOTS[robot]
+        self.substeps = spec['substeps']
+        self.mjm, self.manifest = build_model(robot)
         mjd = mujoco.MjData(self.mjm)
         mujoco.mj_forward(self.mjm, mjd)
         self.m = mjw.put_model(self.mjm)
@@ -67,13 +76,24 @@ class ArmBatch:
         rng = self.mjm.actuator_ctrlrange
         self.lo = torch.tensor(rng[:, 0], dtype=torch.float32, device=self.device)
         self.hi = torch.tensor(rng[:, 1], dtype=torch.float32, device=self.device)
-        self.max_step = torch.tensor(MAX_STEP, dtype=torch.float32, device=self.device)
-        home = np.deg2rad(self.home_deg)
-        home[5] = rng[5, 0] + self.home_deg[5] / 100 * np.ptp(rng[5])
+        self.max_step = torch.tensor(np.deg2rad(spec['max_step_deg_s']) / spec['hz'], dtype=torch.float32, device=self.device)
+        if robot == 'so101':
+            home = np.deg2rad(self.home_deg)
+            home[5] = rng[5, 0] + self.home_deg[5] / 100 * np.ptp(rng[5])
+            self.open_threshold = 0.45
+        else:
+            from explorer3.sim.rosmaster_arm import RosmasterPickPlace
+            closed = self.manifest['gripper_closed_rad']
+            servo = RosmasterPickPlace.home_native
+            home = np.deg2rad(servo - 90)
+            home[0] = np.deg2rad(90 - servo[0])
+            home[5] = (servo[5] - 30) / 95 * closed
+            self.open_threshold = 0.5 * closed
         self.home = torch.tensor(home, dtype=torch.float32, device=self.device)
+        self.mimic = robot == 'rosmaster'
         self.box_pos = torch.tensor(mjd.xpos[self.box_body], dtype=torch.float32, device=self.device)
-        self.dt = 1.0 / CONTROL_HZ
-        self.deadline_steps = int(deadline_s * CONTROL_HZ)
+        self.dt = 1.0 / spec['hz']
+        self.deadline_steps = int(deadline_s * spec['hz'])
         z = lambda *s: torch.zeros(*s, device=self.device)
         self.command, self.prev_action = z(n, 6), z(n, 6)
         self.steps = torch.zeros(n, dtype=torch.long, device=self.device)
@@ -88,7 +108,7 @@ class ArmBatch:
         mjw.step(self.m, self.d)          # compile kernels outside the graph
         wp.synchronize()
         with wp.ScopedCapture() as cap:
-            for _ in range(SUBSTEPS):
+            for _ in range(self.substeps):
                 mjw.step(self.m, self.d)
         self.graph = cap.graph
         self.reset(torch.ones(self.n, dtype=torch.bool, device=self.device))
@@ -107,6 +127,8 @@ class ArmBatch:
         q[:, :6] = self.home + torch.randn(k, 6, generator=self.g, device=self.device) * 0.03 * c
         if self.cube_q == 7:
             q[:, 6] = q[:, 5]
+        if self.mimic:      # ROSMASTER gripper mimic joints, as in the source URDF
+            q[:, 6:11] = q[:, 5:6] * torch.tensor([1., 1., -1., -1., 1.], device=self.device)
         q[:, self.cube_q] = self._u(0.24 - 0.02 - 0.03 * c, 0.24 + 0.02 + 0.03 * c, k)
         q[:, self.cube_q + 1] = self._u(-0.06 - 0.02 - 0.03 * c, -0.06 + 0.02 + 0.03 * c, k)
         q[:, self.cube_q + 2] = 0.017
@@ -143,7 +165,7 @@ class ArmBatch:
         cube, ee = self.cube(), self.gripper()
         box = self.box_pos
         reach = (ee - cube).norm(dim=1)
-        open_grip = self.qpos[:, 5] > 0.45
+        open_grip = self.qpos[:, 5] > self.open_threshold
         lifted = (cube[:, 2] > 0.035) & (reach < 0.04)
         to_box = (cube[:, :2] - box[:2]).norm(dim=1)
         inside = ((cube[:, 0] - box[0]).abs() < 0.034) & ((cube[:, 1] - box[1]).abs() < 0.024) & (cube[:, 2] > 0.018) & (cube[:, 2] < 0.04)
