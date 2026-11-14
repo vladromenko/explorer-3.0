@@ -45,6 +45,7 @@ def recording_local_state():
             'frames':session.frame_count if sample else 0}
 
 recording_pages.install(RecordingReadiness(recording_local_state))
+recording_pages.install_collection()
 live_preview=LivePreview(session,stop_requested=lambda:Server.instance.should_exit)
 ROBOT_NAMES={'so101':'SO-101','tank':'Tank','rosmaster':'ROSMASTER'}
 DEVICE_PATHS={'leader':'/dev/so101-leader','follower':'/dev/so101-follower',
@@ -143,6 +144,8 @@ rosmaster_preparation_pages.install(CSS,jobs)
 
 @ui.page('/')
 def index(request:Request):
+    from . import collection as recording_collection
+    managed=next((s for s in recording_collection.series() if s['id']==request.query_params.get('series')),None)
     selected=request.query_params.get('robot')
     if selected in {'so101','tank'} and not control.owner and not control.maintenance and not (session.thread and session.thread.is_alive()):
         control.select(selected)
@@ -192,7 +195,7 @@ def index(request:Request):
     ui.link('Общий обзор роботов · связь и датчики', '/fleet/live')
     ui.link('Команда · совместная задача и память', '/team')
     ui.link('Готовность парка', '/recording/readiness')
-    ui.link('Собрать датасет · инструкция', '/datasets/guide')
+    ui.link('Сбор датасета · серии и показы', '/recording/collect')
     ui.link('Подготовить обучение на реальных записях', '/training/prepare')
     ui.label('РЕАЛЬНЫЕ РОБОТЫ').classes('kicker')
     stage_label=ui.label('Этап A · программная подготовка. Движение не разрешено. Запись и физические испытания ещё не проверены.').classes('notice')
@@ -214,7 +217,8 @@ def index(request:Request):
     with ui.element('div').classes('workspace'):
         selected=ui.label('Выбран: '+ROBOT_NAMES[control.robot]).classes('selected')
         mode_label=ui.label('Наблюдение · приводы не включены').classes('muted')
-        task=ui.select({k:v.get('label',k) for k,v in PROFILES.items() if v['robot']==control.robot},value=next(k for k,v in PROFILES.items() if v['robot']==control.robot),label='Задача').style('min-width:320px')
+        task=ui.select({k:v.get('label',k) for k,v in PROFILES.items() if v['robot']==control.robot},value=managed['profile'] if managed and PROFILES[managed['profile']]['robot']==control.robot else next(k for k,v in PROFILES.items() if v['robot']==control.robot),label='Задача').style('min-width:320px')
+        if managed:task.disable()
         def teleop_check():
             try:session.start(owner,task.value,'teleop-check',record=False)
             except Exception as exc:notify_error(exc)
@@ -266,7 +270,7 @@ def index(request:Request):
             datasets=ui.tab('Датасеты',icon='video_library')
             training=ui.tab('Обучение',icon='model_training')
             trials=ui.tab('Испытания',icon='science')
-        with ui.tab_panels(tabs,value=management):
+        with ui.tab_panels(tabs,value=record if managed else management):
             with ui.tab_panel(management):
                 ownership_title=ui.label('Подключение SO-101').style('font-size:19px')
                 with ui.row() as ownership_controls:
@@ -325,8 +329,10 @@ def index(request:Request):
             with ui.tab_panel(record):
                 task_title=ui.label('Кубик → коробка → отвести руку').style('font-size:20px')
                 task_description=ui.label('').classes('muted')
-                collection=ui.input('Сессия сбора (одна для серии показов)',value=time.strftime('%Y-%m-%d')+'-session-01')
-                scene=ui.input('Расстановка',value='scene-01')
+                collection=ui.input('Сессия сбора (одна для серии показов)',value=managed['id'] if managed else time.strftime('%Y-%m-%d')+'-session-01')
+                scene=ui.input('Расстановка',value=managed['layout'] if managed else 'scene-01')
+                if managed:
+                    collection.disable();scene.disable()
                 ui.label('Для отдельной независимой серии нужны новые сессия и расстановка. Изменение имени без изменения условий не делает данные независимыми.').classes('muted')
                 category=ui.select({'demonstration':'Исходный показ','correction':'Отдельный сегмент коррекции'},value='demonstration',label='Тип записи')
                 ui.label('Коррекцию начинайте отдельной записью после остановки предыдущего исполнения: границы источников не смешиваются.').classes('muted')
@@ -336,6 +342,19 @@ def index(request:Request):
                         ui.notify('Запуск разрешённой сессии')
                     except Exception as exc:
                         notify_error(exc)
+                def collection_key(event):
+                    action=event.args
+                    if action=='start':begin()
+                    elif action in {'success','failure','aborted'}:session.finish(action)
+                ui.on('collection_action',collection_key)
+                ui.add_body_html('''<script>
+                window.addEventListener('message',e=>{if(e.origin===location.origin&&e.source===parent&&e.data?.explorerRecordingStop)emitEvent('operator_stop');});
+                window.addEventListener('keydown',e=>{
+                  if(e.repeat)return;
+                  const action={F9:'start',F10:'success',F11:'failure'}[e.code];
+                  if(action){e.preventDefault();emitEvent('collection_action',action);}
+                });
+                </script>''')
                 with ui.row():
                     start_button=ui.button('Начать показ',on_click=begin)
                     ui.button('Закончить · успех',on_click=lambda:session.finish('success'))

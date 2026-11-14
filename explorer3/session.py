@@ -42,6 +42,9 @@ class Session:
         if not scene.strip():
             raise ValueError('Нужно обозначение расстановки')
         if category not in {'demonstration','correction'}:raise ValueError('Unknown human segment category')
+        if record and collection_id:
+            from .collection import context
+            context(name,collection_id,scene)
         self.category=category
         self.trial_plan=None
         self.pilot=None

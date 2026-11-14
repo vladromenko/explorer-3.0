@@ -6,6 +6,7 @@ from explorer3.paths import DATA, prepare
 
 NAME = sys.argv[1]
 PILOT = len(sys.argv) > 2 and sys.argv[2] == 'pilot'
+MANAGED = len(sys.argv) > 2 and sys.argv[2] == 'managed'
 start = time.monotonic_ns()
 step = [0]
 lock = threading.Lock()
@@ -49,11 +50,11 @@ OP = Operator()
 
 prepare(); catalog.initialize()
 ENVIRONMENT=NAME.endswith('_rgbd_lidar')
-if ENVIRONMENT:
+if ENVIRONMENT or MANAGED:
     from explorer3 import sensors,profiles
     from explorer3.recording import EpisodeWriter
     from rosmaster_sensor_fixture import FixtureFeed
-    sensors.SensorFeed=FixtureFeed
+    if ENVIRONMENT:sensors.SensorFeed=FixtureFeed
     profiles.PROFILES[NAME]['domain']='sim'  # fixture-only schema, confined to this child process
     rs.EpisodeWriter=lambda *a,**kw:EpisodeWriter(*a,**kw,domain='fixture')
 rs.agent_client = lambda timeout=.4: httpx.Client(transport=httpx.MockTransport(handler), base_url='http://agent')
@@ -75,10 +76,14 @@ if PILOT:
     study = next(s for s in research.studies() if s['id'] == study_id)
     plan = {'id': 'p' * 32, 'kind': 'policy', 'profile': NAME, 'checkpoint_sha256': 'a' * 64, 'max_duration_s': 30.}
     session.start('test-owner', NAME, 'scene-test', check=True, plan=plan, study=study)
+elif MANAGED:
+    from explorer3 import collection
+    managed=collection.create_series('rosmaster_pick_place',NAME,'fixture-operator','Synthetic scene')
+    session.start('test-owner',NAME,managed['layout'],collection=managed['id'],check=True)
 else:
     session.start('test-owner', NAME, 'scene-test', collection='r3-series-01', check=True)
 end = time.monotonic() + 60
-while time.monotonic() < end and session.status()['frames'] < (70 if PILOT else 30):
+while time.monotonic() < end and session.status()['frames'] < (80 if MANAGED else 70 if PILOT else 30):
     time.sleep(.1)
 session.finish('success'); session.thread.join(30)
 status = session.status()
@@ -86,9 +91,16 @@ assert status['error'] is None, status
 from explorer3.validation import validate
 rows = catalog.rows('episodes')
 assert all(r['excluded'] == 1 for r in rows)
-if not PILOT:assert all(r['session']=='r3-series-01' and r['scene']=='scene-test' for r in rows)
-result = validate(rows[0]['id'],domain='fixture' if ENVIRONMENT else 'real')
+if not PILOT and not MANAGED:assert all(r['session']=='r3-series-01' and r['scene']=='scene-test' for r in rows)
+result = validate(rows[0]['id'],domain='fixture' if ENVIRONMENT or MANAGED else 'real')
 extra = {}
+if MANAGED:
+    deadline=time.monotonic()+60
+    while collection.summary(managed['id'])['attempts'][0]['phase']!='saved' and time.monotonic()<deadline:time.sleep(.1)
+    report=collection.summary(managed['id'])
+    assert report['attempts'][0]['phase']=='saved',report
+    extra={'collection_report':report}
+
 if PILOT:
     from explorer3 import research
     record = research.records()[0]

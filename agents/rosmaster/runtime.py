@@ -587,7 +587,9 @@ class Runtime:
                 'base_measured':list(self.odom) if self.odom is not None else None,'base_measured_age_s':odom_age,
                 'battery_voltage':self.battery_value,'battery_age_s':battery_age,
                 'controller_ready':core.ready(),'arm_cancel_recoveries':(self.session or {}).get('recoveries',0),
-                'motion_commands_sent':core.motion_commands_sent,'clock_resyncs':core.clock_resyncs}
+                'motion_commands_sent':core.motion_commands_sent,'clock_resyncs':core.clock_resyncs,
+                'control_limits':{'manual_base':dict(self.cfg['manual_base']),'arm_settings':dict(self.cfg['arm']),
+                                  'direct_arm_deg_s':self.DIRECT_ARM_DEG_S,'pose_deg_s':self.POSE_DEG_S}}
 
     def begin_pose(self,target,measured,now):
         # After power-off the arm can rest outside the commandable range (seen: elbow -49).

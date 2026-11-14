@@ -47,6 +47,14 @@ def test_preparation_and_guides_without_execution(tmp_path):
                 deadline=time.monotonic()+3
                 while json.loads((tmp_path/'configs/fleet.json').read_text())['robots']['tank']['enabled'] and time.monotonic()<deadline:time.sleep(.05)
                 assert not json.loads((tmp_path/'configs/fleet.json').read_text())['robots']['tank']['enabled']
+                page.goto('http://127.0.0.1:8037/recording/collect')
+                expect(page.get_by_text('Сбор датасета',exact=True)).to_be_visible()
+                page.get_by_label('Что изменилось в расстановке',exact=True).fill('Тестовая расстановка слева')
+                page.get_by_role('button',name='Новая серия',exact=True).click()
+                expect(page.get_by_text('tank_dock-s01 · tank_dock-layout01 · Тестовая расстановка слева',exact=True)).to_be_visible()
+                assert 'series=tank_dock-s01' in page.locator('#collection-control').get_attribute('src')
+                # Isolated server has no motor routes; creating a series never calls one.
+                assert page.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
                 assert not errors
                 browser.close()
         finally:

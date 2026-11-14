@@ -182,6 +182,8 @@ async def websocket(socket:WebSocket):
                         if study is None:raise ValueError('Исследование не найдено')
                 else:name=value.get('profile');study=None
                 if name not in PROFILES:raise ValueError('Выберите задачу ROSMASTER')
+                from .collection import context as collection_context
+                if value.get('collection'):collection_context(name,str(value['collection']),str(value.get('scene','scene-01')))
                 source='policy' if plan else 'human'
                 motor_profile=control_profile(name)
                 current=operator.status or {}

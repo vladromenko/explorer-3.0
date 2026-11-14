@@ -54,6 +54,7 @@ class ClockMap:
         self.offset_ns = None
         self.rtt_ns = None
         self.probes = []
+        self.agent_software = None
 
     def probe(self, count=5):
         for _ in range(count):
@@ -61,10 +62,11 @@ class ClockMap:
             response = self.http.get('/health')
             received = time.monotonic_ns()
             response.raise_for_status()
-            agent = response.json()['monotonic_ns']
+            remote=response.json();agent=remote['monotonic_ns']
+            self.agent_software=remote.get('software')
             self.probes = (self.probes + [(received - sent, (sent + received)//2 - agent)])[-20:]
         self.rtt_ns, self.offset_ns = min(self.probes)
-        return {'offset_ns': self.offset_ns, 'rtt_ns': self.rtt_ns, 'kind': 'midpoint_estimate_not_shared_clock'}
+        return {'offset_ns': self.offset_ns, 'rtt_ns': self.rtt_ns, 'kind': 'midpoint_estimate_not_shared_clock','agent_software':self.agent_software}
 
     def to_homebrain(self, agent_ns):
         return None if agent_ns is None else int(agent_ns + self.offset_ns)
@@ -114,6 +116,9 @@ class RosmasterSession:
     def start(self, owner, name, scene, category='demonstration', collection=None, check=False, plan=None, study=None):
         """check=True records without an armed control session (pipeline check, nothing is sent).
         plan: replay/policy trial; study: diagnostic pilot (one random correction assignment per trial)."""
+        if collection:
+            from .collection import context
+            context(name,collection,scene)
         if name not in PROFILES:
             raise ValueError('Выберите профиль записи ROSMASTER')
         if self.active():
@@ -439,6 +444,7 @@ class RosmasterSession:
             'arm_measured_valid': current['arm_measured_valid'],
             'battery_voltage': current['battery_voltage'], 'battery_age_s': current['battery_age_s'],
             'battery_source': 'controller BATTERY frame (native serial)',
+            'control_limits':current.get('control_limits'),
             'agent_control_step': current['control_step'], 'next_agent_control_step': following['control_step'],
             'agent_monotonic_ns': current['agent_monotonic_ns'], 'robot_clock': 'rosmaster_monotonic_ns',
             'controller_ready': current['controller_ready'], 'arm_cancel_recoveries': following['arm_cancel_recoveries'],

@@ -109,6 +109,20 @@ function profileChanged(){
  try{localStorage.setItem('explorerManualProfile',$('control-profile').value)}catch(e){}
  profileControls();
 }
+window.addEventListener('message',e=>{if(e.origin===location.origin&&e.source===parent&&e.data?.explorerRecordingStop)send({action:'stop'});});
+const recordingQuery=new URLSearchParams(location.search);
+if(recordingQuery.has('series')){
+ const p=recordingQuery.get('profile');
+ if([...$('rprof').options].some(o=>o.value===p))$('rprof').value=p;
+ $('rscene').value=recordingQuery.get('layout')||'';
+ $('rcollection').value=recordingQuery.get('series');
+ for(const id of ['rprof','rscene','rcollection'])$(id).disabled=true;
+}
+window.addEventListener('keydown',e=>{
+ if(e.repeat)return;
+ if(e.code==='F9'){e.preventDefault();startRecording();}
+ if(e.code==='F10'||e.code==='F11'){e.preventDefault();send({action:'record_finish',outcome:e.code==='F10'?'success':'failure'});}
+});
 function startRecording(){
  clearControls();
  const profile=$('rprof').value;

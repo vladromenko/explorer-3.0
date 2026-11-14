@@ -17,7 +17,7 @@ def deploy():
     inactive()
     stamp=time.strftime('%Y%m%dT%H%M%SZ',time.gmtime());root='/home/vlad/explorer3';stage=root+'/staging-readiness-'+stamp
     ssh('mkdir','-p',stage)
-    files={'agent.py':ROOT/'agents/rosmaster/agent.py','sensors.py':ROOT/'agents/tank/sensors.py'}
+    files={'agent.py':ROOT/'agents/rosmaster/agent.py','sensors.py':ROOT/'agents/tank/sensors.py','runtime.py':ROOT/'agents/rosmaster/runtime.py'}
     for source in files.values():ast.parse(source.read_text(),filename=str(source))
     hashes={n:hashlib.sha256(p.read_bytes()).hexdigest() for n,p in files.items()}
     for name,source in files.items():subprocess.run(['scp','-q','-i',key,str(source),target+':'+stage+'/'+name],check=True,timeout=30)

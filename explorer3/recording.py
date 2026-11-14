@@ -52,6 +52,15 @@ class EpisodeWriter:
         self.id=uuid.uuid4().hex
         self.name,self.session,self.scene,self.category=name,session,scene,category
         self.cfg=cfg
+        from . import collection
+        self.collection_context=collection.context(name,session,scene) if domain!='sim' else None
+        self.collection_progress_at=0.
+        self.collection_streams={}
+        self.collection_origins={}
+        self.collection_camera_last=None
+        self.collection_limits=None
+        self.collection_batteries=[]
+        if self.collection_context:collection.begin(self.id,session)
         self.root=DATA/'datasets'/name/self.id if domain=='real' else DATA/'datasets'/domain/name/self.id
         self.frames=0
         channels=cfg['channels']
@@ -67,9 +76,13 @@ class EpisodeWriter:
         if cfg.get('environment_channels'):
             features['observation.environment_state']={'dtype':'float32','shape':(len(cfg['environment_channels']),),
                                                         'names':cfg['environment_channels']}
-        self.ds=LeRobotDataset.create(repo_id=f'local/{name}_{self.id}',fps=cfg['fps'],features=features,
-                                     root=self.root,robot_type=self.robot_id,use_videos=True,
-                                     image_writer_threads=2,video_backend='pyav')
+        try:
+            self.ds=LeRobotDataset.create(repo_id=f'local/{name}_{self.id}',fps=cfg['fps'],features=features,
+                                         root=self.root,robot_type=self.robot_id,use_videos=True,
+                                         image_writer_threads=2,video_backend='pyav')
+        except Exception as exc:
+            if self.collection_context:collection.completed(self.id,'aborted',0,reason='Не удалось подготовить запись: '+str(exc))
+            raise
         self.sidecar=(self.root/'research.jsonl').open('a')
         self.last_observation=-1
         self.initial_state=None
@@ -125,8 +138,29 @@ class EpisodeWriter:
                       clock_domain='simulation_monotonic_ns' if self.domain=='sim' else 'fixture' if self.domain=='fixture' else 'homebrain_monotonic_ns')
         self.sidecar.write(json.dumps(record)+'\n')
         self.frames+=1
+        if self.collection_context:
+            voltage=sample.get('battery_voltage')
+            if isinstance(voltage,(float,int)) and np.isfinite(voltage):self.collection_batteries.append(float(voltage))
+            self.collection_streams['actions']=self.frames
+            sequence=image.get('sequence')
+            if sequence!=self.collection_camera_last:
+                self.collection_streams['camera']=self.collection_streams.get('camera',0)+1
+                self.collection_camera_last=sequence
+            if sample.get('control_limits'):self.collection_limits=sample['control_limits']
+            if sample.get('_sensor_packet'):
+                for key,value in sample['_sensor_packet']['meta']['streams'].items():
+                    count=value.get('frame_count')
+                    if isinstance(count,int):
+                        origin=self.collection_origins.setdefault(key,count)
+                        self.collection_streams[key]=max(0,count-origin+1)
+                    else:self.collection_streams[key]=None
+            if time.monotonic()-self.collection_progress_at>=.5:
+                from . import collection
+                collection.progress(self.id,self.frames,self.collection_streams)
+                self.collection_progress_at=time.monotonic()
 
     def finish(self, outcome: str, provenance: dict):
+        from . import collection
         if self.domain=='sim' and not all(key in provenance for key in ('model','seed','controller','lineage')):
             raise ValueError('Simulation provenance incomplete')
         if outcome not in {'success','failure','aborted'}:
@@ -134,12 +168,24 @@ class EpisodeWriter:
         if self.training_label is not None and (provenance.get('segment_role')!='noise_demonstration' or
                 provenance.get('training_label')!=self.training_label or not provenance.get('review')):
             raise ValueError('Separate expert labels require the reviewed noise-collection provenance')
+        if self.collection_context:
+            provenance={**provenance,'collection':{**self.collection_context,
+                'battery_start_v':self.collection_batteries[0] if self.collection_batteries else None,
+                'battery_min_v':min(self.collection_batteries) if self.collection_batteries else None,
+                'profile':self.name,'agent_version':provenance.get('clock_mapping',{}).get('agent_software') or provenance.get('agent_code_sha256',provenance.get('software')),
+                'speed_limits':self.collection_limits or provenance.get('limits',self.cfg.get('control_limits')),
+                'link_failures':provenance.get('motor_link',provenance.get('termination_reason'))}}
         self.sidecar.flush()
         self.sidecar.close()
         if self.sensor_archive:self.sensor_archive.finish()
         if self.frames:
-            self.ds.save_episode()
-            self.ds.finalize()
+            try:
+                self.ds.save_episode()
+                self.ds.finalize()
+            except Exception as exc:
+                if self.collection_context:
+                    collection.completed(self.id,'aborted',self.frames,reason='Ошибка сохранения; исходные файлы оставлены: '+str(exc))
+                raise
             (self.root/'provenance.json').write_text(json.dumps({'hardware':provenance,'profile':self.cfg,'outcome':outcome,
                 'category':self.category,'domain':self.domain,'synthetic':self.domain!='real','closed_at':time.time(),'training_label':self.training_label,
                 'session_id':self.session,'scene_id':self.scene,'initial_state':self.initial_state,
@@ -148,4 +194,8 @@ class EpisodeWriter:
                 session=self.session,scene=self.scene,category=self.category,outcome=outcome,frames=self.frames))
         else:
             self.ds.finalize()
+        if self.collection_context:
+            from . import collection
+            collection.completed(self.id,outcome,self.frames,self.id if self.frames else None,
+                                 provenance.get('stop_reason') or provenance.get('termination_reason'))
         return self.id

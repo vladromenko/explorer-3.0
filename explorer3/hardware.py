@@ -351,6 +351,7 @@ class HardwareSource:
                 'feedback_unavailable':['velocity','current','load','force'],
                 'writes_acknowledgement':'Goal_Position sync_write has no per-motor ACK; actual transmitted targets, not measured achievement',
                 'encoder_boundary_tolerance_ticks':ENCODER_BOUNDARY_TOLERANCE_TICKS,
+                'limits':{k:self.cfg[k] for k in ('max_step_degrees','max_gripper_step','max_speed_degrees_s','smooth_recording_actions','teleoperation_control_hz')},
                 'camera_capture_enabled':self.capture_cameras,
                 'teleoperation_profile':('bounded smooth calibrated LeRobot leader action' if self.cfg['smooth_recording_actions'] else 'bounded command-space initial alignment, then direct calibrated LeRobot leader action') if self.teleoperate else None,
                 'startup_boundary_adjustments':self.startup_boundary_adjustments,

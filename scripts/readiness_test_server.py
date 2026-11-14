@@ -18,5 +18,6 @@ class FixtureReadiness:
         robots['so101']={'checks':[item('owner','Владелец SO-101',False,'legacy_8020','Откройте SO-101 и нажмите «Взять SO-101 в Explorer»')]}
         return {'general':[item('disk','Свободное место',False,7,'Перенесите записи на внешний диск')],'robots':robots}
 recording_pages.install(FixtureReadiness())
+recording_pages.install_collection()
 ui.run(host='127.0.0.1', port=8037, reload=False, show=False, tailwind=False,
        language='ru', title='Explorer software checks')
