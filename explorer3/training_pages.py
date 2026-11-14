@@ -20,11 +20,19 @@ def install(css,jobs):
 
     @ui.page('/datasets/guide')
     async def guide_page():
+        show_guide('DATASET_GUIDE_RU.md')
+
+    @ui.page('/datasets/acceptance')
+    async def acceptance_page():
+        show_guide('PHYSICAL_ACCEPTANCE_RU.md')
+
+    def show_guide(filename):
         ui.add_css(css+STYLE);ui.dark_mode().enable()
         ui.add_css('.dataset-guide{min-width:0;overflow-wrap:anywhere}.dataset-guide table{display:block;max-width:100%;overflow-x:auto}.dataset-guide code{white-space:normal}')
         with ui.row():
-            ui.link('Explorer','/');ui.link('Подготовить обучение','/training/prepare')
-        ui.markdown((ROOT/'docs/DATASET_GUIDE_RU.md').read_text()).classes('w-full dataset-guide')
+            ui.link('Explorer','/');ui.link('Сбор датасета','/datasets/guide');ui.link('Физическая приёмка','/datasets/acceptance');ui.link('Подготовить обучение','/training/prepare')
+        text=(ROOT/'docs'/filename).read_text().replace('(PHYSICAL_ACCEPTANCE_RU.md)','(/datasets/acceptance)').replace('(DATASET_GUIDE_RU.md)','(/datasets/guide)')
+        ui.markdown(text).classes('w-full dataset-guide')
 
     async def builder_page(domain):
         ui.add_css(css+STYLE);ui.dark_mode().enable();ui.colors(primary='#2b9c8f',secondary='#748aa4',negative='#d45050')

@@ -54,6 +54,9 @@ async def main():
             await expect(page.get_by_text('50 пригодных успешных показов',exact=False)).to_be_visible()
             await page.screenshot(path=str(OUT/'dataset-guide-mobile.png'),full_page=True)
             assert await page.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
+            await page.get_by_role('link',name='Физическая приёмка',exact=True).click()
+            await expect(page.get_by_role('heading',name='Explorer 3.0 — оставшаяся физическая приёмка',exact=True)).to_be_visible()
+            assert await page.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
             assert jobs()==before and not errors and not external
             (OUT/'real-preparation-result.json').write_text(json.dumps({'passed':True,
                 'actual_browser':True,'real_source_copies':True,'insufficient_data_rejected':True,
