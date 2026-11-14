@@ -146,6 +146,8 @@ class Explore:
         if ref is not None and math.dist(ref[:2], pose[:2]) > .15:
             self.progress = (pose, now)
         elif now - since > 10:
+            if self.visual and frame == 'main' and self.target is not None:
+                grid.mark_seen(self.target, .3)
             self.banned.append(self.target)
             self.target = None
             self.message = 'Не получается проехать: выбираю другое место'
@@ -153,6 +155,8 @@ class Explore:
         v, w, remaining = navigation.follow(pose, self.path, self.v_max, self.w_max)
         if remaining < .25:
             self.targets_done += 1
+            if self.visual and frame == 'main':
+                grid.mark_seen(self.target)              # arrived: this piece of floor is looked at
             self.target = None
             return [0., 0.]
         v, w, why = navigation.guard(FLEET.scan(self.robot), self.robot, v, w)

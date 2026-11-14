@@ -162,17 +162,15 @@ def frontiers(grid, robot, pose, min_size_m=.3, banned=(), visual=False):
     Returns [(x, y, size_m, path_m)]."""
     blocked, free, unknown = layers(grid, robot)
     free_all = free
-    if visual:
-        n = SIZE // STEP
-        seen = grid.seen.reshape(n, STEP, n, STEP).any(axis=(1, 3))
-        unseen = free & ~seen
-        # unseen floor next to walls is fine (cameras look at the floor from a distance)
-        unknown = unknown | (unseen & ~blocked)
-        free = free & seen
     n = blocked.shape[0]
     un = unknown.astype(np.uint8)
     near_unknown = cv2.dilate(un, np.ones((3, 3), np.uint8)).astype(bool)
     edge = free & near_unknown & ~blocked
+    if visual:
+        # Object search: every reachable piece of floor the cameras have not looked at is a goal
+        # too (not only where the lidar map ends); driving there points the camera at it.
+        seen = grid.seen.reshape(n, STEP, n, STEP).any(axis=(1, 3))
+        edge = edge | (free & ~seen & ~blocked)
     count, labels, stats, cents = cv2.connectedComponentsWithStats(edge.astype(np.uint8), connectivity=8)
     if count <= 1:
         return []

@@ -131,6 +131,15 @@ class Grid:
             n = hit[0] if len(hit) else len(cx)
             self.seen[cy[:n], cx[:n]] = True
 
+    def mark_seen(self, xy, radius=.5):
+        """The robot came here: the floor around it counts as looked at."""
+        cx, cy = int(math.floor(xy[0] / RES)) + SIZE // 2, int(math.floor(xy[1] / RES)) + SIZE // 2
+        r = int(radius / RES)
+        yy, xx = np.ogrid[-r:r + 1, -r:r + 1]
+        disk = xx * xx + yy * yy <= r * r
+        y0, y1, x0, x1 = max(0, cy - r), min(SIZE, cy + r + 1), max(0, cx - r), min(SIZE, cx + r + 1)
+        self.seen[y0:y1, x0:x1] |= disk[y0 - (cy - r):y1 - (cy - r), x0 - (cx - r):x1 - (cx - r)]
+
     def known_free(self):
         return (self.free >= 1) & ~self.occupied()
 
