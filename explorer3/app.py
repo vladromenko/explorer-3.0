@@ -145,6 +145,8 @@ from . import branching_pages
 branching_pages.install(CSS,jobs)
 from . import training_pages
 training_pages.install(CSS,jobs)
+from . import learn_pages
+learn_pages.install(jobs)
 from . import fleet_policy_pages
 fleet_policy_pages.install(CSS,jobs)
 from . import gain_pages
@@ -401,8 +403,11 @@ def index(request:Request):
                 ui.button('Проверить данные и видео',on_click=validate_selected)
                 collection_info=ui.label().classes('muted')
             with ui.tab_panel(training):
-                ui.link('Сначала подготовить и проверить план без запуска', '/training/prepare')
-                ui.label('Один trainer · отдельная политика для каждой задачи').style('font-size:19px')
+                with ui.card().style('background:#122123;border:1px solid #2fb39f;border-radius:16px;padding:18px;width:100%;max-width:760px'):
+                    ui.label('Панель обучения').style('font-size:22px;font-weight:700')
+                    ui.label('Реальные показы и симуляция MuJoCo: готовность данных, запуск в два клика, прогресс, графики и журналы.').style('color:#9fb3c8')
+                    ui.button('Открыть панель обучения',icon='school',on_click=lambda:ui.navigate.to('/learn')).props('unelevated size=lg')
+                ui.label('Прежние кнопки (то же самое без пояснений)').style('font-size:15px;color:#8b98a8;margin-top:18px')
                 ui.label('ACT: upstream LeRobot 0.6.1. Smoke: 50 шагов; это проверка тракта, не навык.').classes('muted')
                 async def enqueue_policy(policy,smoke):
                     try:
