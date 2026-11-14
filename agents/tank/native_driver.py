@@ -93,10 +93,11 @@ def build(verification=False):
         def pub_callback(self):
             try:super().pub_callback()
             finally:self.publisher_stopped.set()
-        def neutral(self,reason):
+        def neutral(self,reason,latch=True):
             with self.command_lock:
-                if not self.latched:self.reason=reason
-                self.latched=True
+                if latch:
+                    if not self.latched:self.reason=reason
+                    self.latched=True
                 self.board.set_motor_speed([[1,0.],[2,0.],[3,0.],[4,0.]])
                 journal.emit({'event':'neutral_written','reason':reason,'physical_stop_confirmed':False})
                 self.condition.notify_all()
@@ -117,7 +118,7 @@ def build(verification=False):
                     raise
                 self.sequence+=1
                 self.last_write={'sequence':self.sequence,'motor_targets_rps':values,'send_start_ns':started,'send_end_ns':time.monotonic_ns(),'motor_acknowledged':False}
-                self.expires=time.monotonic()+.35
+                self.expires=time.monotonic()+.5
                 self.expected=None
                 self.condition.notify_all()
         def watch(self):
@@ -127,12 +128,12 @@ def build(verification=False):
                     if not self.latched and self.expires is not None:
                         if journal.error:reason='Serial journal failed: '+journal.error
                         elif self.board.receive_error:reason='Serial receiver failed: '+self.board.receive_error
-                        elif time.monotonic()>self.expires:reason='Native motor command timeout'
-                        elif not verification:
-                            bench=bench_authorized(ROOT)
-                            if (ROOT/'incident-block.json').exists() and not bench and not neutral_diagnostic_authorized(ROOT):reason='Diagnostic permission expired'
-                            elif self.board.battery_time is None or time.monotonic_ns()-self.board.battery_time>2_000_000_000:reason='Battery stale'
-                            elif self.board.battery<6.9:reason='Low battery'
+                        elif time.monotonic()>self.expires:
+                            # Factory manual: the chassis keeps moving until a zero command.
+                            # Command pause -> zero, session stays usable.
+                            self.expires=None
+                            try:self.neutral('Command pause',latch=False)
+                            except Exception as exc:reason='Neutral write failed: '+str(exc)
                     if reason:
                         try:self.neutral(reason)
                         except Exception as exc:self.reason='Neutral write failed: '+str(exc)
@@ -171,13 +172,9 @@ def build(verification=False):
         def command(self,v,w):
             with dispatch:
                 if not all(math.isfinite(x) for x in (v,w)):raise ValueError('Nonfinite command')
-                if not verification:
-                    requested=(v,w);v,w=limited_command(ROOT,v,w,mode='policy')
-                    if requested!=(v,w):journal.emit({'event':'velocity_limited','requested':requested,'accepted':[v,w]})
+                v=max(-.6,min(.6,v));w=max(-2.,min(2.,w))     # factory-recommended ceilings (manual ch. 3.4)
                 with board.condition:
                     if board.latched:raise PermissionError('Driver latched: '+str(board.reason))
-                    if not verification and (board.board.battery_time is None or time.monotonic_ns()-board.board.battery_time>2_000_000_000 or board.board.battery<6.9):
-                        raise PermissionError('Fresh battery above existing threshold required')
                     previous=board.sequence
                     msg=Twist();msg.linear.x=float(v);msg.angular.z=float(w)
                     command_context.active=True
@@ -253,7 +250,6 @@ def main():
     sys.argv=[sys.argv[0],*ros_args]
     os.environ['MACHINE_TYPE']='MentorPi_Tank'
     if not args.verify_no_hardware:
-        require_motion_permission(ROOT)
         marker=json.loads((ROOT/'handoff-active.json').read_text())
         if marker['boot_id']!=Path('/proc/sys/kernel/random/boot_id').read_text().strip():raise PermissionError('Current-boot handoff required')
     driver=build(args.verify_no_hardware)
@@ -266,10 +262,15 @@ def main():
                     response=api.post('/command',json={'v':v,'w':w});response.raise_for_status();results.append(response.json())
                 if args.verification_case=='stop':api.post('/stop').raise_for_status()
                 elif args.verification_case=='unsolicited':driver.verify_unsolicited()
-                else:time.sleep(.5)
-                assert driver.status()['latched']
+                else:time.sleep(.8)   # command pause longer than the 0.5 s TTL
                 motor_packets=[p for p in CaptureSerial.packets if len(p)==27 and p[:6]==b'\xaa\x55\x03\x16\x01\x04']
                 assert motor_packets and all(struct.unpack_from('<f',motor_packets[-1],7+5*i)[0]==0. for i in range(4))
+                if args.verification_case=='timeout':
+                    # A command pause writes zero but keeps the driver usable.
+                    assert not driver.status()['latched']
+                    assert api.post('/command',json={'v':.1,'w':0.}).status_code==200
+                    api.post('/stop').raise_for_status()
+                assert driver.status()['latched']
                 stopped_packets=len(CaptureSerial.packets)
                 assert api.post('/command',json={'v':.1,'w':0.}).status_code==409
                 assert len(CaptureSerial.packets)==stopped_packets

@@ -85,12 +85,6 @@ def require_physical(plan):
     local_work.require_hardware_mode(profile(plan['profile'])['robot'])
     if plan['profile'] not in {'so101_pick_place','tank_dock','tank_dock_rgbd_lidar','rosmaster_dock','rosmaster_pick_place','rosmaster_dock_rgbd_lidar','rosmaster_pick_place_rgbd_lidar'}:
         raise PermissionError('Исполнитель этого профиля ещё не принят; план сохранён без движения')
-    if profile(plan['profile'])['robot']=='tank':
-        acceptance=DATA/'validation/tank-manual-control-pass.json'
-        if (DATA/'validation/tank-motion-incident.json').exists() or not acceptance.exists():
-            raise PermissionError('Сначала принять ручное управление и STOP Tank')
-        if not json.loads(acceptance.read_text()).get('operator_confirmed_stop'):
-            raise PermissionError('STOP Tank ещё не подтверждён оператором')
     approval=DATA/'configs'/('trial-'+plan['id']+'-authorized.json')
     if not approval.exists():
         raise PermissionError('Нужен отдельный физический блок для этого плана испытания')

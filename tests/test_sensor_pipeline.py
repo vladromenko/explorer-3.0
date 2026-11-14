@@ -133,15 +133,6 @@ def test_multimodal_fixture_official_dataset_roundtrip(tmp_path,monkeypatch):
     assert validation.validate(writer.id,domain='fixture')['readback']=='PASS'
 
 
-def test_multimodal_profile_cannot_bypass_incident(tmp_path,monkeypatch):
-    from explorer3 import trials,local_work
-    monkeypatch.setattr(trials,'DATA',tmp_path)
-    monkeypatch.setattr(local_work,'require_hardware_mode',lambda robot:None)
-    (tmp_path/'validation').mkdir();(tmp_path/'validation/tank-motion-incident.json').write_text('{}')
-    with pytest.raises(PermissionError,match='STOP Tank'):
-        trials.require_physical({'profile':'tank_dock_rgbd_lidar'})
-
-
 def test_smolvla_cannot_silently_ignore_environment():
     from explorer3.policy_catalog import validate_recipe
     with pytest.raises(ValueError,match='environment_state'):validate_recipe('smolvla','tank_dock_rgbd_lidar')

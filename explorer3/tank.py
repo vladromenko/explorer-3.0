@@ -53,7 +53,13 @@ class TankSource:
             'motor_acknowledgement':False,'odometry_integral_excluded':True}
         request={'mode':self.mode,'profile':'tank_dock_rgbd_lidar' if self.environment else 'tank_dock'}
         if self.environment:request['environment']=True
-        r=self.http.post('/session',json=request,timeout=20);require_response(r,'запуск');self.lease=r.json()['lease']
+        r=self.http.post('/session',json=request,timeout=20)
+        if r.status_code==409 and 'Factory control' in str(r.json().get('detail','')):
+            # The factory app still owns the board (e.g. after a reboot): hand it over automatically.
+            from .tank_handoff import invoke
+            invoke('enter')
+            r=self.http.post('/session',json=request,timeout=20)
+        require_response(r,'запуск');self.lease=r.json()['lease']
         if self.environment:
             from .sensors import SensorFeed,stream_age,SCHEMA
             self.sensors=SensorFeed(interval=.2,isolated=True);self.sensors.start()
@@ -72,16 +78,28 @@ class TankSource:
 
     def observe(self):
         if self.stop_requested():raise InterruptedError('STOP before observation')
-        try:r=self.http.get('/frame.jpg')
-        except httpx.TimeoutException as exc:
-            raise RuntimeError('Tank: камера не ответила по Wi-Fi за 0,25 с; управление остановлено') from exc
-        r.raise_for_status();received=time.monotonic_ns()
-        info=json.loads(r.headers['X-Explorer-Camera'])
-        status=json.loads(r.headers['X-Explorer-Observation'])
-        bgr=cv2.imdecode(np.frombuffer(r.content,dtype=np.uint8),cv2.IMREAD_COLOR)
-        if bgr is None:raise RuntimeError('Invalid camera JPEG')
-        rgb=cv2.cvtColor(bgr,cv2.COLOR_BGR2RGB)
-        if (rgb.shape[1],rgb.shape[0])!=(640,400):raise RuntimeError('Unexpected Tank camera geometry')
+        # The camera is needed for recordings, not for driving: a missing frame is reported
+        # (camera_missing) and the previous frame is reused instead of stopping the robot.
+        rgb=None;info=None;status=None
+        try:
+            r=self.http.get('/frame.jpg',timeout=.4)
+            if r.status_code==200:
+                info=json.loads(r.headers['X-Explorer-Camera']);status=json.loads(r.headers['X-Explorer-Observation'])
+                bgr=cv2.imdecode(np.frombuffer(r.content,dtype=np.uint8),cv2.IMREAD_COLOR)
+                if bgr is not None:
+                    rgb=cv2.cvtColor(bgr,cv2.COLOR_BGR2RGB)
+                    if (rgb.shape[1],rgb.shape[0])!=(640,400):rgb=cv2.resize(rgb,(640,400))
+        except httpx.TimeoutException:pass
+        received=time.monotonic_ns()
+        if status is None:
+            h=self.http.get('/health',timeout=.5);h.raise_for_status();status=h.json()
+        camera_missing=rgb is None
+        if camera_missing:
+            rgb=getattr(self,'last_rgb',None)
+            if rgb is None:rgb=np.zeros((400,640,3),np.uint8)
+            info={'sequence':self.previous_camera if self.previous_camera is not None else -1,'source_timestamp_ns':0,
+                  'source_clock':'missing','received_ns':status['monotonic_ns']}
+        self.last_rgb=rgb
         sensor_packet=self.sensors.latest if self.sensors else None
         observation_time=time.monotonic_ns()
         reused=info['sequence']==self.previous_camera;self.previous_camera=info['sequence']
@@ -91,7 +109,7 @@ class TankSource:
                'timestamp_kind':'available_at_homebrain','age_at_agent_response_ns':status['monotonic_ns']-info['received_ns']}
         for key in ('limits','motor_link','initial_battery_voltage','minimum_battery_voltage','minimum_battery_under_load','limit_events'):
             if key in status:self.provenance[key]=status[key]
-        result={'observation_timestamp_ns':observation_time,
+        result={'observation_timestamp_ns':observation_time,'camera_missing':camera_missing,
                 'observation.state':status['action'],'images':{'front':image},
                 'state_kind':'previous_transmitted_command_estimate','state_valid':False,
                 'measured_response_kind':'previous_command_estimate_no_wheel_feedback',
@@ -114,14 +132,19 @@ class TankSource:
         if self.stop_requested():raise InterruptedError('STOP before command')
         if len(requested)!=2 or not all(math.isfinite(v) for v in requested):
             raise ValueError('Tank requires two finite velocity channels')
-        if observation is not None and time.monotonic_ns()-observation['observation_timestamp_ns']>750_000_000:
-            raise RuntimeError('Tank: observation too old to execute this action')
+        if observation is not None and time.monotonic_ns()-observation['observation_timestamp_ns']>2_000_000_000:
+            requested=[0.,0.]   # stale observation: send zero instead of ending the session
         index=self.sequence;self.sequence+=1
         a=time.monotonic_ns()
         self.provenance['last_command_attempt']={'sequence':index,'requested':list(requested),'send_start_ns':a,'accepted':'unknown'}
-        try:response=self.http.post('/command',json={'lease':self.lease,'sequence':index,'v':requested[0],'w':requested[1]},timeout=.5)
-        except httpx.TimeoutException as exc:
-            raise RuntimeError('Tank: нет ответа на команду по Wi-Fi; управление остановлено') from exc
+        response=None
+        for attempt in range(2):   # one retry on a Wi-Fi hiccup; the robot zeroes itself after 0.5 s anyway
+            try:
+                response=self.http.post('/command',json={'lease':self.lease,'sequence':index,'v':requested[0],'w':requested[1]},timeout=.5)
+                break
+            except httpx.TimeoutException as exc:
+                if attempt:raise RuntimeError('Tank: нет ответа по Wi-Fi дважды подряд') from exc
+                index=self.sequence;self.sequence+=1
         b=time.monotonic_ns();require_response(response,'команда');sent=response.json()
         self.provenance['last_command_attempt']['accepted']=True
         return {'action':sent['action'],'requested_action':list(requested),

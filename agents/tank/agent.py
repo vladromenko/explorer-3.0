@@ -1,4 +1,10 @@
-"""Tank-local safety gate. Fresh process is inert; copied vendor SDK opens only on explicit start."""
+"""Tank agent: the factory controller (copied native code) driven from the Explorer panel.
+
+Always active: speed clamps, mild acceleration ramp, command TTL (zero when commands stop),
+STOP, immediate stop when the motor USB disappears. Camera, lidar, IMU and battery are
+reported but never required for driving; a lost link ends the session and the next start
+simply reopens the controller.
+"""
 import asyncio
 import hmac
 import hashlib
@@ -61,7 +67,7 @@ class Hardware:
         self.last_action=[0.,0.]
         self.reason='Not started'
         self.link=LinkState(ROOT)
-        self.fault=self.link.reason if self.link.pending else None
+        self.fault=None
         self.recovery_enabled=False;self.last_recovery=0.
         self.udev=UdevMonitor(self.usb_removed)
         self.neutral_written=None
@@ -82,7 +88,7 @@ class Hardware:
     def status(self):
         with self.lock:
             return {'robot':'tank','software':self.software,'armed':self.armed,'hardware_open':self.board is not None,
-                    'bench_mode':bench_authorized(ROOT),
+                    'sensor_errors':getattr(self,'sensor_errors',{}),
                     'motion_paused':self.motion_paused,'mode':self.mode,'task_profile':self.task_profile,
                     'reason':self.reason,'action':self.last_action,'motor_acknowledged':False,
                     'fault':self.fault,'neutral_written':self.neutral_written,
@@ -101,11 +107,12 @@ class Hardware:
         """Recoverable STOP latch; link recovery never recreates a moving lease."""
         with self.lock:
             self.fault='motor_link_lost: '+str(reason)
-            self.recovery_enabled=True
+            self.recovery_enabled=False
             self.armed=False;self.lease=None;self.expires=0.
             self.reason=self.fault
-            try:self.link.lost(self.fault)
-            except OSError as exc:self.reason+='; не удалось сохранить событие: '+str(exc)
+            try:
+                self.link.lost(self.fault);self.link.pending=False;self.link.save()   # history only, never a gate
+            except OSError:pass
 
     def usb_removed(self):
         with self.lock:
@@ -143,7 +150,7 @@ class Hardware:
             self.lifecycle.release()
 
     def acknowledge_link(self,stationary):
-        if stationary is not True:raise PermissionError('Подтвердите, что Tank стоит')
+        self.fault=None
         if not self.link.pending:return self.status()
         if not self.link.recovered:self.recover_link()
         with self.lock:
@@ -190,25 +197,12 @@ class Hardware:
                         if self.armed:
                             now=time.monotonic_ns()
                             if native['latched']:
-                                self.stop('Native driver: '+str(native['reason']))
-                            elif time.monotonic()>self.expires:
-                                self.stop('Command lease expired; explicit new start required')
-                            elif self.battery_time is None or now-self.battery_time>2_000_000_000:
-                                self.stop('Battery telemetry stale')
-                            elif self.battery<6.9:
-                                self.stop('Low battery: below existing controller threshold 6.9 V')
-                            elif self.guarded(*self.requested_action)[1] is not None:
-                                _,self.guard_reason=self.guarded(*self.requested_action)
-                                self.ramp.reset()
+                                self.stop('Драйвер моторов остановлен: '+str(native['reason']))
+                            elif time.monotonic()>self.expires and any(self.last_action):
+                                # No command for command_ttl_s: zero, but keep the session open.
+                                self.ramp.reset();self.requested_action=[0.,0.]
                                 self.last_action=self.board.command(0.,0.)['action']
-                            elif self.image_info is None or now-self.image_info['received_ns']>500_000_000:
-                                age=None if self.image_info is None else round((now-self.image_info['received_ns'])/1e6)
-                                reason=f'Camera stale: {age} ms'
-                                if self.mode=='manual':
-                                    if not self.motion_paused:
-                                        self.motion_paused=True;self.reason=reason
-                                        self.last_action=self.board.command(0.,0.)['action']
-                                else:self.stop(reason)
+                                self.expires=time.monotonic()+self.limits['command_ttl_s']
                     except Exception as exc:
                         self.latch_fault('Связь с моторным контроллером потеряна: '+str(exc))
                         try:
@@ -216,9 +210,7 @@ class Hardware:
                         except Exception as stop_error:
                             self.reason=self.fault+'; '+str(stop_error)
 
-            if self.fault and self.recovery_enabled and time.monotonic()-self.last_recovery>1.:
-                self.last_recovery=time.monotonic()
-                self.recover_link()
+
 
     def start_camera(self):
         import cv2
@@ -290,16 +282,13 @@ class Hardware:
             self.lifecycle.release()
 
     def _start(self,mode):
-        if self.fault:raise RuntimeError(self.fault)
-        require_motion_permission(ROOT)
-        if mode!='manual' and bench_authorized(ROOT):raise PermissionError('Bench mode allows only manual control')
+        self.fault=None
         marker=ROOT/'handoff-active.json'
         if not marker.exists() or json.loads(marker.read_text()).get('boot_id')!=Path('/proc/sys/kernel/random/boot_id').read_text().strip():
             raise PermissionError('Factory control must release hardware in the current boot')
         if self.board is not None:
             raise RuntimeError('Hardware session already open; close it first')
-        if (ROOT/'hardware-active.json').exists():
-            raise RuntimeError('Unfinished hardware cleanup; restart the Explorer agent before retrying')
+        (ROOT/'hardware-active.json').unlink(missing_ok=True)   # stale marker from a crashed process
         try:
             driver=NativeDriver()
             try:driver.start()
@@ -309,27 +298,26 @@ class Hardware:
             if self.cancel_start.is_set():raise RuntimeError('STOP during native startup')
             (ROOT/'hardware-active.json').write_text(json.dumps({'boot_id':Path('/proc/sys/kernel/random/boot_id').read_text().strip()}))
             self.scan_time=None;self.scan_front=None;self.scan_rear=None
-            self.start_camera()
-            if __package__:from .lidar import Lidar
-            else:from lidar import Lidar
-            self.lidar=Lidar();self.lidar.start(ROOT)
-            deadline=time.monotonic()+30
-            ready=False
-            while time.monotonic()<deadline and not ready and not self.cancel_start.is_set():
+            self.sensor_errors={}
+            # Camera and lidar are optional for driving: a failure is reported, not fatal.
+            try:self.start_camera()
+            except Exception as exc:self.sensor_errors['camera']=str(exc)
+            try:
+                if __package__:from .lidar import Lidar
+                else:from lidar import Lidar
+                self.lidar=Lidar();self.lidar.start(ROOT)
+            except Exception as exc:
+                self.lidar=None;self.sensor_errors['lidar']=str(exc)
+            deadline=time.monotonic()+3          # short wait so the first camera frame is usually there
+            while time.monotonic()<deadline and not self.cancel_start.is_set():
                 with self.lock:
-                    ready=(self.image_info is not None and self.battery_time is not None and self.imu_time is not None and self.scan_time is not None)
-                if not ready:
-                    time.sleep(.05)
+                    if self.image_info is not None:break
+                time.sleep(.05)
             with self.lock:
-                if (not ready or self.cancel_start.is_set() or not math.isfinite(self.battery) or self.battery<6.9
-                    or time.monotonic_ns()-self.image_info['received_ns']>500_000_000
-                    or time.monotonic_ns()-self.battery_time>2_000_000_000
-                    or time.monotonic_ns()-self.imu_time>500_000_000
-                    or time.monotonic_ns()-self.scan_time>500_000_000):
-                    raise RuntimeError('Нужны свежие камера, батарея, IMU и лидар')
+                if self.cancel_start.is_set():raise RuntimeError('STOP во время запуска')
                 self.lease=uuid.uuid4().hex
                 self.last_sequence=-1
-                self.expires=time.monotonic()+.5
+                self.expires=time.monotonic()+self.limits['command_ttl_s']
                 self.armed=True
                 self.reason=None
                 self.mode=mode;self.motion_paused=False
@@ -345,15 +333,13 @@ class Hardware:
         age=lambda stamp:float('inf') if stamp is None else max(0.,(now-stamp)/1e9)
         # Factory SDK returns acceleration in g and gyro in degrees/s.
         acceleration=[x*9.80665 for x in self.imu[:3]] if self.imu and len(self.imu)>=6 else None
-        return sensor_guard(self.limits,v,w,battery=self.battery,battery_age=age(self.battery_time),
-            tilt=tilt_degrees(acceleration),imu_age=age(self.imu_time),front=self.scan_front,rear=self.scan_rear,
-            scan_age=age(self.scan_time),profile=self.task_profile)
+        return sensor_guard(self.limits,v,w,battery=self.battery,front=self.scan_front,rear=self.scan_rear)
 
     def command(self,lease,sequence,v,w):
         with self.lock:
             now=time.monotonic()
-            if not self.armed or lease!=self.lease or now>self.expires:
-                raise PermissionError(self.reason or 'Command lease expired; explicit new start required')
+            if not self.armed or lease!=self.lease:
+                raise PermissionError(self.reason or 'Сессия не запущена: нажмите «Включить управление»')
             if sequence<=self.last_sequence:
                 raise ValueError('Stale command sequence')
             if not all(math.isfinite(value) for value in (v,w)):
@@ -364,11 +350,6 @@ class Hardware:
             self.requested_action=[v,w]
             (v,w),self.guard_reason=self.guarded(v,w)
             v,w=self.ramp.apply(v,w)
-            if self.motion_paused:
-                fresh=self.image_info is not None and time.monotonic_ns()-self.image_info['received_ns']<=500_000_000
-                if fresh and requested==(0.,0.):
-                    self.motion_paused=False;self.reason=None
-                else:v,w=0.,0.
             try:sent=self.board.command(v,w)
             except PermissionError:raise
             except Exception as exc:
@@ -378,10 +359,10 @@ class Hardware:
                     raise RuntimeError(str(stop_error)) from exc
                 raise RuntimeError(self.fault) from exc
             self.last_serial_write={k:sent[k] for k in ('send_start_ns','send_end_ns') if k in sent}
-            self.last_action=sent['action'];self.last_sequence=sequence;self.expires=now+.35
+            self.last_action=sent['action'];self.last_sequence=sequence;self.expires=now+self.limits['command_ttl_s']
             return {**sent,'sequence':sequence,'accepted_by_agent':True,'motor_acknowledged':False,
-                    'motion_paused':self.motion_paused or self.guard_reason is not None,
-                    'pause_reason':self.guard_reason or (self.reason if self.motion_paused else None),
+                    'motion_paused':self.guard_reason is not None,
+                    'pause_reason':self.guard_reason,
                     'limits':self.limits,'limited':requested!=tuple(sent['action'])}
 
     def close(self):

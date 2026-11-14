@@ -86,8 +86,7 @@ def test_tank_trial_still_requires_plan_specific_permission(tmp_path,monkeypatch
     monkeypatch.setattr(local_work,'require_hardware_mode',lambda robot:None)
     (tmp_path/'validation').mkdir();(tmp_path/'configs').mkdir()
     plan={'id':'1'*32,'profile':'tank_dock'}
-    with pytest.raises(PermissionError,match='ручное управление'):trials.require_physical(plan)
-    (tmp_path/'validation/tank-manual-control-pass.json').write_text('{"operator_confirmed_stop":true}')
+    # No separate Tank acceptance file any more: only the plan's own run permission.
     with pytest.raises(PermissionError,match='отдельный физический блок'):trials.require_physical(plan)
 
 
