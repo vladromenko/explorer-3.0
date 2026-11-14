@@ -257,9 +257,9 @@ def index():
                 ownership_title=ui.label('Подключение SO-101').style('font-size:19px')
                 with ui.row() as ownership_controls:
                     ui.button('Отключить управление',on_click=lambda:control.stop('Управление отключено'))
-                    async def transfer(restore=False):
+                    async def transfer(restore=False,confirmed=False):
                         try:
-                            if not restore and not (control.robot=='tank' and bench_authorized(DATA/'configs')):
+                            if not restore and control.robot!='so101' and not (control.robot=='tank' and bench_authorized(DATA/'configs')):
                                 local_work.require_hardware_mode(control.robot)
                             with control.lock:
                                 if control.maintenance or (session.thread and session.thread.is_alive()):
@@ -270,17 +270,32 @@ def index():
                                     operation=tank_handoff.restore if restore else tank_handoff.enter
                                     await asyncio.to_thread(operation,control)
                                 elif control.robot=='so101':
-                                    if restore:await asyncio.to_thread(handoff.restore,control)
-                                    else:await asyncio.to_thread(handoff.enter,control,list(DEVICE_PATHS.values()))
+                                    if restore:
+                                        def close_so_readers():
+                                            if rosmaster_control.operator.mirror:
+                                                raise RuntimeError('Сначала STOP зеркала ROSMASTER')
+                                            rosmaster_control.operator.stop_leader()
+                                            leader8090.leader8090.stop()
+                                        await asyncio.to_thread(handoff.restore,control,close_devices=close_so_readers)
+                                    else:await asyncio.to_thread(handoff.enter,control,list(DEVICE_PATHS.values()),confirmed=confirmed)
                                 else:raise RuntimeError('Драйвер ещё не подключён')
                             finally:control.maintenance=False
                             ui.notify('Прежние службы восстановлены' if restore else 'Ресурсы освобождены; движение не началось')
                         except Exception as exc:notify_error(exc)
-                    async def take_control():await transfer()
+                    async def take_control():
+                        if control.robot!='so101':
+                            await transfer()
+                            return
+                        with ui.dialog() as confirmation, ui.card():
+                            ui.label('Старая система :8020 будет остановлена до возврата')
+                            ui.label('Движение не запускается. Для возврата используйте «Вернуть в :8020».')
+                            ui.button('Отмена',on_click=lambda:confirmation.submit(False))
+                            ui.button('Подтверждаю — взять SO-101',on_click=lambda:confirmation.submit(True))
+                        if await confirmation:await transfer(confirmed=True)
                     async def old_control():await transfer(restore=True)
-                    take_button=ui.button('Подключить к Explorer',on_click=take_control)
+                    take_button=ui.button('Взять SO-101 в Explorer',on_click=take_control)
                     teleop_button=ui.button('Проверить телеперацию',on_click=teleop_check)
-                    old_button=ui.button('Вернуть управление Wristlab',on_click=old_control)
+                    old_button=ui.button('Вернуть в :8020',on_click=old_control)
                 ownership_help=ui.label('Телеперация без записи. Для записи перейдите во вкладку «Запись».').classes('muted')
                 with ui.expansion('Приложение телефона и диагностика').style('width:100%') as tank_settings:
                     tank_restore=ui.button('Вернуть управление приложению Hiwonder',on_click=old_control)
@@ -468,7 +483,7 @@ def index():
         supported=control.robot in {'so101','tank'}
         idle=not control.maintenance and not (session.thread and session.thread.is_alive())
         start_button.set_enabled(authorized and supported and idle and not tank_bench)
-        take_button.set_enabled(authorized and supported and idle)
+        take_button.set_enabled(supported and idle and (authorized or control.robot=='so101'))
         teleop_button.set_enabled(authorized and supported and idle)
         tank_start.set_enabled(authorized and idle)
         tank_start.set_text('Подключается…' if session.phase=='preparing' and control.robot=='tank' else 'Включить управление')

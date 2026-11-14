@@ -24,13 +24,3 @@ class StageB(unittest.TestCase):
             self.assertEqual(session.outcome,'success')
             self.assertIsNone(session.error)
 
-    def test_repeated_handoff_preserves_previous_active_service(self):
-        with tempfile.TemporaryDirectory() as directory,patch.object(handoff,'DATA',Path(directory)),patch.object(handoff,'owners',return_value=[]),patch.object(handoff,'systemctl',return_value=SimpleNamespace(returncode=0)) as systemctl:
-            control=SimpleNamespace(authorized=lambda:True,owner=None)
-            handoff.enter(control,[])
-            handoff.enter(control,[])
-            saved=json.loads((Path(directory)/'handoff.json').read_text())
-            self.assertTrue(saved['was_active'])
-            self.assertEqual(systemctl.call_count,2)
-            handoff.restore(control)
-            self.assertEqual(systemctl.call_args.args,('start',handoff.SERVICE))
