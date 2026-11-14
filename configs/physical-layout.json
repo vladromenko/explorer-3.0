@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "source": "operator clarification 2026-11-14: SO-101 on a table, ROSMASTER and Tank on the floor",
+  "world_calibration_status": "not_measured",
+  "so101_support": {
+    "kind": "table",
+    "measured_height_m": null,
+    "measurement_source": null,
+    "nominal_simulation_height_m": 0.75,
+    "nominal_table_center_xy_m": [0.15, -1.1],
+    "nominal_table_half_size_xy_m": [0.5, 0.5],
+    "limitation": "Simulation support dimensions are assumptions until measured; not a real world TF"
+  },
+  "rosmaster_support": {"kind": "floor", "height_m": 0.0},
+  "tank_support": {"kind": "floor", "height_m": 0.0},
+  "cross_platform_object_handover": "not_admitted: reachability and physical layout not measured"
+}

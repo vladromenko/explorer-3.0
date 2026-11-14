@@ -61,7 +61,8 @@ def install(stop_real,css):
         with ui.element('div').classes('hero'):
             with ui.column():
                 ui.label('HOMEBRAIN / ОБЩИЙ СТЕНД').classes('kicker');ui.html('<h1>Explorer 3.0</h1>')
-                ui.label('Три робота · одна физическая сцена · один оператор').classes('muted')
+                ui.label('SO-101 на столе · ROSMASTER и Tank на полу · один оператор').classes('muted')
+                ui.label('Высота стола пока задана только для симуляции и не считается измеренной.').classes('muted')
             ui.button('STOP',icon='stop_circle',color='negative',on_click=pause).props('size=lg')
         with ui.row().classes('w-full justify-between items-center'):
             ui.link('← Отдельные задачи','/sim')

@@ -27,6 +27,7 @@ def cancel_job(jobs,ident,reason):
 
 def install(css,jobs):
     store.initialize();store.recover_interrupted()
+    install_archive_review(css)
     @ui.page('/team')
     async def page():
         ui.add_css(css+STYLE+'''.team-grid{display:grid;grid-template-columns:1.5fr 1fr;gap:20px;width:100%}
@@ -69,7 +70,9 @@ def install(css,jobs):
             ui.button('STOP · задача',icon='stop_circle',color='negative',on_click=lambda:stop())
         with ui.row():
             ui.link('Explorer','/');ui.link('Общий стенд','/sim/fleet');ui.link('Реальные датчики','/fleet/live')
+            ui.link('Наблюдения ROSMASTER','/team/rosmaster')
         ui.label('Симуляция · сценарные навыки · веса не изменяются').classes('team-tag')
+        ui.label('SO-101 на столе; ROSMASTER и Tank на полу. Высота стола пока не измерена; общая калибровка не подтверждена.').classes('muted')
         with ui.tabs() as tabs:
             team=ui.tab('Команда');agents=ui.tab('Агенты');memory_tab=ui.tab('Общая память');results_tab=ui.tab('Помощь и результаты')
         with ui.tab_panels(tabs,value=team).classes('w-full'):
@@ -169,3 +172,51 @@ def install(css,jobs):
             finally:busy=False
         ui.timer(1,refresh)
         await refresh()
+
+
+def install_archive_review(css):
+    @ui.page('/team/rosmaster')
+    async def archive_page():
+        from . import shadow
+        ui.add_css(css+STYLE);ui.dark_mode().enable()
+        ui.colors(primary='#2b9c8f',negative='#d45050')
+        ui.link('Команда','/team')
+        with ui.column().classes('hero'):
+            ui.label('ROSMASTER / ПОДГОТОВКА').classes('kicker')
+            ui.html('<h1>Сохранённые наблюдения</h1>')
+            ui.label('Разбор записи на Homebrain. Подключение к роботу и модель не используются.').classes('muted')
+        with catalog.connect() as db:
+            rows=db.execute("""SELECT body FROM cognitive_evidence
+                WHERE json_extract(body,'$.robot')='rosmaster'
+                AND json_extract(body,'$.domain')='real'
+                AND json_extract(body,'$.source')='recorded_sensor_snapshot'
+                ORDER BY expires DESC LIMIT 100""").fetchall()
+        items=[json.loads(row['body']) for row in rows]
+        if not items:
+            ui.label('В памяти команды ещё нет импортированных записей ROSMASTER.').classes('sim-status')
+            ui.label('Архив датчиков остаётся в прежнем разделе; наличие записи само по себе не подтверждает готовность робота.').classes('muted')
+            ui.link('Архив и датчики ROSMASTER','/rosmaster/sensors')
+        else:
+            selection=ui.select({item['id']:item['id'][:8]+' · '+item['sample_id'] for item in items},
+                value=items[0]['id'],label='Исходное наблюдение').classes('w-full')
+            status=ui.label('Выберите запись для разбора.').classes('sim-status')
+            panel=ui.column().classes('w-full')
+            async def inspect():
+                try:
+                    result=await asyncio.to_thread(shadow.review,selection.value)
+                    panel.clear()
+                    labels={'missing':'Не записан','unknown':'Давность неизвестна',
+                        'reported_recent_at_capture':'При записи сообщался свежим',
+                        'reported_stale_at_capture':'Уже при записи был устаревшим'}
+                    with panel:
+                        for stream in result['streams']:
+                            with ui.card().classes('workspace w-full'):
+                                ui.label(stream['label']);ui.label(labels[stream['capture_status']]).classes('muted')
+                        ui.label('Сейчас состояние робота неизвестно. Результат задачи не оценивался.').classes('sim-status')
+                        ui.label('Исходные часы и контрольные суммы сохранены. Углы сервоприводов не заменяют калибровку, а локальные датчики — общую карту.').classes('muted')
+                        ui.button('Скачать разбор',icon='download',on_click=lambda:ui.download(
+                            store.encoded(result).encode(),'rosmaster-observation-review.json'))
+                    status.set_text('Архив разобран · команд роботу не выдавалось')
+                except Exception as exc:
+                    panel.clear();status.set_text('Не удалось проверить исходную запись: '+str(exc))
+            ui.button('Разобрать запись',icon='fact_check',on_click=inspect)

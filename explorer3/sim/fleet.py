@@ -14,9 +14,13 @@ from .factory import make,EXPERTS
 from .mobile import model_xml,MobileDock
 from .models import so101_model,rosmaster_arm_model
 from .scene import laboratory
+from .layout import placement
 
 PROFILES={'so101':'so101_pick_place_sim','rosmaster':'rosmaster_pick_place_sim','tank':'tank_dock_sim'}
-ZONES={'so101':np.array([0.,-1.1,0.]),'rosmaster':np.array([0.,0.,0.]),'tank':np.array([0.,1.1,0.])}
+# Freeze one placement per worker: table, attached models and local task frames
+# must never observe different revisions of a file edited during a session.
+PLACEMENT=placement()
+ZONES={'so101':np.array([0.,-1.1,PLACEMENT['effective_so101_height_m']]),'rosmaster':np.array([0.,0.,0.]),'tank':np.array([0.,1.1,0.])}
 OPTIONS={'timestep':'.0005','integrator':'implicitfast','iterations':'100',
          'ls_iterations':'20','cone':'elliptic','impratio':'10'}
 
@@ -31,7 +35,7 @@ def build(scene='workshop'):
     ET.SubElement(world,'camera',name='overview',pos='2.1 -2.6 2.4',xyaxes='.8 .6 0 -.35 .47 .8')
     laboratory(root)
     from .room import furnish,dock_frame
-    room=furnish(root,scene)
+    room=furnish(root,scene,layout=PLACEMENT)
     parent=mujoco.MjSpec.from_string(ET.tostring(root,encoding='unicode'))
     builders={'so101':so101_model,'rosmaster':rosmaster_arm_model,'tank':lambda:(model_xml('tank')[0],None)}
     for name,builder in builders.items():
@@ -54,7 +58,7 @@ def build(scene='workshop'):
         parent.attach(spec,prefix=name+'/',frame=parent.worldbody.add_frame(pos=ZONES[name]))
     model=parent.compile()
     manifest={'profile':'fleet_lab_sim','physics':'one MjModel / one integrated MjData',
-        'solver':OPTIONS,'room':room,'zones':{k:v.tolist() for k,v in ZONES.items()},
+        'solver':OPTIONS,'room':room,'physical_placement':copy.deepcopy(PLACEMENT),'zones':{k:v.tolist() for k,v in ZONES.items()},
         'rosmaster_profile':PROFILES['rosmaster'],'variation':'nominal only',
         'xml_sha256':hashlib.sha256(parent.to_xml().encode()).hexdigest(),
         'limitations':['Tank uses original package CAD on an uncalibrated planar surrogate','no whole-body ROSMASTER control',

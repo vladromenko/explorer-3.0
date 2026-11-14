@@ -164,6 +164,8 @@ class ExperimentManifest(Contract):
     scene_sha256:Digest|None=None
     model_revision:str|None=None
     model_config_sha256:Digest|None=None
+    decision_protocol_version:str='legacy-diagnostic-v1'
+    decision_protocol_sha256:Digest|None=None
 
 
 class ToolCall(Contract):

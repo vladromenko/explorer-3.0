@@ -45,7 +45,7 @@ def event(mission_id,kind,value,db=None):
                    (mission_id,kind,encoded(value),time.time()))
 
 
-def put_evidence(value):
+def validate_evidence_artifact(value):
     item=ObservationEvidence.model_validate(value)
     if digest(item.payload)!=item.content_sha256:raise ValueError('Evidence payload hash mismatch')
     if item.artifact_ref:
@@ -55,6 +55,11 @@ def put_evidence(value):
         with path.open('rb') as stream:
             for block in iter(lambda:stream.read(4*1024*1024),b''):sha.update(block)
         if sha.hexdigest()!=item.artifact_sha256:raise ValueError('Evidence artifact hash mismatch')
+    return item
+
+
+def put_evidence(value):
+    item=validate_evidence_artifact(value)
     body=encoded(item)
     with catalog.connect() as db:
         old=db.execute('SELECT body FROM cognitive_evidence WHERE id=?',(item.id,)).fetchone()

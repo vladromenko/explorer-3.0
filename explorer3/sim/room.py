@@ -57,7 +57,7 @@ def prop_asset(root,name,position):
          group=3,condim=6,friction=[.65,.005,.001])
 
 
-def furnish(root,preset='workshop'):
+def furnish(root,preset='workshop',*,layout=None):
     if preset not in PRESETS:raise ValueError('Unknown shared-room preset')
     lock=json.loads((ASSETS/'manifest.json').read_text())
     for name,record in lock['files'].items():
@@ -75,9 +75,19 @@ def furnish(root,preset='workshop'):
         geom(world,'room_'+name,pos=pos,size=size,material='room_wall')
     for y in [-2.245,2.245]:geom(world,'skirting_'+str(y),pos=[.3,y,.06],size=[2.5,.015,.06],material='room_trim')
     geom(world,'back_skirting',pos=[2.745,0,.06],size=[.015,2.25,.06],material='room_trim')
-    # Calibration mats are bounded patches, no endless checkerboard horizon.
+    from .layout import placement
+    support=copy.deepcopy(layout) if layout is not None else placement()
+    height=support['effective_so101_height_m']
+    table=support['so101_support'];cx,cy=table['nominal_table_center_xy_m'];hx,hy=table['nominal_table_half_size_xy_m']
+    so_table=ET.SubElement(world,'body',name='so101_support_table',pos=vec([cx,cy,0.]))
+    geom(so_table,'so101_table_top',pos=[0,0,height-.025],size=[hx,hy,.025],material='room_wood')
+    for x in [-hx+.06,hx-.06]:
+        for y in [-hy+.06,hy-.06]:
+            geom(so_table,f'so101_table_leg_{x}_{y}',pos=[x,y,(height-.05)/2],
+                 size=[.025,.025,(height-.05)/2],material='room_metal')
+    # Calibration mats follow the actual support class, not a shared floor assumption.
     for name,y in [('so101',-1.1),('rosmaster',0.)]:
-        geom(world,name+'_calibration_mat',pos=[.12,y,.00015],size=[.45,.43,.0001],
+        geom(world,name+'_calibration_mat',pos=[.12,y,(height if name=='so101' else 0.)+.00015],size=[.45,.43,.0001],
              material='explorer_floor',contype=0,conaffinity=0)
     bench=ET.SubElement(world,'body',name='workbench',pos='1.8 .6 0')
     geom(bench,'workbench_top',pos=[0,0,.72],size=[.45,.35,.025],material='room_wood')
@@ -103,11 +113,11 @@ def furnish(root,preset='workshop'):
     for light in world.findall('light'):
         if light.get('diffuse'):light.set('diffuse',vec(np.fromstring(light.get('diffuse'),sep=' ')*cfg['light']))
     lock=json.loads((ASSETS/'manifest.json').read_text())
-    return {'id':preset,'label':cfg['label'],'source_assets':lock,'design':cfg,'prop_mass_kg':MASSES,
+    return {'id':preset,'label':cfg['label'],'physical_placement':support,'source_assets':lock,'design':cfg,'prop_mass_kg':MASSES,
         'friction':[.65,.005,.0001],'prop_friction':[.65,.005,.001],'units':'metres, kilograms, seconds',
         'physical_scope':'shared gravity, contact and free-body dynamics; closed props use convex collision hulls',
         'uncalibrated':['room dimensions','prop mass and friction','surface appearance'],
-        'layout_sha256':hashlib.sha256(json.dumps(cfg,sort_keys=True).encode()).hexdigest()}
+        'layout_sha256':hashlib.sha256(json.dumps({'room':cfg,'placement':support},sort_keys=True).encode()).hexdigest()}
 
 
 def dock_frame(child):

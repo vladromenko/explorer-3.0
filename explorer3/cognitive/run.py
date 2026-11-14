@@ -13,6 +13,7 @@ from explorer3 import catalog
 from explorer3.paths import ROOT,DATA,offline_environment
 from explorer3.resources import ResourceLease
 from . import broker,store,registry
+from .protocol import decision_request,VERSION as DECISION_PROTOCOL
 from .schemas import ObservationEvidence,AssistanceCase,CompatibilityRecord,ExperimentManifest,WorldFact
 
 TASK='fixed_dock';EFFECT='target_observed';RECIPIENT='tank.dock_observed.scripted.v1'
@@ -110,20 +111,25 @@ def execute(config,work):
                 split='diagnostic',memory_updates=True,evaluator_version=registry.file_hash('explorer3/sim/cooperation.py'),
                 scene_sha256=snapshot['model_sha256'],
                 model_revision=json.loads((ROOT/'configs/cognitive-model.json').read_text())['revision'],
-                model_config_sha256=registry.file_hash('configs/cognitive-model.json'))
+                model_config_sha256=registry.file_hash('configs/cognitive-model.json'),
+                decision_protocol_version=DECISION_PROTOCOL,
+                decision_protocol_sha256=registry.file_hash('explorer3/cognitive/protocol.py'))
             (work/'experiment.json').write_text(store.encoded(manifest))
             store.event(m['id'],'experiment_prepared',{'role':'LearningAndExperimentCurator','manifest':manifest.model_dump(),
                 'trainer_started':False,'scientific_hypothesis_tested':False})
-            # Memory changes available helper selection, never the motion/safety
-            # admission of the recipient. Both helpers still require fresh RGB.
+            # Memory supplies evidence, never additional actions. M0-M3 share
+            # helper availability, admission and verifier; M0 uses fixed rules.
             usable=[x for x in memory['accepted'] if x['case']['actual_effect'].get('direct_pose_verified') is True]
-            allowed=['scan_then_dock','wait','human']+(['observe_then_dock'] if usable else [])
-            request={'model_config_sha256':manifest.model_config_sha256,'scenario':'S1 fixed shared simulated dock','observations':
+            request=decision_request(config['comparison'],
                 [{'robot':snapshot[k]['robot'],**snapshot[k]['measurement']} for k in ('recipient','donor')],
-                'allowed_choices':allowed,'memory':[{'id':x['case']['id'],'status':x['case']['status'],
+                [{'id':x['case']['id'],'status':x['case']['status'],
                     'effect':x['case']['effect'],'actual_effect':x['case']['actual_effect'],
-                    'scope_problems':x['scope_problems']} for x in usable],
-                'instruction':'Current target visibility is FALSE. Past memory does not make it visible now. A prior camera pose allows choosing observe_then_dock to obtain NEW evidence; otherwise choose scan_then_dock. Neither plan may dock before NEW helper verification.'}
+                    'scope_problems':x['scope_problems']} for x in memory['accepted']],manifest.model_config_sha256)
+            allowed=request['allowed_choices']
+            (work/'decision-protocol.json').write_text(store.encoded({'version':DECISION_PROTOCOL,
+                'source_sha256':registry.file_hash('explorer3/cognitive/protocol.py'),
+                'allowed_choices':allowed,'instruction':request['instruction'],
+                'diagnostic_only':True,'historical_v1_results_comparable':False}))
             store.event(m['id'],'model_started',{'role':'MissionCoordinator','allowed_choices':allowed})
             if config['comparison']=='M0':
                 proposal={'proposal':{'choice':'scan_then_dock','reason':'Fixed baseline without model or memory'},'backend':'fixed_rules_v1'}
