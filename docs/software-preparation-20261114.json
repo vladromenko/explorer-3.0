@@ -1,0 +1,85 @@
+{
+  "date": "2026-11-14",
+  "implementation_commit": "7305589fd541e21d0350ae14414ad1e698e1fded",
+  "deployed_source_sha256": "1e8f60834802aadf93fcd974b26369d54484b3ee330c962765c14f879a8e2dc9",
+  "deployed_pid": 1911147,
+  "validation_directory": "$EXPLORER3_DATA/validation/dataset-release-20261114",
+  "artifacts": {
+    "final-software-tests.xml": {
+      "sha256": "7b4f8361efa6e2802b09dbe2c4cb2217bdba0cf3e5b1742440927df8f00205a6",
+      "test_counts": {
+        "tests": "94",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      }
+    },
+    "final-changed-contracts.xml": {
+      "sha256": "a8d23075cb0b046c0cd1b6daec2c60bcf66d7667909068e17f10d1c3fb9e81eb",
+      "test_counts": {
+        "tests": "26",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      }
+    },
+    "noise-target-tests.xml": {
+      "sha256": "974d8dc9fba69a00741222752b697d5b56db2f7a1b57fc80ac63a550c500bde5",
+      "test_counts": {
+        "tests": "5",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      }
+    },
+    "deployed-health.json": {
+      "sha256": "691fa902487acdebbf23cd848a68043bec3a1f70b1aaf561d81360bcadde7fa5"
+    },
+    "deployed-browser.json": {
+      "sha256": "2c35836ce52edd856de0716ab7518c95c10cee1628ce3b50542a89ef635044ff"
+    },
+    "browser/cognitive-preparation-result.json": {
+      "sha256": "0cca64460956aa0df32b3ff88fa078d597cdd54e29aa78ec64e7f660a97fe07e"
+    },
+    "browser/real-preparation-result.json": {
+      "sha256": "49d2b3781873a7db76a3736a4842c740cd2592b531791df668649ca42c0faeec"
+    },
+    "browser/result.json": {
+      "sha256": "19625a6d7b7bffd02a92df9bbb61ccaab486bf8f4e9c7d6a82a97eb282447309"
+    },
+    "model-audit.json": {
+      "sha256": "6afbcbb929e62c33832d931a5aa7fc2bc83ea58d3d770263a4cee2395cc49350"
+    },
+    "vision-audit.json": {
+      "sha256": "2174fb121a57275ef8f055f8982aaf3107d79d3488a20ffad6f56ccbb2e32422"
+    },
+    "vlm-processor.json": {
+      "sha256": "1c1360d6bbb738a98ef58c35c1c4d351f8ed6af85afc20da5a6e84c7e1ca23f6"
+    },
+    "tracker-fixture.json": {
+      "sha256": "ee79358d023b1e666e1587d2155dc0762c3789da758b58963b1a645825c66d15"
+    },
+    "real-readback.json": {
+      "sha256": "cfa1a91165d49437b321e3ceb62bde0880231cdf2302de0ce470634d7717c16f"
+    },
+    "rosmaster-health.json": {
+      "sha256": "e27bb7022413397f0128a74f3fc385b585d285931755ef85d8d97c1d58965ee4"
+    },
+    "tank-health.json": {
+      "sha256": "75977c16f97a1a83dfb37806315af62d1c7361f2d0f1d26e77210397d3a8d2bd"
+    }
+  },
+  "new_training_runs": 0,
+  "new_model_inference_calls": 0,
+  "new_simulation_runs": 0,
+  "new_physical_commands": 0,
+  "physical_acceptance_complete": false,
+  "scientific_effect_established": false,
+  "remaining_dependencies": [
+    "Tank independent stop on USB failure",
+    "per-platform refreshed physical recording acceptance",
+    "measured shared calibration",
+    "explicitly permitted verification of new model/simulation paths"
+  ],
+  "old_systems_modified": false
+}
