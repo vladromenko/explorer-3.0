@@ -1,0 +1,132 @@
+{
+ "explore/solo": {
+  "runs": 30,
+  "finished": 30,
+  "finished_ci95": [
+   0.886,
+   1.0
+  ],
+  "median_s": 15.2,
+  "median_s_ci95": [
+   10.2,
+   18.2
+  ],
+  "time": "t80 (80% of the room)",
+  "collisions": 0
+ },
+ "explore/team": {
+  "runs": 30,
+  "finished": 29,
+  "finished_ci95": [
+   0.833,
+   0.994
+  ],
+  "median_s": 12.2,
+  "median_s_ci95": [
+   10.2,
+   16.2
+  ],
+  "time": "t80 (80% of the room)",
+  "collisions": 0
+ },
+ "explore/team3": {
+  "runs": 30,
+  "finished": 28,
+  "finished_ci95": [
+   0.787,
+   0.982
+  ],
+  "median_s": 10.2,
+  "median_s_ci95": [
+   10.2,
+   14.2
+  ],
+  "time": "t80 (80% of the room)",
+  "collisions": 0
+ },
+ "speedup_explore/team": {
+  "pairs": 30,
+  "median_speedup": 1.0,
+  "median_speedup_ci95": [
+   1.0,
+   1.13
+  ],
+  "team_faster_in": 11,
+  "wilcoxon_p": 0.013
+ },
+ "speedup_explore/team3": {
+  "pairs": 30,
+  "median_speedup": 1.14,
+  "median_speedup_ci95": [
+   1.0,
+   1.2
+  ],
+  "team_faster_in": 17,
+  "wilcoxon_p": 0.00057
+ },
+ "find/solo": {
+  "runs": 30,
+  "finished": 24,
+  "finished_ci95": [
+   0.627,
+   0.905
+  ],
+  "median_s": 29.12,
+  "median_s_ci95": [
+   23.0,
+   37.25
+  ],
+  "time": "object found",
+  "collisions": 0
+ },
+ "find/team": {
+  "runs": 30,
+  "finished": 27,
+  "finished_ci95": [
+   0.744,
+   0.965
+  ],
+  "median_s": 13.5,
+  "median_s_ci95": [
+   9.0,
+   24.0
+  ],
+  "time": "object found",
+  "collisions": 0
+ },
+ "find/team3": {
+  "runs": 30,
+  "finished": 27,
+  "finished_ci95": [
+   0.744,
+   0.965
+  ],
+  "median_s": 10.0,
+  "median_s_ci95": [
+   5.25,
+   16.5
+  ],
+  "time": "object found",
+  "collisions": 0
+ },
+ "speedup_find/team": {
+  "pairs": 30,
+  "median_speedup": 1.7,
+  "median_speedup_ci95": [
+   1.01,
+   2.69
+  ],
+  "team_faster_in": 21,
+  "wilcoxon_p": 0.00011
+ },
+ "speedup_find/team3": {
+  "pairs": 30,
+  "median_speedup": 2.45,
+  "median_speedup_ci95": [
+   1.48,
+   4.52
+  ],
+  "team_faster_in": 24,
+  "wilcoxon_p": 1.4e-05
+ }
+}

@@ -1,0 +1,67 @@
+{
+ "find/solo": {
+  "runs": 30,
+  "finished": 29,
+  "finished_ci95": [
+   0.833,
+   0.994
+  ],
+  "median_s": 47.5,
+  "median_s_ci95": [
+   28.75,
+   56.25
+  ],
+  "time": "object found",
+  "collisions": 0
+ },
+ "find/team": {
+  "runs": 30,
+  "finished": 28,
+  "finished_ci95": [
+   0.787,
+   0.982
+  ],
+  "median_s": 19.0,
+  "median_s_ci95": [
+   11.25,
+   39.12
+  ],
+  "time": "object found",
+  "collisions": 0
+ },
+ "find/team3": {
+  "runs": 30,
+  "finished": 28,
+  "finished_ci95": [
+   0.787,
+   0.982
+  ],
+  "median_s": 14.25,
+  "median_s_ci95": [
+   5.25,
+   23.5
+  ],
+  "time": "object found",
+  "collisions": 0
+ },
+ "speedup_find/team": {
+  "pairs": 30,
+  "median_speedup": 1.63,
+  "median_speedup_ci95": [
+   1.16,
+   2.5
+  ],
+  "team_faster_in": 23,
+  "wilcoxon_p": 8.7e-05
+ },
+ "speedup_find/team3": {
+  "pairs": 30,
+  "median_speedup": 2.48,
+  "median_speedup_ci95": [
+   1.93,
+   3.71
+  ],
+  "team_faster_in": 26,
+  "wilcoxon_p": 4.8e-06
+ }
+}
