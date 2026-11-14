@@ -313,7 +313,7 @@ class Hardware:
             if __package__:from .lidar import Lidar
             else:from lidar import Lidar
             self.lidar=Lidar();self.lidar.start(ROOT)
-            deadline=time.monotonic()+10
+            deadline=time.monotonic()+30
             ready=False
             while time.monotonic()<deadline and not ready and not self.cancel_start.is_set():
                 with self.lock:

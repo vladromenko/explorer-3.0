@@ -1328,3 +1328,7 @@ At user's explicit request removed charger step and its prerequisite from Tank p
 ## Minimal Tank operator check — 2026-11-14
 
 User requested only forward/backward checks and direct controls. Tank wizard now has exactly these two steps; other robot checklists unchanged. Controller protections unchanged. Seven evaluator tests PASS, including exact two-step regression. Full hardware acceptance is not claimed by this abbreviated check. Browser opening unavailable: CUA inventory has no browsers/apps; direct URL supplied to operator.
+
+## Tank startup timeout — 2026-11-14
+
+Actual user connection attempts failed awaiting fresh streams. Sensor-only diagnostic (no native/motor driver) observed first lidar scan at second 11, beyond the agent's 10-second deadline. Increase startup deadline to 30 seconds; no guard/STOP bypass. User requested no further checks; no new movement or test run. This addresses the observed premature timeout, but successful complete user connection still needs observation. Diagnostic camera lacked frames; do not claim full end-to-end success.
