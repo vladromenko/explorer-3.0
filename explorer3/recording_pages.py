@@ -25,6 +25,25 @@ def install(service=None):
             ui.link('Explorer','/');ui.link('Сбор датасета','/recording/collect');ui.link('Инструкция','/datasets/guide')
         ui.label('Готовность парка').style('font-size:30px;font-weight:650')
         ui.label('Проверка связи и данных каждые 2 секунды. Открытие страницы не включает роботов.').style('color:#a6b6c6')
+        from . import data_safety
+        with ui.expansion('Резервная копия').classes('ready-card'):
+            ui.label('Без внешнего диска сохраняются SQLite и хеши, но не вторая копия самих видео. Автоматическая копия — ежедневно.')
+            external=ui.input('Папка внешнего диска',placeholder='/media/…/explorer3-backup').classes('w-full')
+            async def save_destination():
+                try:
+                    await asyncio.to_thread(data_safety.configure_external,external.value or '')
+                    ui.notify('Путь сохранён')
+                except Exception as exc:ui.notify(str(exc),type='negative')
+            async def copy_now():
+                copy_button.disable()
+                try:
+                    result=await asyncio.to_thread(data_safety.backup_now,force=True)
+                    ui.notify(result.get('warning') or 'Копия создана, хеши проверены')
+                    service.at=0
+                except Exception as exc:ui.notify('Не удалось сохранить копию: '+str(exc),type='negative')
+                finally:copy_button.enable()
+            ui.button('Сохранить путь',on_click=save_destination)
+            copy_button=ui.button('Сделать копию сейчас',on_click=copy_now)
         stamp=ui.label('Собираем состояние…')
         general=ui.column().classes('ready-card')
         panels={}

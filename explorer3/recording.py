@@ -37,6 +37,9 @@ def source_snapshot():
 
 class EpisodeWriter:
     def __init__(self, name: str, session: str, scene: str, category='demonstration', *, domain='real', training_label=None):
+        if domain=='real':
+            from .data_safety import require_space
+            require_space()
         from lerobot.datasets.lerobot_dataset import LeRobotDataset
         cfg=profile(name)
         if domain not in {'real','sim','fixture'} or cfg.get('domain','real') != ('sim' if domain=='fixture' else domain):
@@ -84,12 +87,17 @@ class EpisodeWriter:
             if self.collection_context:collection.completed(self.id,'aborted',0,reason='Не удалось подготовить запись: '+str(exc))
             raise
         self.sidecar=(self.root/'research.jsonl').open('a')
+        self.disk_checked_at=0.
         self.last_observation=-1
         self.initial_state=None
         self.command_source=None
         self.sensor_archive=None
 
     def add(self, sample: dict):
+        if self.domain=='real' and time.monotonic()-self.disk_checked_at>.5:
+            from .data_safety import require_space
+            require_space(starting=False)
+            self.disk_checked_at=time.monotonic()
         image=sample['images'][self.camera]
         command_source=sample.get('command_source','policy' if self.category=='rollout' else 'human')
         if command_source not in ({'human','policy','safety'} if self.domain=='real' else {'human','policy','safety','scripted_expert','ppo_expert'}):

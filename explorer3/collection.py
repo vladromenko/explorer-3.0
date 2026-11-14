@@ -192,3 +192,22 @@ def summary(series_id):
             'mean_duration_s':sum(durations)/len(durations) if durations else None,
             'estimated_remaining_bytes':int(sum(sizes)/len(sizes)*remaining) if sizes else None,
             'attempts':current,'free_bytes':shutil.disk_usage(DATA).free}
+
+
+def recover_after_restart():
+    """No recording is resumed. Interrupted attempts remain aborted; finalized readbacks retry."""
+    initialize()
+    with catalog.connect() as db:
+        pending=[dict(r) for r in db.execute("SELECT * FROM collection_attempts WHERE phase IN ('preparing','recording','checking')")]
+        episodes={r['id'] for r in db.execute('SELECT id FROM episodes')}
+        retry=[]
+        for row in pending:
+            episode=row['episode'] or row['id']
+            if episode in episodes:
+                db.execute('UPDATE collection_attempts SET phase=?,episode=? WHERE id=?',('checking',episode,row['id']))
+                retry.append(episode)
+            else:
+                db.execute('UPDATE collection_attempts SET phase=?,outcome=?,quality=? WHERE id=?',
+                    ('saved','aborted',json.dumps({'status':'warning','problems':['Приложение перезапущено до сохранения; исходные файлы оставлены для восстановления']}),row['id']))
+    for episode in retry:_pool.submit(audit,episode)
+    return {'aborted':len(pending)-len(retry),'readbacks_queued':len(retry),'recordings_resumed':0}

@@ -116,6 +116,8 @@ class RosmasterSession:
     def start(self, owner, name, scene, category='demonstration', collection=None, check=False, plan=None, study=None):
         """check=True records without an armed control session (pipeline check, nothing is sent).
         plan: replay/policy trial; study: diagnostic pilot (one random correction assignment per trial)."""
+        from .data_safety import require_space
+        require_space()
         if collection:
             from .collection import context
             context(name,collection,scene)

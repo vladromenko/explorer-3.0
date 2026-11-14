@@ -174,8 +174,12 @@ class Service:
             robots['so101']={'robot':'so101','name':'SO-101','checks':checks,'ready':all(c['status']=='green' for c in checks)}
             free=shutil.disk_usage(DATA).free/1024**3
             jobs=[{'id':j['id'],'status':j['status']} for j in catalog.rows('jobs') if j['status'] in ('running','queued')]
+            from .data_safety import status as backup_status
+            backup=backup_status()
             self.last={'updated_at':time.time(),'robots':robots,'recording_disk_allowed':free>=8,
                 'general':[item('disk','Свободное место',free>=15,round(free,2),'Перенесите сохранённые записи на внешний диск; ниже 8 ГБ новая запись запрещена'),
-                    item('jobs','Активные задания',not jobs,jobs,'Дождитесь завершения задания перед записью')],
+                    item('jobs','Активные задания',not jobs,jobs,'Дождитесь завершения задания перед записью'),
+                    item('backup','Резервная копия',backup.get('available',False) and not backup.get('warning'),backup,
+                         'Подключите внешний диск с папкой explorer3-backup и нажмите «Сделать копию сейчас»')],
                 'local_activity':local,'physical_pass':False}
             self.at=time.monotonic();return self.last

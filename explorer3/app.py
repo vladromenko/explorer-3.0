@@ -640,7 +640,26 @@ async def prepare_recording_runtime():
     await asyncio.to_thread(prepare_runtime)
     catalog.event('info','Записывающий модуль готов; аппаратура не открывалась')
 
+backup_busy=False
+async def scheduled_backup():
+    global backup_busy
+    if backup_busy or control.owner is not None or rosmaster_control.operator.lease is not None or jobs.active_id:return
+    if session.thread and session.thread.is_alive():return
+    backup_busy=True
+    try:
+        from .data_safety import backup_now
+        await asyncio.to_thread(backup_now)
+    except Exception as exc:catalog.event('error','Резервная копия: '+str(exc))
+    finally:backup_busy=False
+
+async def recover_recording_checks():
+    from .collection import recover_after_restart
+    await asyncio.to_thread(recover_after_restart)
+
 app.on_startup(prepare_recording_runtime)
+app.on_startup(recover_recording_checks)
+app.on_startup(scheduled_backup)
+app.timer(60,scheduled_backup)
 app.on_startup(lambda:catalog.event('info','Explorer 3.0 запущен без открытия аппаратуры'))
 app.on_shutdown(lambda:control.stop('Служба останавливается'))
 app.on_shutdown(lambda:jobs.cancel())

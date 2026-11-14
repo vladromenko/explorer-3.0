@@ -168,6 +168,8 @@ async def websocket(socket:WebSocket):
                 result=await asyncio.to_thread(operator.enable,owner,profile,state['mode'],value.get('observing') is True)
                 state['notice']='Управление уже включено: двигайте клавишами (окно должно быть в фокусе)' if result=='already' else ''
             elif action in ('record_start','trial_start'):
+                from .data_safety import require_space
+                require_space()
                 if recorder.active():raise RuntimeError('Сначала закончите текущую запись')
                 plan=None
                 if action=='trial_start':
