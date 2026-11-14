@@ -252,6 +252,29 @@ def index(request:Request):
                 ui.button('Продолжить после восстановления USB',on_click=resume_tank_link)
             tank_link_controls.set_visibility(False)
             tank_motion_state=ui.label('Управление выключено').classes('notice')
+            with ui.card().style('background:#122123;border:1px solid #2fb39f;border-radius:14px;padding:12px 14px;width:100%;max-width:760px'):
+                ui.label('Подъехать к предмету').style('font-size:17px;font-weight:700')
+                ui.label('Напишите, к чему ехать: «к носку», «к красной коробке», «к стулу». Tank найдёт предмет камерой, повернётся, подъедет и остановится примерно в 30 см. Любая стрелка или STOP отменяет поездку.').classes('muted')
+                with ui.row().style('width:100%;align-items:center'):
+                    goto_text=ui.input(placeholder='к носку').props('dense outlined').style('min-width:260px;flex:1')
+                    async def goto_start():
+                        try:
+                            if control.robot!='tank' or control.owner!=owner or not (session.thread and session.thread.is_alive()):
+                                raise RuntimeError('Сначала нажмите «Включить управление» и дождитесь готовности')
+                            if not (goto_text.value or '').strip():raise ValueError('Напишите, к чему ехать')
+                            from .goto import GoTo
+                            goto_state.set_text('Загружаю распознавание (первый раз до 20 с)…')
+                            goal=await asyncio.to_thread(GoTo,'tank',goto_text.value)
+                            if control.owner!=owner:goal.cancel('Управление выключено');return
+                            control.goal=goal
+                        except Exception as exc:notify_error(exc)
+                    ui.button('Поехали',icon='near_me',on_click=goto_start).props('unelevated')
+                    ui.button('Отменить',on_click=lambda:control.cancel_goal('Отменено оператором')).props('flat')
+                goto_state=ui.label('').classes('muted')
+                def goto_refresh():
+                    goal=getattr(control,'goal',None)
+                    if goal is not None:goto_state.set_text(goal.status()['message'])
+                ui.timer(.5,goto_refresh)
             tank_pilot_state=ui.label('').classes('notice')
             with ui.row() as correction_controls:
                 def correction_done():

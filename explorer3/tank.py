@@ -157,7 +157,16 @@ class TankSource:
         if stop():raise InterruptedError('STOP before observation')
         observation=self.observe()
         if stop():raise InterruptedError('STOP before command')
-        action=self.send(self.control.base_action(),observation)
+        goal=getattr(self.control,'goal',None)
+        if goal is not None and goal.active and self.control.base_keys:
+            self.control.cancel_goal('Перехват стрелками')      # the operator always wins
+            goal=None
+        if goal is not None and goal.active:
+            requested=goal.command(observation['images']['front']['image'])
+        else:
+            requested=self.control.base_action()
+        action=self.send(requested,observation)
+        if goal is not None:action['_goto']=goal.status()   # not recorded
         if action['motion_paused']:self.control.clear_base_inputs()
         return {**observation,**action,'frame_id':index,'teleoperation_phase':'paused' if action['motion_paused'] else 'following'}
 

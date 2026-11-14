@@ -25,6 +25,7 @@ class Control:
         self.maintenance=False
         self.activity=None
         self.generation=0
+        self.goal=None          # explorer3.goto.GoTo while «подъехать к …» is active
 
     def authorized(self):
         return local_work.hardware_allowed(self.robot)
@@ -75,7 +76,12 @@ class Control:
     def expired(self):
         return self.stop_event.is_set() or time.monotonic()>self.expires
 
+    def cancel_goal(self, reason='Отменено'):
+        goal,self.goal=self.goal,None
+        if goal is not None:goal.cancel(reason)
+
     def stop(self, reason='STOP'):
+        self.cancel_goal(reason)
         with self.lock:
             self.generation+=1
             if self.owner is not None or self.last_stop_reason is None:
