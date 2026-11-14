@@ -21,8 +21,31 @@ from .dock_gpu import DockBatch, wrap
 ROBOT_GROUP = 3
 
 
+def render_option():
+    """Robot geoms live in group 3 (excluded from lidar rays) but must be drawn in videos."""
+    opt = mujoco.MjvOption()
+    opt.geomgroup[:] = 1
+    return opt
+
+
+def marker_texture(marker_id=0, pixels=600):
+    """Printable ArUco target (white margin) used both on the simulated board and for printing."""
+    import cv2
+    from explorer3.paths import DATA
+    path = DATA / 'simlab' / 'assets' / f'aruco_4x4_{marker_id}.png'
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        inner = cv2.aruco.generateImageMarker(cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50), marker_id, pixels)
+        img = cv2.copyMakeBorder(inner, pixels // 8, pixels // 8, pixels // 8, pixels // 8, cv2.BORDER_CONSTANT, value=255)
+        cv2.imwrite(str(path), cv2.cvtColor(img, cv2.COLOR_GRAY2BGR))
+    return path
+
+
 def scene_xml(robot, room, board_half, standoff, max_obstacles):
+    """Living-room style scene: laminate floor, low light walls, white target board with a real
+    ArUco marker, green stop zone, cardboard obstacles, warm key light with soft shadows."""
     from explorer3.sim.mobile import model_xml
+    from .scenario import load_measurements
     xml, mass, _ = model_xml(robot)
     root = ET.fromstring(xml)
     world = root.find('worldbody')
@@ -36,19 +59,66 @@ def scene_xml(robot, room, board_half, standoff, max_obstacles):
     base = world.find(".//body[@name='base']")
     for geom in base.iter('geom'):
         geom.set('group', str(ROBOT_GROUP))
-    ET.SubElement(world, 'geom', name='board', type='box', pos=f'-0.015 0 0.2', size=f'0.015 {board_half} 0.2',
-                  rgba='.85 .3 .12 1', contype='2', conaffinity='2')
-    ET.SubElement(world, 'geom', name='zone', type='cylinder', pos=f'{standoff} 0 .002', size='.08 .002',
-                  contype='0', conaffinity='0', rgba='.15 .65 .35 1')
+        if geom.get('material') is None:
+            geom.set('rgba', '.24 .26 .29 1' if robot == 'tank' else '.20 .22 .25 1')
+    # ---- look
+    asset = root.find('asset')
+    for tex in list(asset.findall('texture')):
+        if tex.get('name') in ('explorer_sky', 'explorer_grid'):
+            asset.remove(tex)
+    for mat in list(asset.findall('material')):
+        if mat.get('name') == 'explorer_floor':
+            asset.remove(mat)
+    ET.SubElement(asset, 'texture', name='explorer_sky', type='skybox', builtin='gradient', rgb1='.32 .34 .38', rgb2='.10 .11 .13', width='256', height='1536')
+    ET.SubElement(asset, 'texture', name='laminate', type='2d', builtin='checker', rgb1='.56 .45 .35', rgb2='.52 .41 .32', width='512', height='512')
+    ET.SubElement(asset, 'material', name='explorer_floor', texture='laminate', texrepeat='.8 5', texuniform='true', reflectance='.04', specular='.2', shininess='.3')
+    ET.SubElement(asset, 'material', name='outside', rgba='.16 .17 .19 1', specular='0')
+    ET.SubElement(asset, 'material', name='wall', rgba='.88 .87 .84 1', specular='.05')
+    ET.SubElement(asset, 'material', name='board', rgba='.97 .97 .96 1', specular='.1')
+    ET.SubElement(asset, 'material', name='cardboard', rgba='.70 .55 .38 1', specular='.05')
+    ET.SubElement(asset, 'texture', name='aruco', type='2d', file=str(marker_texture(load_measurements()['dock_target']['marker']['id'])))
+    ET.SubElement(asset, 'material', name='aruco', texture='aruco', specular='.05')
+    visual = root.find('visual')
+    for child in list(visual):
+        if child.tag in ('headlight', 'rgba', 'map', 'quality'):
+            visual.remove(child)
+    ET.SubElement(visual, 'headlight', ambient='.35 .35 .35', diffuse='.25 .25 .25', specular='.02 .02 .02')
+    ET.SubElement(visual, 'quality', shadowsize='4096', offsamples='8')
+    ET.SubElement(visual, 'map', znear='.01', zfar='30', shadowclip='3', shadowscale='.5')
+    for light in world.findall('light'):
+        world.remove(light)
+    ET.SubElement(world, 'light', name='key', pos='1.5 -1.2 3', dir='-.3 .3 -1', directional='true', diffuse='.75 .70 .62', specular='.2 .2 .2', castshadow='true')
+    ET.SubElement(world, 'light', name='fill', pos='-1 1 2.5', dir='.3 -.2 -1', directional='true', diffuse='.25 .28 .32', castshadow='false')
     x0, y0, x1, y1 = room
+    floor = world.find("geom[@name='floor']")
+    floor.attrib.pop('material', None); floor.set('rgba', '.13 .14 .16 1'); floor.set('size', '8 8 .05'); floor.set('pos', '0 0 -.02')
+    ET.SubElement(world, 'geom', name='room_floor', type='box', pos=f'{(x0 + x1) / 2} {(y0 + y1) / 2} -.0005',
+                  size=f'{(x1 - x0) / 2} {(y1 - y0) / 2} .0005', material='explorer_floor', contype='0', conaffinity='0')
+    stat = root.find('statistic')
+    if stat is not None:
+        stat.set('center', f'{(x0 + x1) / 2} 0 .2'); stat.set('extent', f'{max(x1 - x0, y1 - y0) * .75}')
+    # ---- target board with the marker, zone ring
+    target = load_measurements()['dock_target']
+    height = target['board_size_wh'][1]
+    side = target['marker']['side'] * 1.25          # printed sheet incl. white margin
+    ET.SubElement(world, 'geom', name='board', type='box', pos=f'-0.015 0 {height / 2}', size=f'0.015 {board_half} {height / 2}',
+                  material='board', contype='2', conaffinity='2')
+    ET.SubElement(world, 'geom', name='marker', type='box', pos=f'0.001 0 {target["marker"]["center_height"]}',
+                  size=f'0.001 {side / 2} {side / 2}', euler='0 0 0', material='aruco', contype='0', conaffinity='0')
+    ET.SubElement(world, 'geom', name='zone', type='cylinder', pos=f'{standoff} 0 .001', size=f'{target["zone_radius"]} .001',
+                  contype='0', conaffinity='0', rgba='.18 .72 .45 .55')
     for i, (cx, cy, hx, hy) in enumerate([(x0 - .05, 0, .05, (y1 - y0) / 2 + .1), (x1 + .05, 0, .05, (y1 - y0) / 2 + .1),
                                            ((x0 + x1) / 2, y0 - .05, (x1 - x0) / 2, .05), ((x0 + x1) / 2, y1 + .05, (x1 - x0) / 2, .05)]):
         ET.SubElement(world, 'geom', name=f'wall{i}', type='box', pos=f'{cx} {cy} .2', size=f'{hx} {hy} .2',
-                      rgba='.7 .7 .72 1', contype='2', conaffinity='2')
+                      material='wall', contype='2', conaffinity='2')
     for j in range(max_obstacles):
-        body = ET.SubElement(world, 'body', name=f'obstacle{j}', mocap='true', pos=f'0 0 -5')
-        ET.SubElement(body, 'geom', name=f'obstacle{j}', type='box', size='.05 .05 .15', rgba='.35 .45 .6 1',
+        body = ET.SubElement(world, 'body', name=f'obstacle{j}', mocap='true', pos='0 0 -5')
+        ET.SubElement(body, 'geom', name=f'obstacle{j}', type='box', size='.05 .05 .15', material='cardboard',
                       contype='2', conaffinity='2')
+    # ---- cameras for videos: chase (follows the robot) and overview
+    # high corner camera that keeps the robot in frame wherever it drives
+    ET.SubElement(world, 'camera', name='chase', mode='targetbody', target='base', pos=f'{x1 - .1} {y0 + .2} 1.25', fovy='50')
+    ET.SubElement(world, 'camera', name='overview', pos=f'{(x0 + x1) / 2} {y0 - .9} 2.4', xyaxes='1 0 0 0 .62 .78', fovy='60')
     for motor in root.find('actuator'):
         motor.set('ctrlrange', '-60 60' if motor.get('joint') in ('x', 'y') else '-12 12')
     return ET.tostring(root, encoding='unicode'), mass

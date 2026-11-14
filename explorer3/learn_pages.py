@@ -164,47 +164,98 @@ def disk_free_gb():
 
 # ---------------------------------------------------------------- simlab runner
 class SimRunner:
-    """One simlab process at a time, holding the shared compute lease like real training."""
+    """Starts scripts/simlab_pipeline.py (train -> MuJoCo evaluation -> videos), one at a time,
+    holding the shared compute lease. Runs started elsewhere are seen through simlab/active.json."""
 
     def __init__(self):
         self.lock = threading.Lock()
         self.process = None
-        self.current = None      # dict(robot, kind, name, log, started)
 
     def busy(self):
-        return self.process is not None and self.process.poll() is None
+        return active_run() is not None
 
-    def start(self, robot, kind, name, args):
+    def start(self, robot, kind, policy=None):
         with self.lock:
             if self.busy():
-                raise RuntimeError('Уже идёт: ' + self.current['title'])
-            from .resources import ResourceLease
-            lease = ResourceLease('compute')
-            lease.__enter__()          # raises ResourceBusy while real training runs
-            log = DATA / 'simlab' / 'logs' / f'{name}-{kind}.log'
+                raise RuntimeError('Уже идёт: ' + active_run()['title'])
+            if any(j['status'] == 'running' for j in catalog.rows('jobs')):
+                raise RuntimeError('GPU занят обучением на реальных показах; дождитесь его окончания')
+            stamp = time.strftime('%m%d_%H%M%S')
+            log = DATA / 'simlab' / 'logs' / f'{robot}-{kind}-{stamp}.log'
             log.parent.mkdir(parents=True, exist_ok=True)
             env = {**os.environ, 'PYTHONPATH': str(ROOT), 'MUJOCO_GL': 'egl'}
+            args = ['scripts/simlab_pipeline.py', robot, kind, '--log', str(log)]
+            if policy:
+                args += ['--policy', policy]
             handle = log.open('w')
             self.process = subprocess.Popen([str(ROOT / '.venv-sim/bin/python'), '-u', *args], cwd=ROOT, env=env,
                                             stdout=handle, stderr=subprocess.STDOUT, start_new_session=True)
-            titles = {'check': 'проверочный прогон', 'full': 'полное обучение', 'eval': 'оценка в MuJoCo',
-                      'clone': 'клонирование учителя'}
-            self.current = {'robot': robot, 'kind': kind, 'name': name, 'log': str(log), 'started': time.time(),
-                            'title': dict((r, t) for r, t, _ in SIM_TASKS)[robot] + ' · ' + titles[kind]}
+            process = self.process
 
             def wait():
                 try:
-                    self.process.wait()
+                    process.wait()
                 finally:
                     handle.close()
-                    lease.__exit__(None, None, None)
-                    catalog.event('info', 'Simlab: ' + self.current['title'] + f' завершено (код {self.process.returncode})')
+                    catalog.event('info', f'Simlab {robot} {kind}: завершено (код {process.returncode})')
             threading.Thread(target=wait, daemon=True).start()
+            time.sleep(.5)
 
     def stop(self):
-        with self.lock:
-            if self.busy():
-                os.killpg(self.process.pid, signal.SIGTERM)
+        run = active_run()
+        if run:
+            try:
+                os.killpg(os.getpgid(run['pid']), signal.SIGTERM)
+            except (ProcessLookupError, PermissionError):
+                pass
+
+
+TITLES = {'check': 'проверочный прогон', 'full': 'полное обучение', 'clone': 'клонирование учителя', 'eval': 'оценка и видео'}
+
+
+def active_run():
+    path = DATA / 'simlab' / 'active.json'
+    try:
+        run = json.loads(path.read_text())
+        os.kill(run['pid'], 0)
+    except (OSError, ValueError, KeyError):
+        return None
+    run['title'] = dict((r, t) for r, t, _ in SIM_TASKS)[run['robot']] + ' · ' + TITLES.get(run['kind'], run['kind'])
+    return run
+
+
+def last_run(robot):
+    """Most recent pipeline log of this robot (running or finished)."""
+    logs = sorted((DATA / 'simlab' / 'logs').glob(f'{robot}-*.log'), key=lambda p: p.stat().st_mtime) if (DATA / 'simlab' / 'logs').exists() else []
+    run = active_run()
+    if run and run['robot'] == robot and run.get('log'):
+        log = Path(run['log'])
+    elif logs:
+        log = logs[-1]
+    else:
+        return None
+    rows, stage, done = [], None, False
+    try:
+        text = log.read_text(errors='replace')
+    except OSError:
+        return None
+    for line in text.splitlines():
+        if line.startswith('{"iter"'):
+            try:
+                rows.append(json.loads(line))
+            except ValueError:
+                pass
+        elif line.startswith('{"stage"'):
+            try:
+                stage = json.loads(line)['stage']
+                done = stage == 'готово'
+            except ValueError:
+                pass
+    running = bool(run and run['robot'] == robot)
+    kind = log.name.split('-')[1] if '-' in log.name else ''
+    return {'rows': rows, 'stage': stage, 'running': running, 'done': done, 'kind': kind,
+            'failed': not running and not done, 'started': run['started'] if running else log.stat().st_ctime,
+            'tail': text[-1200:]}
 
 
 RUNNER = SimRunner()
@@ -228,28 +279,12 @@ def sim_policies(robot):
     return out
 
 
-def runner_progress():
-    cur = RUNNER.current
-    if not cur:
-        return None
-    rows = []
-    try:
-        for line in Path(cur['log']).read_text(errors='replace').splitlines():
-            if line.startswith('{"iter"'):
-                rows.append(json.loads(line))
-    except (OSError, ValueError):
-        pass
-    tail = ''
-    try:
-        tail = Path(cur['log']).read_text(errors='replace')[-1500:]
-    except OSError:
-        pass
-    return {**cur, 'rows': rows, 'running': RUNNER.busy(), 'tail': tail,
-            'returncode': None if RUNNER.process is None else RUNNER.process.poll()}
-
-
 # ---------------------------------------------------------------- page
 def install(jobs):
+    from nicegui import app
+    (DATA / 'simlab').mkdir(parents=True, exist_ok=True)
+    app.add_media_files('/simlab-media', DATA / 'simlab')
+
     @ui.page('/learn')
     async def learn_page():
         ui.add_css(CSS)
@@ -275,8 +310,8 @@ def install(jobs):
                 queued = [j for j in catalog.rows('jobs') if j['status'] == 'queued']
                 if active:
                     ui.label('GPU: обучение ' + active[0]['profile']).classes('chip busy')
-                elif RUNNER.busy():
-                    ui.label('GPU: ' + RUNNER.current['title']).classes('chip busy')
+                elif active_run():
+                    ui.label('GPU: ' + active_run()['title']).classes('chip busy')
                 else:
                     ui.label('GPU свободен').classes('chip ok')
                 if queued:
@@ -454,97 +489,108 @@ def install(jobs):
 
     # ------------------------------------------------------------ simulation
     def sim_tab():
-        ui.html('<div class="muted" style="margin-bottom:12px">Политики учатся в MuJoCo на GPU с теми же признаками, '
-                'что у робота. Проверочный прогон — 10 минут, полное обучение — до 4 часов. Допуск на робота: '
-                'не меньше 80 % успеха в полной MuJoCo.</div>')
+        ui.html('<div class="muted" style="margin-bottom:12px">Робот учится в MuJoCo на GPU: тысячи копий одновременно, '
+                'с теми же датчиками, что у настоящего (лидар, гироскоп, метка цели). Каждый запуск сам проходит '
+                '«обучение → проверка на 100 новых стартах в полной физике → видео». Допуск на робота — от 80 % успеха.</div>')
 
         @ui.refreshable
         def sim_cards():
-            prog = runner_progress()
-            with ui.element('div').classes('grid').style('grid-template-columns:repeat(auto-fill,minmax(360px,1fr))'):
+            busy = RUNNER.busy()
+            with ui.column().classes('w-full').style('gap:16px'):
                 for robot, title, kind in SIM_TASKS:
                     pols = sim_policies(robot)
                     best = None
                     for p in pols:
-                        for name, ev in p['evals'].items():
-                            if best is None or ev.get('success', 0) > best[1].get('success', 0):
-                                best = (p, ev)
+                        for ev in p['evals'].values():
+                            key = (ev.get('curriculum') == 1.0 or ev.get('curriculum') == 'easy (cube +-2 cm, as the teacher demos)', ev.get('success', 0))
+                            if best is None or key > best[2]:
+                                best = (p, ev, key)
+                    show = best[0] if best else (pols[0] if pols else None)
+                    run = last_run(robot)
                     with ui.element('div').classes('card job'):
                         with ui.element('div').classes('spread'):
-                            ui.html(f'<h3>{title}</h3>')
+                            ui.html(f'<h3 style="font-size:19px">{title}</h3>')
                             if best:
-                                s = best[1]['success']
-                                ui.label(f'{s * 100:.0f} % успеха').classes('chip ' + ('ok' if s >= .8 else 'busy'))
+                                s_ = best[1]['success']
+                                full = best[1].get('curriculum') == 1.0
+                                ui.label(f'{s_ * 100:.0f} % успеха' + ('' if full else ' · облегчённые старты')).classes('chip ' + ('ok' if s_ >= .8 and full else 'busy'))
                             else:
-                                ui.label('нет оценки').classes('chip')
+                                ui.label('ещё не обучено').classes('chip')
                         if best:
                             ci = best[1].get('success_ci95')
-                            ui.label(f"Лучшая: {best[0]['name']} · {best[1].get('episodes')} эпизодов"
-                                     + (f" · ДИ {ci[0] * 100:.0f}–{ci[1] * 100:.0f} %" if ci else '')
-                                     + f" · {best[1].get('engine', '')}").classes('muted')
-                        else:
-                            ui.label('Политик ещё нет — запустите проверочный прогон' if pols == [] else
-                                     f'Последняя политика: {pols[0]["name"]} (без оценки)').classes('muted')
-                        mine = prog if (prog and prog['robot'] == robot) else None
-                        if mine:
-                            rows = mine['rows']
-                            if mine['running']:
-                                elapsed = time.time() - mine['started']
+                            ui.label(f"Лучшая политика {best[0]['name']} · проверка на {best[1].get('episodes')} новых стартах"
+                                     + (f" · интервал {ci[0] * 100:.0f}–{ci[1] * 100:.0f} %" if ci else '')).classes('muted')
+                        if run and (run['running'] or run['rows']):
+                            rows = run['rows']
+                            if run['running']:
                                 last = rows[-1] if rows else None
-                                ui.label(f"Идёт: {mine['title'].split(' · ')[-1]} · {fmt_duration(elapsed)}"
-                                         + (f" · успех {last['success'] * 100:.0f} % · сложность {last['curriculum']:.1f}" if last else ''))\
-                                    .classes('chip busy')
-                            else:
-                                ok = mine['returncode'] == 0
-                                ui.label(('Завершено' if ok else f"Остановлено (код {mine['returncode']})")
-                                         + ' · ' + mine['title'].split(' · ')[-1]).classes('chip ' + ('ok' if ok else 'bad'))
+                                ui.label(f"Идёт: {TITLES.get(run['kind'], run['kind'])} · этап «{run['stage'] or 'запуск'}» · {fmt_duration(time.time() - run['started'])}"
+                                         + (f" · успех {last['success'] * 100:.0f} % · сложность {last['curriculum']:.1f}" if last else '')).classes('chip busy')
+                            elif run['failed']:
+                                ui.label('Последний запуск прерван').classes('chip bad')
                             if rows:
-                                ui.echart({'backgroundColor': 'transparent', 'grid': {'left': 36, 'right': 10, 'top': 10, 'bottom': 22},
-                                           **chart_axes(min=0, max=1),
-                                           'tooltip': {'trigger': 'axis'},
+                                ui.echart({'backgroundColor': 'transparent', 'grid': {'left': 36, 'right': 10, 'top': 24, 'bottom': 22},
+                                           **chart_axes(min=0, max=1), 'tooltip': {'trigger': 'axis'},
+                                           'legend': {'textStyle': {'color': '#8b98a8'}, 'top': 0},
                                            'series': [{'type': 'line', 'showSymbol': False, 'name': 'успех', 'smooth': True,
-                                                       'data': [[r['minutes'], r['success']] for r in rows], 'lineStyle': {'color': '#63e0b8'}},
-                                                      {'type': 'line', 'showSymbol': False, 'name': 'сложность', 'step': 'end',
-                                                       'data': [[r['minutes'], r['curriculum']] for r in rows], 'lineStyle': {'color': '#79b8ff', 'type': 'dashed'}}]}
-                                          ).style('height:150px;width:100%')
+                                                       'data': [[round(r['minutes'], 1), r['success']] for r in rows], 'lineStyle': {'color': '#63e0b8'}},
+                                                      {'type': 'line', 'showSymbol': False, 'name': 'сложность стартов', 'step': 'end',
+                                                       'data': [[round(r['minutes'], 1), r['curriculum']] for r in rows], 'lineStyle': {'color': '#79b8ff', 'type': 'dashed'}}]}
+                                          ).style('height:160px;width:100%')
+                        videos = []
+                        if show:
+                            try:
+                                videos = json.loads((Path(show['path']) / 'videos' / 'index.json').read_text())
+                            except (OSError, ValueError):
+                                videos = []
+                        if videos:
+                            ui.label('Как это выглядит (новые старты, полная физика):').classes('muted')
+                            with ui.element('div').classes('grid').style('grid-template-columns:repeat(auto-fill,minmax(280px,1fr))'):
+                                for v in videos:
+                                    with ui.column().style('gap:4px'):
+                                        rel = Path(show['path']).relative_to(DATA / 'simlab') / 'videos' / v['file']
+                                        player = ui.video(f'/simlab-media/{rel}', autoplay=False, loop=True, muted=True).style('width:100%;border-radius:10px')
+                                        if v.get('poster'):
+                                            player.props(f'poster="/simlab-media/{rel.parent / v["poster"]}"')
+                                        label, cls = {'success': ('успех', 'ok'), 'collision': ('столкновение', 'bad'),
+                                                      'timeout': ('не успел', 'busy')}.get(v['outcome'], (v['outcome'], 'bad'))
+                                        ui.label(f"{label} · {v['seconds']} с").classes('chip ' + cls).style('align-self:flex-start')
                         with ui.row().classes('row'):
-                            busy = RUNNER.busy()
                             if kind == 'dock':
-                                ui.button('Проверка · 10 мин', icon='bolt', on_click=lambda r=robot: run(r, 'check')).props('unelevated').set_enabled(not busy)
-                                ui.button('Полное · 4 ч', icon='rocket_launch', on_click=lambda r=robot: run(r, 'full')).props('outline').set_enabled(not busy)
-                                if pols:
-                                    ui.button('Оценить в MuJoCo', icon='fact_check', on_click=lambda r=robot, p=pols[0]: run(r, 'eval', p)).props('flat').set_enabled(not busy)
+                                ui.button('Проверочный прогон · 10 мин', icon='bolt', on_click=lambda r=robot: run_(r, 'check')).props('unelevated').set_enabled(not busy)
+                                ui.button('Полное обучение · ~4 ч', icon='rocket_launch', on_click=lambda r=robot: run_(r, 'full')).props('outline').set_enabled(not busy)
                             else:
-                                ui.button('Клонировать учителя · ~15 мин', icon='school', on_click=lambda r=robot: run(r, 'clone')).props('unelevated').set_enabled(not busy)
-                            if mine and mine['running']:
+                                ui.button('Клонировать учителя · ~15 мин', icon='school', on_click=lambda r=robot: run_(r, 'clone')).props('unelevated').set_enabled(not busy)
+                            if show:
+                                ui.button('Перепроверить и снять видео', icon='movie', on_click=lambda r=robot, p=show: run_(r, 'eval', p['path'])).props('flat').set_enabled(not busy)
+                            if run and run['running']:
                                 ui.button('Остановить', icon='stop', color='negative', on_click=lambda: (RUNNER.stop(), sim_cards.refresh())).props('flat')
                         if pols:
-                            with ui.expansion(f'Политики ({len(pols)})', icon='inventory_2').classes('w-full'):
-                                for p in pols[:8]:
-                                    evs = ' · '.join(f"{k.replace('eval-', 'сложн. ')}: {v['success'] * 100:.0f} %" for k, v in p['evals'].items()) or 'без оценки'
+                            with ui.expansion(f'Все политики ({len(pols)})', icon='inventory_2').classes('w-full'):
+                                for p in pols[:10]:
+                                    evs = ' · '.join(f"сложн. {v.get('curriculum')}: {v['success'] * 100:.0f} %" for v in p['evals'].values()) or 'без оценки'
                                     ui.label(f"{p['name']} · {time.strftime('%d.%m %H:%M', time.localtime(p['mtime']))} · {evs}").classes('muted mono')
 
-        def run(robot, kind, policy=None):
-            stamp = time.strftime('%m%d_%H%M')
+        def run_(robot, kind, policy=None):
             try:
-                if kind == 'check':
-                    name = f'{robot}_dock_check_{stamp}'
-                    RUNNER.start(robot, kind, name, ['scripts/simlab_train.py', robot, '--minutes', '10', '--name', name])
-                elif kind == 'full':
-                    name = f'{robot}_dock_full_{stamp}'
-                    RUNNER.start(robot, kind, name, ['scripts/simlab_train.py', robot, '--minutes', '240', '--steps', '4000000000', '--name', name])
-                elif kind == 'clone':
-                    name = f'so101_bc_{stamp}'
-                    RUNNER.start(robot, kind, name, ['scripts/simlab_arm_bc.py', '--name', name])
-                elif kind == 'eval':
-                    RUNNER.start(robot, kind, policy['name'], ['scripts/simlab_eval.py', policy['path'], '--episodes', '100'])
-                ui.notify('Запущено', type='positive')
+                RUNNER.start(robot, kind, policy)
+                ui.notify('Запущено: ' + TITLES[kind], type='positive')
             except Exception as exc:
                 ui.notify(str(exc), type='negative')
             sim_cards.refresh()
 
         sim_cards()
-        ui.timer(5, sim_cards.refresh)
+        state = {'sig': None, 'at': time.time()}
+
+        def maybe_refresh():
+            # Rebuild on changes; while a run is active only every 30 s so videos are not interrupted.
+            run = active_run()
+            sig = (run and run['pid'], tuple(p['name'] + str(len(p['evals'])) for r, _, _ in SIM_TASKS for p in sim_policies(r)))
+            if sig != state['sig'] or (run and time.time() - state['at'] > 30):
+                state['sig'] = sig
+                state['at'] = time.time()
+                sim_cards.refresh()
+        ui.timer(10, maybe_refresh)
 
     # ------------------------------------------------------------ jobs
     def jobs_tab(jobs, state, tabs):
