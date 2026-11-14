@@ -11,6 +11,7 @@ __pycache__/
 runtime/
 
 .venv-sim/
+.venv-cognitive/
 .playwright/
 
 MUJOCO_LOG.TXT

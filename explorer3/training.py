@@ -67,6 +67,10 @@ def run_job(path: Path):
     cfg = json.loads(path.read_text())
     work = DATA/'jobs'/path.stem
     work.mkdir(exist_ok=True)
+    if cfg.get('kind')=='cognitive_simulation':
+        from .cognitive.run import execute
+        execute(cfg,work)
+        return
     if cfg.get('kind')=='rosmaster_identification':
         from .rosmaster_preparation import load_identification
         from .sim.rosmaster_sysid import identify,simulator_values

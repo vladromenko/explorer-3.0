@@ -50,6 +50,16 @@ class Jobs:
             cfg.update(steps=recipe['steps'],batch_size=recipe['batch_size'],device=recipe['device'],seed=recipe['seed'])
         return self._insert(name,policy,cfg)
 
+    def cognitive_simulation(self,comparison='M3',seed=17,scene='workshop'):
+        from .sim.room import PRESETS
+        if scene not in PRESETS:raise ValueError('Unknown scene')
+        if comparison not in {'M0','M1','M2','M3'}:raise ValueError('Unknown comparison')
+        if type(seed) is not int or not 0<=seed<2**31:raise ValueError('Invalid scene seed')
+        if any(j['status'] in {'queued','running'} and json.loads(j['config']).get('kind')=='cognitive_simulation' for j in catalog.rows('jobs')):
+            raise ValueError('Проверка команды уже выполняется; дождитесь результата или нажмите STOP')
+        return self._insert('fleet_lab_sim','cognitive',{'kind':'cognitive_simulation','comparison':comparison,
+            'seed':seed,'scene':scene,'device':'cuda','training_requested':False,'real_authorized':False})
+
     def fleet_execute(self,selected,**options):
         from .fleet_runs import prepare
         config=prepare(selected,**options)
@@ -248,7 +258,7 @@ class Jobs:
         ident = job['id']
         try:
             cfg=json.loads(job['config'])
-            gpu=cfg.get('kind','train') in {'train','evaluate','benchmark','vision'} and cfg.get('device','cuda').startswith('cuda')
+            gpu=cfg.get('kind','train') in {'train','evaluate','benchmark','vision','cognitive_simulation'} and cfg.get('device','cuda').startswith('cuda')
             with ResourceLease('compute'), (ExistingTrainingLease() if gpu else contextlib.nullcontext()):
                 path = DATA/'jobs'/f'{ident}.json'
                 path.write_text(job['config'])
@@ -286,6 +296,10 @@ class Jobs:
             ident = ident or self.active_id
             if ident is None:
                 return
+            mission_file=DATA/'jobs'/ident/'mission.json'
+            if mission_file.is_file():
+                from .cognitive import broker
+                broker.cancel(json.loads(mission_file.read_text())['mission_id'],'Job cancelled')
             if ident == self.active_id:
                 self.cancel_requested.set()
                 if self.process and self.process.poll() is None:

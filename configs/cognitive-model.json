@@ -1,0 +1,17 @@
+{
+  "repository": "Qwen/Qwen3-VL-2B-Instruct",
+  "revision": "89644892e4d85e24eaac8bacfd4f463576704203",
+  "license": "Apache-2.0",
+  "backend": "transformers",
+  "transformers_version": "5.5.4",
+  "smolagents_version": "1.26.0",
+  "max_model_steps": 4,
+  "max_format_retries": 1,
+  "max_replans_per_reason": 2,
+  "max_memory_cases": 5,
+  "max_new_tokens": 192,
+  "max_input_tokens": 3072,
+  "max_images": 2,
+  "runtime_network": false,
+  "training_allowed": false
+}

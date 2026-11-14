@@ -23,7 +23,7 @@ def create_mission(task,snapshot_ids,*,mode='sim'):
     if not isinstance(task,str) or not 1<=len(task)<=600:raise ValueError('Коротко опишите задачу')
     store.evidence(snapshot_ids,domain=mode)
     value={'id':uuid.uuid4().hex,'task':task,'domain':mode,'generation':0,'decision_id':uuid.uuid4().hex,
-        'snapshot_ids':snapshot_ids,'phase':'planning','created_at':time.time(),'graph':None,
+        'snapshot_ids':snapshot_ids,'model_steps':0,'phase':'planning','created_at':time.time(),'graph':None,
         'training_authorized':False,'real_authorized':False,'memory_snapshot':store.memory_snapshot()}
     with catalog.connect() as db:
         db.execute('INSERT INTO cognitive_missions VALUES(?,?)',(value['id'],store.encoded(value)))
@@ -51,7 +51,7 @@ def refresh_snapshot(mission_id,snapshot_ids):
         db.execute('BEGIN IMMEDIATE')
         current=json.loads(db.execute('SELECT body FROM cognitive_missions WHERE id=?',(mission_id,)).fetchone()['body'])
         if current['phase'] in ('cancelled','unknown','completed'):raise ValueError('Mission no longer accepts observations')
-        current.update(snapshot_ids=snapshot_ids,generation=current['generation']+1,decision_id=uuid.uuid4().hex)
+        current.update(snapshot_ids=snapshot_ids,generation=current['generation']+1,decision_id=uuid.uuid4().hex,model_steps=0)
         db.execute('UPDATE cognitive_missions SET body=? WHERE id=?',(store.encoded(current),mission_id))
         db.execute('DELETE FROM cognitive_claims WHERE mission_id=?',(mission_id,))
         store.event(mission_id,'snapshot_changed',{'ids':snapshot_ids,'generation':current['generation']},db)
@@ -68,7 +68,7 @@ def _guard(call,mission,db):
     store.evidence(call.snapshot_ids,domain=call.mode)
     count=db.execute('SELECT count(*) FROM cognitive_requests WHERE mission_id=? AND decision_id=?',
                      (call.mission_id,call.decision_id)).fetchone()[0]
-    if count>=4:raise ValueError('Decision budget exhausted; deterministic fallback required')
+    if count+mission.get('model_steps',0)>=4:raise ValueError('Decision budget exhausted; deterministic fallback required')
 
 
 def call_tool(value):
@@ -118,7 +118,9 @@ def _read_tool(call,mission):
     if call.tool=='list_skills':return {'skills':[c.model_dump() for c in registry.cards().values()]}
     if call.tool=='retrieve_cases':
         skill=registry.get(args['recipient_skill_id'])
-        return store.retrieve(args['task'],args['effect'],skill,args['goal_id'],call.mode,comparison=args.get('comparison','M3'),snapshot=mission['memory_snapshot'])
+        observed=store.evidence(call.snapshot_ids,domain=call.mode)
+        context={key:observed[0].payload[key] for key in ('scene','model_sha256') if observed and key in observed[0].payload}
+        return store.retrieve(args['task'],args['effect'],skill,args['goal_id'],call.mode,comparison=args.get('comparison','M3'),snapshot=mission['memory_snapshot'],context=context)
     if call.tool=='propose_graph':
         graph=TaskGraph.model_validate(args);registry.validate_graph(graph,call.mode)
         if not set(graph.evidence_ids)<=set(call.snapshot_ids):raise ValueError('Plan cites evidence outside its snapshot')
@@ -175,6 +177,7 @@ def _reserve(db,call,resources):
         for name in sorted(set(resources)):
             stack.enter_context(ResourceLease(name))
     db.execute('DELETE FROM cognitive_claims WHERE expires<=?',(now,))
+    db.execute("DELETE FROM cognitive_claims WHERE mission_id IN (SELECT id FROM cognitive_missions WHERE json_extract(body,'$.phase') IN ('completed','cancelled','unknown'))")
     for resource in sorted(set(resources)):
         owner=db.execute('SELECT * FROM cognitive_claims WHERE resource=?',(resource,)).fetchone()
         if owner and (owner['mission_id']!=call.mission_id or owner['generation']!=call.generation):raise ValueError('Resource owner conflict: '+resource)
@@ -222,3 +225,20 @@ def execution_step(mission_id,node_id):
                 if claim is None or claim['mission_id']!=mission_id or claim['generation']!=current['generation'] or claim['expires']<=time.time():
                     raise ValueError('Execution reservation missing or expired')
         yield current
+
+
+
+def record_model_steps(mission_id,generation,steps):
+    """Trusted worker report; model steps and broker calls share one budget."""
+    if type(steps) is not int or not 1<=steps<=2:raise ValueError('Invalid model step report')
+    with catalog.connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        current=json.loads(db.execute('SELECT body FROM cognitive_missions WHERE id=?',(mission_id,)).fetchone()['body'])
+        if current['phase'] in ('cancelled','unknown','completed') or current['generation']!=generation:
+            raise ValueError('Late model usage report discarded')
+        count=db.execute('SELECT count(*) FROM cognitive_requests WHERE mission_id=? AND decision_id=?',
+                         (mission_id,current['decision_id'])).fetchone()[0]
+        if current.get('model_steps',0) or count+steps>4:raise ValueError('Model decision budget exhausted or already recorded')
+        current['model_steps']=steps
+        db.execute('UPDATE cognitive_missions SET body=? WHERE id=?',(store.encoded(current),mission_id))
+        store.event(mission_id,'model_usage',{'decision_id':current['decision_id'],'steps':steps},db)

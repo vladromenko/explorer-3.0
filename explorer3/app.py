@@ -103,6 +103,9 @@ def notify_error(exc):
     ui.notify(str(exc),type='negative')
 
 async def stop_all():
+    for job in catalog.rows('jobs'):
+        if job['status'] in {'queued','running'} and json.loads(job['config']).get('kind')=='cognitive_simulation':
+            await asyncio.to_thread(jobs.cancel,job['id'])
     control.stop('STOP из интерфейса')
     if rosmaster_control.operator.lease is not None:
         await asyncio.to_thread(rosmaster_control.operator.stop,'Главный STOP Explorer')
@@ -111,6 +114,8 @@ from . import sim_pages
 sim_pages.install(stop_all,CSS,jobs)
 from . import fleet_pages
 fleet_pages.install(stop_all,CSS)
+from .cognitive import pages as cognitive_pages
+cognitive_pages.install(CSS,jobs)
 from . import fleet_live_pages
 fleet_live_pages.install(stop_all,CSS)
 from . import vision_pages
@@ -172,6 +177,7 @@ def index():
     ui.link('Tank · камеры, глубина и лидар', '/tank/sensors')
     ui.link('ROSMASTER · датчики и окружение', '/rosmaster/sensors')
     ui.link('Общий обзор роботов · связь и датчики', '/fleet/live')
+    ui.link('Команда · совместная задача и память', '/team')
     ui.label('РЕАЛЬНЫЕ РОБОТЫ').classes('kicker')
     stage_label=ui.label('Этап A · программная подготовка. Движение не разрешено. Запись и физические испытания ещё не проверены.').classes('notice')
     ready=ui.label('').classes('muted')

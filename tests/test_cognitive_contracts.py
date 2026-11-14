@@ -171,3 +171,21 @@ def test_restarted_planned_mission_needs_new_admission(db):
     assert store.mission(m['id'])['phase']=='unknown'
     with pytest.raises(PermissionError):
         with broker.execution_resources(m['id']):pass
+
+
+def test_scene_change_blocks_memory_transfer_in_m3(db):
+    case=candidate(db);case=case.model_copy(update={'actual_effect':{'scene':'workshop','model_sha256':'a'*64}})
+    store.add_case(case);skill=registry.get(case.compatibility.recipient_skill_id)
+    assert store.retrieve('dock','target_visible',skill,'fixed_dock','sim',context={'scene':'workshop','model_sha256':'a'*64})['accepted']
+    assert not store.retrieve('dock','target_visible',skill,'fixed_dock','sim',context={'scene':'storage','model_sha256':'b'*64})['accepted']
+    assert store.retrieve('dock','target_visible',skill,'fixed_dock','sim',comparison='M2',context={'scene':'storage'})['accepted']
+
+
+def test_model_and_tools_share_one_decision_budget(db):
+    m=mission(db)
+    broker.call_tool(call(m,'list_skills'))
+    broker.record_model_steps(m['id'],m['generation'],1)
+    broker.call_tool(call(m,'propose_graph',graph(m)))
+    broker.call_tool(call(m,'prepare_skill_job',{'node_id':'dock'}))
+    with pytest.raises(ValueError,match='budget'):broker.call_tool(call(m,'get_snapshot'))
+    with pytest.raises(ValueError,match='already recorded'):broker.record_model_steps(m['id'],m['generation'],1)

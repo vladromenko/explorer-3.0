@@ -24,3 +24,15 @@ Trace сохраняется при каждом браузерном прого
 Финальные `browser-laboratory` и `browser-demo`: новая клетчатая сцена, переключение nominal/varied, полный scripted показ, STOP без самопуска — PASS. Во всех этих прогонах кнопки обучения не нажимались.
 
 `browser-fleet`: фактический общий MuJoCo мир в Explorer, три scripted успеха, snapshot→restore в паузу, singleton allocation при двух заданных запросах; PASS, внешние HTTP/console errors отсутствуют. Камера общего вида в первой проверке была приближена к ROSMASTER; framing расширен на три зоны. Полные learned rounds и физическая приёмка не заявляются.
+
+## Команда · AG2, до последующего изменения размещения SO-101
+
+`/team`: настоящий Chromium, реальные Qwen ToolCallingAgent и FleetWorld/MuJoCo.
+M1 job `0333f92cc612449395854b7f1465d019`, M3 job `efdc95f2f25841f99fa71cd6c11df2b8`:
+план → свежая камера помощника → допуск получателя → измеренная остановка → case →
+повтор с памятью. Отдельно просмотрены четыре раздела, журнал и исходы. STOP и
+visibilitychange отменяют задачу; скрытие в headless моделировалось штатным DOM event.
+Настоящее закрытие браузера также отменило текущую миссию; позднего самопуска нет.
+Отчёт `validation/cognitive/team-browser.json`, desktop/mobile/results PNG, browser
+errors=[], внешних browser requests нет, overflow на 390 px нет. Обучение и физические
+команды отсутствуют. Изменения после запрета запусков отмечаются отдельно как непроверенные.

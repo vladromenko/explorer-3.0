@@ -105,7 +105,7 @@ def add_case(value,db=None):
     return item.id
 
 
-def verify_case(case_id,episode,*,helper,recipient,task,evidence_ids,verifier_version):
+def verify_case(case_id,episode,*,helper,recipient,task,evidence_ids,verifier_version,mission_id=None,generation=None):
     """Called by the deterministic outcome path; deliberately not an agent tool."""
     values=(helper,recipient,task)
     if any(x not in ('success','failure','unknown','cancelled','hardware_error') for x in values):raise ValueError('Unknown outcome')
@@ -115,6 +115,11 @@ def verify_case(case_id,episode,*,helper,recipient,task,evidence_ids,verifier_ve
     if not any(all(e.payload.get(k)==v for k,v in zip(('helper','recipient','task'),values)) for e in items):
         raise ValueError('Outcomes disagree with verifier measurements')
     with catalog.connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        if mission_id is not None:
+            current=json.loads(db.execute('SELECT body FROM cognitive_missions WHERE id=?',(mission_id,)).fetchone()['body'])
+            if current['phase'] in ('cancelled','unknown','completed') or current['generation']!=generation:
+                raise ValueError('Late verification discarded')
         row=db.execute('SELECT * FROM cognitive_cases WHERE id=?',(case_id,)).fetchone()
         if row is None:raise ValueError('Unknown case')
         case=AssistanceCase.model_validate_json(row['body'])
@@ -127,7 +132,7 @@ def verify_case(case_id,episode,*,helper,recipient,task,evidence_ids,verifier_ve
                    (uuid.uuid4().hex,case_id,episode,encoded(payload),))
         rows=[json.loads(r['body']) for r in db.execute('SELECT body FROM cognitive_verifications WHERE case_id=?',(case_id,))]
         positive=sum(r['helper']=='success' and r['recipient']=='success' and r['task']=='success' for r in rows)
-        negative=any(r['recipient']=='failure' or r['task']=='failure' for r in rows)
+        negative=any(r['helper']=='failure' or r['recipient']=='failure' or r['task']=='failure' for r in rows)
         status='contradicted' if negative else 'supported_in_scope' if positive>=2 else 'candidate'
         updated=case.model_copy(update={'status':status,'helper_outcome':helper,'recipient_outcome':recipient,'task_outcome':task})
         db.execute('UPDATE cognitive_cases SET status=?,body=? WHERE id=?',(status,encoded(updated),case_id))
@@ -139,19 +144,21 @@ def cases():
     with catalog.connect() as db:return [json.loads(r['body']) for r in db.execute('SELECT body FROM cognitive_cases ORDER BY created DESC')]
 
 
-def compatibility(case,skill,goal,domain):
+def compatibility(case,skill,goal,domain,context=None):
     scope=case['compatibility'];problems=[]
     expected={'recipient_skill_id':skill.skill_id,'recipient_version':skill.version,
         'policy_sha256':skill.policy_sha256,'camera_sha256':skill.camera_sha256,
         'calibration_sha256':skill.calibration_sha256,'goal_id':goal,'domain':domain}
     for key,value in expected.items():
         if scope.get(key)!=value:problems.append(key+' changed')
+    for key,value in (context or {}).items():
+        if case.get('actual_effect',{}).get(key)!=value:problems.append(key+' changed')
     if scope.get('unknown_conditions'):problems.append('Continuation conditions unknown')
     if case['status'] in ('contradicted','stale'):problems.append('Memory is '+case['status'])
     return problems
 
 
-def retrieve(task,effect,skill,goal,domain,*,comparison='M3',limit=5,snapshot=None):
+def retrieve(task,effect,skill,goal,domain,*,comparison='M3',limit=5,snapshot=None,context=None):
     if comparison not in ('M0','M1','M2','M3'):raise ValueError('Unknown comparison')
     if not 1<=limit<=5:raise ValueError('At most five memory cases per decision')
     if comparison in ('M0','M1'):return {'accepted':[],'rejected':[],'memory_enabled':False}
@@ -166,7 +173,7 @@ def retrieve(task,effect,skill,goal,domain,*,comparison='M3',limit=5,snapshot=No
     for row in rows:
         current=json.loads(row['body']);case=frozen[current['id']] if frozen is not None else current
         if case['task']==task and case['effect']==effect and case['domain']==domain:
-            problems=compatibility(case,skill,goal,domain)
+            problems=compatibility(case,skill,goal,domain,context)
             hard=case['assistance_type'] not in ('observation','recovery','human','wait')
             if hard or (comparison=='M3' and problems):
                 rejected.append({'id':case['id'],'reasons':problems or ['Unsupported assistance']})

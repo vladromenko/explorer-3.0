@@ -20,3 +20,24 @@
 ROHE реализована по формуле (2) статьи Fleet-DAgger: (M/N) × суммарная награда / (1 + сумма квадратов Frobenius allocation). `plotting/plot.py` в авторском репозитории строит также penalized-reward график — он не подменяет определение статьи. «Успешные задачи / минуты помощи», включая switch/reset, выводится отдельно; simulated expert не считается измеренным временем человека.
 
 Новые модели: `policy_catalog`, `training.train_command`, `sim.policy_worker` используют официальный LeRobot 0.6.1 ACT/SmolVLA/Diffusion. SmolVLA base revision5e8d12a… и SmolVLM revision7b375e… закреплены. SmolVLA inference/snapshot на имеющемся synthetic checkpoint проверен, качество навыка не заявляется; новые обучения запрещены пользователем. YOLOE и SAM3 — отдельный perception слой, не замена моторной политике.
+
+## Агентный слой · 14.11.2026
+
+Это работающая адаптация протоколов поверх существующих компонентов. Перенос
+чужого исходного кода и адаптация метода различаются явно. Научное превосходство
+или результаты обучения из приведённых статей проекту не приписываются.
+
+| Метод / первичный источник | Код и лицензия источника | Реальная точка интеграции | Граница |
+|---|---|---|---|
+| [RoboOS](https://arxiv.org/abs/2505.03673), [RoboOS-NeXT](https://arxiv.org/abs/2510.26536) | [FlagOpen/RoboOS](https://github.com/FlagOpen/RoboOS), Apache-2.0 | `cognitive.registry`, типизированный TaskGraph, роли, broker и временные evidence: план отделён от роботных навыков и памяти | Архитектурная адаптация, не установка RoboBrain/облачного RoboOS. Никакого объявления новой архитектуры |
+| [PhysMem](https://arxiv.org/abs/2602.20323) | [verification.py](https://github.com/haoyangli16/PhysMem/blob/main/physmem/learning/verification.py), [hypothesis.py](https://github.com/haoyangli16/PhysMem/blob/main/physmem/core/hypothesis.py); MIT согласно README | `store.add_case/verify_case`: опыт → candidate → независимые episode IDs → supported_in_scope / contradicted; тесты исключают самоподтверждение и повторный подсчёт | Адаптация логики verification/promotion с более строгой привязкой артефактов. Upstream исходники не скопированы, вероятности уверенности не выдумываются, raw experience не удаляется |
+| [RoboMemory](https://arxiv.org/abs/2508.01415) | [SP4595/RoboMemory-Code](https://github.com/SP4595/RoboMemory-Code), Apache-2.0 | Разделение evidence/facts/events/cases; FTS5 retrieve + замороженный снимок памяти реально добавляет выбор прямого наблюдения вместо ограниченного поиска | Адаптация memory→planning цикла; тяжёлые embedding/VLM сервера статьи не устанавливаются; это не полный upstream benchmark |
+| [ActiveAlign / Look Before You Act](https://arxiv.org/abs/2610.23378) | Статья, CC BY 4.0 по arXiv; код не перенесён | `run.execute_graph`: свежий вид цели допускает продолжение, но успех камеры, успех получателя и общий исход измеряются отдельно; сохраняются оба эпизода и совместимость камеры/политики/геометрии | Протокольная адаптация проверки продолжения; VLA adaptation/training запрещены и не выполнены |
+| [smolagents ToolCallingAgent](https://huggingface.co/docs/smolagents/v1.26.0/en/reference/agents) | `smolagents==1.26.0`, Apache-2.0 | `cognitive.model`: настоящий ToolCallingAgent, единственный закрытый proposal tool, максимум две генерации с одной коррекцией формата | CodeAgent отсутствует; ToolCallingAgent не исполняет моторные/обучающие команды |
+| [Qwen3-VL-2B-Instruct](https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct) | Apache-2.0, revision `89644892e4d85e24eaac8bacfd4f463576704203`, hashes в `configs/cognitive-assets.lock.json` | Локальный inference на Homebrain, исходный checkpoint без обновления весов | Первый тракт получает измерения роботных RGB как текст; прямое VLM понимание изображения этим тестом не заявляется |
+
+`sim.cooperation` использует один прежний FleetWorld, тот же ArmModel IK и DockExpert.
+Детектор — явно названный OpenCV color/shape baseline только для фиксированного
+оранжевого маркера в номинальной сцене; он не получает simulator segmentation IDs
+или истинную позу цели. DockExpert остаётся privileged scripted teacher. Истинные
+симуляционные distance/yaw/stable используются отдельно для оценки исхода.
