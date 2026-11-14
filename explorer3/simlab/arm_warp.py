@@ -6,15 +6,18 @@ control period captured in a CUDA graph. The command filter that the CPU environ
 applies in Python every substep is expressed as the actuators' own first-order
 dynamics (timeconst), so the whole control period runs inside MuJoCo.
 
-Observation contract `arm_v1` (actor; identical on the real arm):
+Observation contract `arm_v2` (actor; identical on the real arm):
   0..5   joint positions, normalized to [-1, 1] over the actuator range
   6..11  joint velocities / 3 rad/s
-  12..17 current joint command (normalized like positions)
-  18..20 cube position in the arm base frame / 0.3 m   (from perception on the real robot)
-  21     cube visible now, 22 cube detection age / 1 s
-  23..25 box position in the base frame / 0.3 m          (scene constant)
-  26..31 previous normalized action
-Action: normalized delta of the joint command, scaled by MAX_STEP per control period.
+  12..14 cube position in the arm base frame / 0.3 m   (from perception on the real robot)
+  15     cube visible now, 16 cube detection age / 1 s
+  17..19 box position in the base frame / 0.3 m          (scene constant)
+  20     elapsed episode time / deadline
+The previous action and the current command are deliberately NOT in the actor input:
+targets change slowly, so a cloned policy learns to copy them ("copycat") and never moves.
+Action: absolute joint target normalized to [-1, 1] over the actuator range; the command
+moves toward it by at most MAX_STEP per control period (the same rate limit runs on the
+robot side). Absolute targets do not accumulate small errors the way deltas do.
 """
 import math
 import xml.etree.ElementTree as ET
@@ -26,7 +29,7 @@ import torch
 CONTROL_HZ = 30
 SUBSTEPS = 67
 MAX_STEP = np.deg2rad([2.0, 2.0, 2.0, 2.5, 3.0, 6.0])   # per 1/30 s
-ARM_OBS = 32
+ARM_OBS = 21
 ROBOTS = {
     'so101': {'hz': 30, 'substeps': 67, 'max_step_deg_s': [60, 60, 60, 75, 90, 180]},
     'rosmaster': {'hz': 20, 'substeps': 100, 'max_step_deg_s': [60, 60, 60, 75, 90, 180]},
@@ -140,7 +143,7 @@ class ArmBatch:
         self.ctrl[idx] = q[:, :6]
         self.act[idx] = q[:, :6]
         self.command[idx] = q[:, :6]
-        self.prev_action[idx] = 0
+        self.prev_action[idx] = 2 * (q[:, :6] - self.lo) / (self.hi - self.lo) - 1
         self.steps[idx] = 0
         self.stable[idx] = 0
         self.cube_age[idx] = 0
@@ -188,18 +191,19 @@ class ArmBatch:
         self.cube_age = torch.where(visible, torch.zeros_like(self.cube_age), (self.cube_age + self.dt).clamp(max=1.0))
         span = self.hi - self.lo
         norm = lambda q: 2 * (q - self.lo) / span - 1
-        actor = torch.cat([norm(self.qpos[:, :6]), self.qvel[:, :6] / 3, norm(self.command), self.held_cube / 0.3,
+        actor = torch.cat([norm(self.qpos[:, :6]), self.qvel[:, :6] / 3, self.held_cube / 0.3,
                            visible.float()[:, None], self.cube_age[:, None], self.box_pos.expand(self.n, 3) / 0.3,
-                           self.prev_action], 1)
+                           (self.steps.float() / self.deadline_steps)[:, None]], 1)
         _, ee, reach, lifted, to_box, inside, released, still = self._state()
-        critic = torch.cat([actor, cube / 0.3, ee / 0.3, (ee - cube) / 0.1, self.qvel[:, self.cube_v:self.cube_v + 6] / 3,
+        critic = torch.cat([actor, norm(self.command), self.prev_action, cube / 0.3, ee / 0.3, (ee - cube) / 0.1, self.qvel[:, self.cube_v:self.cube_v + 6] / 3,
                             torch.stack([lifted.float(), inside.float(), released.float(), self.stable,
                                          self.steps.float() / self.deadline_steps], 1)], 1)
         return actor, critic
 
     def step(self, action):
         action = action.clamp(-1, 1)
-        self.command = torch.minimum(torch.maximum(self.command + action * self.max_step, self.lo), self.hi)
+        target = self.lo + (action + 1) * 0.5 * (self.hi - self.lo)
+        self.command = self.command + torch.minimum(torch.maximum(target - self.command, -self.max_step), self.max_step)
         self.ctrl[:] = self.command
         self.wp.capture_launch(self.graph)
         self.steps += 1
@@ -210,7 +214,7 @@ class ArmBatch:
         fallen = (cube[:, 2] < -0.02) | (cube[:, :2].norm(dim=1) > 0.6)
         bad = ~torch.isfinite(self.qpos).all(1)
         pot = self._potential()
-        reward = 2.0 * (0.99 * pot - self.prev_potential) + 0.05 * pot - 0.005 * (action ** 2).sum(1) \
+        reward = 2.0 * (0.99 * pot - self.prev_potential) + 0.05 * pot \
             - 0.01 * ((action - self.prev_action) ** 2).sum(1) + 20.0 * success.float() - 2.0 * fallen.float()
         self.prev_potential = pot
         reward = torch.nan_to_num(reward)

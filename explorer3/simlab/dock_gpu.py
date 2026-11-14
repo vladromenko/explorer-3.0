@@ -78,7 +78,18 @@ class DockBatch:
         self.params = {k: z(N) for k in ('delay', 'tau', 'slip_v', 'slip_w', 'dz_v', 'dz_w', 'gyro_bias',
                                          'imu_noise', 'lidar_noise', 'dropout')}
         self.safety_events = z(N)
+        self.identified = self._identified_ranges()
         self.reset_all()
+
+    def _identified_ranges(self):
+        """Accepted real-log identification (scripts/simlab_sysid.py) replaces the priors."""
+        import json
+        from explorer3.paths import DATA
+        path = DATA / 'simlab/sysid' / f'{self.robot}.json'
+        try:
+            return json.loads(path.read_text()).get('ranges', {})
+        except (OSError, ValueError):
+            return {}
 
     # ---------- sampling ----------
     def _u(self, lo, hi, shape=None):
@@ -115,12 +126,14 @@ class DockBatch:
         self.burst[idx] = 0
         self.held[idx] = torch.tensor([0., 0., 0., contract.AGE_CLIP_S], device=self.device)
         p = self.params
-        p['delay'][idx] = torch.randint(1, self.max_delay, (k,), generator=self.g, device=self.device).float()
-        p['tau'][idx] = u(0.05, 0.18)
-        p['slip_v'][idx] = u(0.80, 1.0)
-        p['slip_w'][idx] = u(0.65, 1.0) if self.robot == 'tank' else u(0.85, 1.0)
-        p['dz_v'][idx] = u(0.0, 0.03)
-        p['dz_w'][idx] = u(0.0, 0.12)
+        yaw_id, fwd_id = self.identified.get('yaw'), self.identified.get('forward')
+        d_lo, d_hi = yaw_id['delay_steps'] if yaw_id else (1, self.max_delay - 1)
+        p['delay'][idx] = torch.randint(int(d_lo), min(int(d_hi), self.max_delay - 1) + 1, (k,), generator=self.g, device=self.device).float()
+        p['tau'][idx] = u(*yaw_id['tau']) if yaw_id else u(0.05, 0.18)
+        p['slip_v'][idx] = u(*fwd_id['gain']) if fwd_id else u(0.80, 1.0)
+        p['slip_w'][idx] = u(*yaw_id['gain']) if yaw_id else (u(0.65, 1.0) if self.robot == 'tank' else u(0.85, 1.0))
+        p['dz_v'][idx] = u(*fwd_id['deadzone']) if fwd_id else u(0.0, 0.03)
+        p['dz_w'][idx] = u(*yaw_id['deadzone']) if yaw_id else u(0.0, 0.12)
         p['gyro_bias'][idx] = u(-0.02, 0.02)
         p['imu_noise'][idx] = u(0.05, 0.4)
         p['lidar_noise'][idx] = u(0.005, 0.02)

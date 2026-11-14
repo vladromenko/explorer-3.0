@@ -1,4 +1,4 @@
-"""M6.3: scripted-teacher demonstrations for the arm in the arm_v1 contract.
+"""M6.3: scripted-teacher demonstrations for the arm in the arm_v1 contract (absolute targets).
 
 Runs the existing privileged geometric teacher (explorer3.sim.expert.ScriptedSO101) in the
 CPU MuJoCo environment and records (actor observation, normalized delta action) pairs in
@@ -24,7 +24,7 @@ def collect(episodes=200, seed=0, history=3, log=print):
         env.reset(seed=int(seed * 100000 + ep))
         expert = ScriptedSO101(env)
         command = env.data.ctrl[:6].copy()
-        prev = np.zeros(6)
+        prev = norm(command)
         held = env.data.body('task_cube').xpos.copy()
         age = 0.0
         frames, actions = [], []
@@ -37,14 +37,14 @@ def collect(episodes=200, seed=0, history=3, log=print):
             else:
                 age = min(1.0, age + env.dt)
             free_v = int(env.model.joint('cube_free').dofadr[0])
-            obs = np.concatenate([norm(env.data.qpos[:6]), env.data.qvel[:6] / 3, norm(command), held / 0.3,
-                                  [float(visible), age], box / 0.3, prev]).astype(np.float32)
-            target = env.to_radians(np.asarray(expert.action()))
-            delta = np.clip((target - command) / MAX_STEP, -1, 1)
-            command = np.clip(command + delta * MAX_STEP, lo, hi)
+            obs = np.concatenate([norm(env.data.qpos[:6]), env.data.qvel[:6] / 3, held / 0.3,
+                                  [float(visible), age], box / 0.3, [t / (env.deadline_s * env.fps)]]).astype(np.float32)
+            target = np.clip(env.to_radians(np.asarray(expert.action())), lo, hi)
+            label = norm(target)                         # absolute normalized joint target
+            command = command + np.clip(target - command, -MAX_STEP, MAX_STEP)
             frames.append(obs)
-            actions.append(delta.astype(np.float32))
-            prev = delta
+            actions.append(label.astype(np.float32))
+            prev = label
             _, _, term, trunc, info = env.step(env.from_radians(command))
             if term or trunc:
                 break
