@@ -21,9 +21,10 @@ def install(css,jobs):
     @ui.page('/datasets/guide')
     async def guide_page():
         ui.add_css(css+STYLE);ui.dark_mode().enable()
+        ui.add_css('.dataset-guide{min-width:0;overflow-wrap:anywhere}.dataset-guide table{display:block;max-width:100%;overflow-x:auto}.dataset-guide code{white-space:normal}')
         with ui.row():
             ui.link('Explorer','/');ui.link('Подготовить обучение','/training/prepare')
-        ui.markdown((ROOT/'docs/DATASET_GUIDE_RU.md').read_text()).classes('w-full')
+        ui.markdown((ROOT/'docs/DATASET_GUIDE_RU.md').read_text()).classes('w-full dataset-guide')
 
     async def builder_page(domain):
         ui.add_css(css+STYLE);ui.dark_mode().enable();ui.colors(primary='#2b9c8f',secondary='#748aa4',negative='#d45050')

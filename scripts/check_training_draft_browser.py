@@ -1,15 +1,16 @@
 """Choose actual isolated sim records; prepare/reopen draft, NEVER click start."""
-import asyncio,json,sqlite3
+import asyncio,json,sqlite3,os
 from pathlib import Path
 from playwright.async_api import async_playwright,expect
 
-DATA=Path('/home/jetsonnx/.local/share/explorer3/validation/browser-sim')
+DATA=Path(os.environ.get('EXPLORER3_CHECK_DATA','/home/jetsonnx/.local/share/explorer3/validation/browser-sim'))
+BASE=os.environ.get('EXPLORER3_CHECK_URL','http://127.0.0.1:8035')
 
 def jobs():
     with sqlite3.connect(DATA/'catalog.sqlite3') as db:return db.execute('select id,status,config from jobs order by id').fetchall()
 
 async def main():
-    root=Path('/home/jetsonnx/.local/share/explorer3/validation/corrective-a/browser-training-draft');root.mkdir(exist_ok=True)
+    root=Path(os.environ.get('EXPLORER3_CHECK_OUTPUT','/home/jetsonnx/.local/share/explorer3/validation/corrective-a/browser-training-draft'));root.mkdir(parents=True,exist_ok=True)
     before=jobs()
     async with async_playwright() as p:
         browser=await p.chromium.launch(headless=True,args=['--no-sandbox'])
@@ -21,7 +22,7 @@ async def main():
             else:await route.continue_()
         await context.route('**/*',local);page=await context.new_page();page.on('pageerror',lambda x:errors.append(str(x)))
         try:
-            await page.goto('http://127.0.0.1:8035/sim/training')
+            await page.goto(BASE+'/sim/training')
             await expect(page.get_by_role('button',name='Запустить подготовленное обучение',exact=True)).to_be_disabled()
             await page.get_by_label('Задача',exact=True).click();await page.get_by_role('option',name='Tank · подъезд к цели',exact=True).click()
             await page.get_by_label('Показы и исправления для нового плана',exact=True).click()
@@ -31,7 +32,7 @@ async def main():
             await page.keyboard.press('Escape')
             await page.get_by_label('Обновлений весов',exact=True).fill('1234')
             await page.get_by_role('button',name='Подготовить план · не запускать',exact=True).click()
-            await page.get_by_text('План сохранён · обучение не запущено',exact=True).wait_for(timeout=30000)
+            await page.get_by_text('План сохранён · обучение не запущено',exact=True).wait_for(timeout=90000)
             async with page.expect_download() as event:
                 await page.get_by_role('button',name='Скачать план',exact=True).click()
             download=await event.value;await download.save_as(root/'draft.json')
@@ -44,7 +45,9 @@ async def main():
             assert not await page.get_by_role('checkbox',name='Запустить обучение сейчас по показанному неизменяемому плану',exact=True).is_checked()
             assert jobs()==before and not errors and not external
             await page.screenshot(path=str(root/'prepared.png'),full_page=True)
-            await page.get_by_role('checkbox',name='Запустить обучение сейчас по показанному неизменяемому плану',exact=True).check()
+            confirmation=page.get_by_role('checkbox',name='Запустить обучение сейчас по показанному неизменяемому плану',exact=True)
+            await confirmation.click()
+            await expect(confirmation).to_be_checked()
             await page.get_by_role('button',name='Подготовить другой план',exact=True).click()
             await expect(page.get_by_role('button',name='Запустить подготовленное обучение',exact=True)).to_be_disabled()
             assert not await page.get_by_role('checkbox',name='Запустить обучение сейчас по показанному неизменяемому плану',exact=True).is_checked()

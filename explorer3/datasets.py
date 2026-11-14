@@ -88,13 +88,13 @@ def freeze(name, smoke, seed=1000, sim_model_hash=None, *, selected_ids=None, mi
     for episode in episodes:
         root = Path(episode['dataset'])
         provenance = json.loads((root / 'provenance.json').read_text())
-        from .training_drafts import semantic_contract
-        if semantic_contract(provenance.get('profile'))!=semantic_contract(profile(name)):
-            raise ValueError('Камера, частота, единицы или каналы записи отличаются от текущего профиля: '+episode['id'])
         if provenance.get('hardware',{}).get('pipeline_check') or provenance.get('hardware',{}).get('training_eligible') is False:
             raise ValueError('Диагностическая или не принятая запись не является обучающим показом')
         if provenance.get('domain','real')!=domain or provenance.get('synthetic') is not (domain!='real'):
             raise ValueError('Синтетические данные запрещены в физическом наборе')
+        from .training_drafts import semantic_contract
+        if semantic_contract(provenance.get('profile'))!=semantic_contract(profile(name)):
+            raise ValueError('Камера, частота, единицы или каналы записи отличаются от текущего профиля: '+episode['id'])
         validation = DATA / 'validation' / f"episode-{episode['id']}.json"
         digest = fingerprint(root)
         checked = json.loads(validation.read_text()) if validation.exists() else {}
