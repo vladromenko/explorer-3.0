@@ -18,6 +18,10 @@ import numpy as np
 
 from .paths import DATA, ROOT
 
+
+def wrap(a):
+    return (a + math.pi) % (2 * math.pi) - math.pi
+
 # Russian -> English prompts for the detector's text encoder, matched by word stem so any case
 # form works («к носку», «носок», «носки»). Unknown words (and English input) pass through.
 STEMS = [
@@ -147,6 +151,14 @@ class GoTo:
         self.detect_ms = None
         self.tracker = None
         self.fresh = False
+        from . import world_memory
+        self.memory = world_memory
+        self.pose = world_memory.POSES[robot]
+        self.localizer = world_memory.BeaconLocalizer()
+        self.last_tick = time.monotonic()
+        self.last_cmd = (0., 0.)
+        self.last_locate = 0.
+        self.last_record = 0.
         self.lock = threading.Lock()
         self.thread = threading.Thread(target=self._detect_loop, daemon=True)
         self.thread.start()
@@ -187,9 +199,49 @@ class GoTo:
         return math.hypot(x, y), math.atan2(y, x), box[3] >= height * .97
 
     # ---- control (called every frame by the session loop)
+    def _bookkeeping(self, rgb):
+        """Dead reckoning from the previous command, beacon fix twice a second."""
+        now = time.monotonic()
+        dt, self.last_tick = min(.3, now - self.last_tick), now
+        self.pose.move(self.last_cmd[0] * .85, 0., self.last_cmd[1] * .85, dt)
+        if now - self.last_locate > .5:
+            self.last_locate = now
+            fix = self.localizer.locate(rgb, self.cam)
+            if fix:
+                self.pose.fix(fix['x'], fix['y'], fix['theta'])
+
+    def _out(self, cmd):
+        self.last_cmd = (cmd[0], cmd[1])
+        return cmd
+
+    def _memory_drive(self):
+        """Head for a position another robot (or this one earlier) reported; None if not possible."""
+        item = self.memory.target_for(self.robot, self.prompt)
+        if item is None:
+            return None
+        who = {'tank': 'Tank', 'rosmaster': 'ROSMASTER'}.get(item['robot'], item['robot'])
+        if not self.pose.known():
+            self.message = f'{who} видел «{self.text}», но я пока не вижу маяков и не знаю, где я: ищу сам'
+            return None
+        tx, ty = item['room_xy']
+        dx, dy = tx - self.pose.x, ty - self.pose.y
+        dist = math.hypot(dx, dy)
+        if dist < .6:
+            return None                                  # close: look for it with the camera
+        b = wrap(math.atan2(dy, dx) - self.pose.theta)
+        self.state = 'memory'
+        self.message = f'Еду к месту, где {who} видел «{self.text}»: {dist:.1f} м, {math.degrees(b):+.0f}°'
+        w = max(-self.w_max, min(self.w_max, 1.4 * b))
+        v = 0. if abs(b) > .4 else min(self.v_max, .5 * dist)
+        return [v, w]
+
     def command(self, rgb):
         if not self.active:
             return [0., 0.]
+        self._bookkeeping(rgb)
+        return self._out(self._command(rgb))
+
+    def _command(self, rgb):
         with self.lock:
             self.frame = rgb
             fresh, self.fresh = self.fresh, False
@@ -212,6 +264,12 @@ class GoTo:
         if box is not None and age < 1.2:
             d, b, at_bottom = self.geometry(box, rgb.shape[0])
             self.distance, self.bearing = d, b
+            if time.monotonic() - self.last_record > 2. and age < .5:
+                self.last_record = time.monotonic()
+                try:
+                    self.memory.record(self.robot, self.text, self.prompt, d, b, rgb, box, self.score)
+                except Exception:
+                    pass
             if d <= self.stop_m or at_bottom:
                 self.finish('arrived', f'Приехал к «{self.text}»: ~{max(d, .2):.2f} м')
                 return [0., 0.]
@@ -225,6 +283,9 @@ class GoTo:
         if box is not None and age < 2.5:
             self.state, self.message = 'lost', f'Потерял «{self.text}», жду…'
             return [0., 0.]
+        drive = self._memory_drive()
+        if drive is not None:
+            return drive
         self.state = 'search'
         if self.searched > 2 * math.pi + .5:
             self.finish('not_found', f'Не вижу «{self.text}» вокруг себя')

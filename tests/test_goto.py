@@ -8,6 +8,16 @@ pytest.importorskip('cv2')
 from explorer3 import goto
 
 
+@pytest.fixture(autouse=True)
+def isolated_memory(monkeypatch, tmp_path):
+    from explorer3 import world_memory
+    monkeypatch.setattr(world_memory, 'MEMORY', tmp_path / 'memory.json')
+    monkeypatch.setattr(world_memory, 'SNAPSHOTS', tmp_path / 'snap')
+    monkeypatch.setattr(world_memory, 'beacons', lambda: {})
+    for p in world_memory.POSES.values():
+        p.x = p.y = p.theta = None
+
+
 class FakeDetector:
     def __init__(self, boxes):
         self.boxes = boxes

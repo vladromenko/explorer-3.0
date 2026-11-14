@@ -147,6 +147,8 @@ from . import training_pages
 training_pages.install(CSS,jobs)
 from . import learn_pages
 learn_pages.install(jobs)
+(DATA/'world').mkdir(parents=True,exist_ok=True)
+app.add_media_files('/world-media',DATA/'world')
 from . import fleet_policy_pages
 fleet_policy_pages.install(CSS,jobs)
 from . import gain_pages
@@ -226,6 +228,54 @@ def index(request:Request):
                     ui.link('Подготовка без робота', '/rosmaster/preparation')
                     ui.link('Открыть управление', '/rosmaster/control')
                     ui.link('Камера и диагностика', '/rosmaster')
+    with ui.card().style('background:#141b24;border:1px solid #2a3a4c;border-radius:14px;padding:12px 16px;width:100%;margin-bottom:10px'):
+        with ui.row().style('width:100%;justify-content:space-between;align-items:center'):
+            ui.label('Общая память роботов').style('font-size:17px;font-weight:700')
+            memory_status=ui.label('').classes('muted')
+        ui.label('Что один робот увидел, знает и другой: кнопка «Отправить» посылает второго робота к этому месту, рядом он находит предмет своей камерой. Точное место в комнате появляется, когда роботы видят маяки на стенах (configs/room_beacons.yaml).').classes('muted')
+        @ui.refreshable
+        def memory_list():
+            from . import world_memory
+            items=world_memory.known_objects()
+            if not items:
+                ui.label('Пока пусто: попросите любого робота «подъехать к …».').classes('muted');return
+            names={'tank':'Tank','rosmaster':'ROSMASTER'}
+            with ui.row().style('width:100%;gap:12px;flex-wrap:wrap'):
+                for item in items[:8]:
+                    with ui.card().style('background:#10161e;border:1px solid #243041;border-radius:12px;padding:8px;width:250px'):
+                        if item.get('snapshot'):ui.image('/world-media/snapshots/'+item['snapshot']).style('width:100%;border-radius:8px')
+                        ago=int(time.time()-item['at'])
+                        ui.label(f"{item['text'].replace('к ','',1)} · {item['prompt']}").style('font-weight:650')
+                        where=(f"в комнате ({item['room_xy'][0]:.1f}; {item['room_xy'][1]:.1f}) ±{item.get('uncertainty_m',0):.1f} м" if item['room_xy']
+                               else f"в {item['distance']:.1f} м от {names.get(item['robot'],item['robot'])}, место в комнате неизвестно")
+                        ui.label(f"видел {names.get(item['robot'],item['robot'])} {ago//60} мин назад · {where}").classes('muted')
+                        with ui.row():
+                            def send_tank(text=item['text']):
+                                async def go():
+                                    try:
+                                        if control.robot!='tank' or control.owner!=owner or not (session.thread and session.thread.is_alive()):
+                                            raise RuntimeError('Выберите Tank и нажмите «Включить управление»')
+                                        from .goto import GoTo
+                                        goal=await asyncio.to_thread(GoTo,'tank',text)
+                                        control.goal=goal
+                                    except Exception as exc:notify_error(exc)
+                                return go
+                            def send_ros(text=item['text']):
+                                async def go():
+                                    try:
+                                        from .rosmaster_goto import runner
+                                        await asyncio.to_thread(runner.start,text)
+                                    except Exception as exc:notify_error(exc)
+                                return go
+                            ui.button('Отправить Tank',on_click=send_tank()).props('dense flat')
+                            ui.button('Отправить ROSMASTER',on_click=send_ros()).props('dense flat')
+        memory_list()
+        def memory_refresh():
+            from . import world_memory
+            poses=[f"{n}: ({p.x:.1f}; {p.y:.1f}) {p.source}" if p.known() else f"{n}: место неизвестно" for n,p in (('Tank',world_memory.POSES['tank']),('ROSMASTER',world_memory.POSES['rosmaster']))]
+            memory_status.set_text(f"маяков: {len(world_memory.beacons())} · "+' · '.join(poses))
+            memory_list.refresh()
+        ui.timer(4,memory_refresh)
     with ui.element('div').classes('workspace'):
         selected=ui.label('Выбран: '+ROBOT_NAMES[control.robot]).classes('selected')
         mode_label=ui.label('Наблюдение · приводы не включены').classes('muted')
