@@ -35,6 +35,23 @@ def load_sam3(root):
         r = processor.post_process_instance_segmentation(out, threshold=max(conf, .3), mask_threshold=.5,
                                                          target_sizes=inputs['original_sizes'].tolist())[0]
         return [[float(x) for x in b] + [float(sc)] for b, sc in zip(r['boxes'], r['scores'])]
+
+    def detect_many(frame_bgr, prompts, conf):
+        """One vision pass, many text prompts (room inventory): ~0.25 s per extra prompt."""
+        from PIL import Image
+        image = Image.fromarray(frame_bgr[:, :, ::-1])
+        inputs = processor(images=image, return_tensors='pt').to(device)
+        out = {}
+        with torch.inference_mode(), torch.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=device == 'cuda'):
+            vision = model.get_vision_features(pixel_values=inputs['pixel_values'])
+            for prompt in prompts:
+                text = processor(text=prompt, return_tensors='pt').to(device)
+                o = model(vision_embeds=vision, input_ids=text['input_ids'], attention_mask=text['attention_mask'])
+                r = processor.post_process_instance_segmentation(o, threshold=max(conf, .3), mask_threshold=.5,
+                                                                 target_sizes=inputs['original_sizes'].tolist())[0]
+                out[prompt] = [[float(x) for x in b] + [float(sc)] for b, sc in zip(r['boxes'], r['scores'])]
+        return out
+    detect.many = detect_many
     return detect, device
 
 
@@ -67,9 +84,16 @@ def main():
     for line in sys.stdin:
         try:
             request = json.loads(line)
-            prompt = request['prompt'].strip()[:80]
             frame = cv2.imdecode(np.frombuffer(base64.b64decode(request['jpeg_b64']), np.uint8), cv2.IMREAD_COLOR)
             started = time.monotonic()
+            if 'prompts' in request:
+                prompts = [str(p).strip()[:80] for p in request['prompts']][:24]
+                many = getattr(detect, 'many', None)
+                results = (many(frame, prompts, float(request.get('conf', .3))) if many else
+                           {p: detect(frame, p, float(request.get('conf', .3))) for p in prompts})
+                print(json.dumps({'results': results, 'ms': round((time.monotonic() - started) * 1000, 1)}), flush=True)
+                continue
+            prompt = request['prompt'].strip()[:80]
             boxes = detect(frame, prompt, float(request.get('conf', .3)))
             print(json.dumps({'boxes': boxes, 'ms': round((time.monotonic() - started) * 1000, 1)}), flush=True)
         except Exception as exc:  # report and keep serving

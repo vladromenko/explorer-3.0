@@ -161,6 +161,10 @@ learn_pages.install(jobs)
 (DATA/'world').mkdir(parents=True,exist_ok=True)
 app.add_media_files('/world-media',DATA/'world')
 from fastapi.responses import Response as _Response
+@app.get('/episodes.csv')
+def episodes_csv():
+    from .episodes import to_csv
+    return _Response(to_csv(),media_type='text/csv; charset=utf-8',headers={'Content-Disposition':'attachment; filename=explorer-episodes.csv'})
 @app.get('/fleet-map.png')
 def fleet_map_png():
     import cv2
@@ -253,6 +257,73 @@ def index(request:Request):
                     if ident=='rosmaster':
                         ui.button('Полная панель',on_click=lambda:ui.navigate.to('/rosmaster/control')).props('flat')
     with ui.card().classes('robot').style('width:100%;margin-bottom:14px'):
+        from . import swarm as _swarm, so101_handoff as _handoff
+        team=_swarm.SWARM
+        with ui.row().style('width:100%;justify-content:space-between;align-items:center'):
+            ui.label('Рой: одна команда — роботы работают вместе').style('font-size:17px;font-weight:700')
+            swarm_badge=ui.label('').classes('muted')
+        ui.label('Tank и ROSMASTER вместе осматривают комнату и делят её между собой, камеры записывают найденные предметы в общую память. «Принеси …»: ROSMASTER находит и берёт предмет, везёт к SO-101, кладёт на площадку, SO-101 протягивает его вам. Tank включается роем сам.').classes('muted')
+        with ui.row().style('width:100%;gap:8px;align-items:center;flex-wrap:wrap'):
+            swarm_text=ui.input(placeholder='принеси печеньку · найдите носок · осмотрите комнату').props('dense outlined').style('min-width:320px;flex:1')
+            def swarm_go(text=None):
+                try:
+                    value=(text or swarm_text.value or '').strip()
+                    if not value:raise ValueError('Напишите команду')
+                    kind,prompt=team.command(value,{'Оба робота':None,'Только ROSMASTER':['rosmaster'],'Только Tank':['tank']}[swarm_who.value])
+                    ui.notify({'explore':'Рой осматривает комнату','find':f'Рой ищет: {prompt}','fetch':f'Рой несёт: {prompt}','goto':f'Еду к: {prompt}'}[kind])
+                except Exception as exc:notify_error(exc)
+            swarm_who=ui.select(['Оба робота','Только ROSMASTER','Только Tank'],value='Оба робота').props('dense outlined').style('min-width:170px')
+            ui.button('Выполнить',icon='hub',on_click=lambda:swarm_go()).props('unelevated')
+            ui.button('Осмотрите комнату',icon='travel_explore',on_click=lambda:swarm_go('осмотрите комнату')).props('flat')
+            ui.button('Забрал',icon='back_hand',on_click=lambda:team.taken()).props('flat')
+            ui.button('STOP рой',icon='stop',color='negative',on_click=lambda:team.stop('STOP роя оператором')).props('unelevated')
+        swarm_state=ui.html('').classes('muted')
+        with ui.expansion('Места передачи (настраиваются один раз)',icon='handshake').style('width:100%'):
+            ui.label('1) Поставьте ROSMASTER у SO-101 так, чтобы его рука доставала до площадки, и нажмите «место передачи». 2) Рукой ROSMASTER (полная панель) опустите захват над площадкой и нажмите «положить». 3) Включите SO-101 с ведущей рукой и по очереди покажите позы. Площадка — любое место, куда дотягиваются обе руки (коробка, подставка).').classes('muted').style('font-size:12.5px')
+            def teach_spot():
+                try:
+                    from .fleet_map import FLEET
+                    pose,_=FLEET.pose('rosmaster')
+                    if pose is None:raise RuntimeError('ROSMASTER не знает своё место на карте')
+                    _handoff.teach('rosmaster_spot',[round(v,3) for v in pose]);ui.notify('Место передачи запомнено')
+                except Exception as exc:notify_error(exc)
+            def teach_place():
+                try:
+                    obs=(rosmaster_control.request('/health').get('observation') or {})
+                    arm=obs.get('arm_measured')
+                    if not arm or len(arm)!=6:raise RuntimeError('Нет измерений руки ROSMASTER')
+                    _handoff.teach('rosmaster_place',[round(float(v),1) for v in arm]);ui.notify('Поза «положить» запомнена')
+                except Exception as exc:notify_error(exc)
+            def teach_so101(name):
+                def go():
+                    try:
+                        latest=session.latest or {}
+                        state=latest.get('observation.state')
+                        if control.robot!='so101' or not state:raise RuntimeError('Выберите SO-101 и включите управление ведущей рукой')
+                        _handoff.teach('so101.'+name,state);ui.notify('SO-101: «'+_handoff.NAMES[name]+'» запомнено')
+                    except Exception as exc:notify_error(exc)
+                return go
+            with ui.row().style('gap:8px;flex-wrap:wrap'):
+                ui.button('ROSMASTER: место передачи',on_click=teach_spot).props('flat dense')
+                ui.button('ROSMASTER: поза «положить»',on_click=teach_place).props('flat dense')
+                for _name in _handoff.POSES:
+                    ui.button('SO-101: '+_handoff.NAMES[_name],on_click=teach_so101(_name)).props('flat dense')
+            handoff_state=ui.label('').classes('muted')
+        def swarm_refresh():
+            st=team.status()
+            names={'tank':'Tank','rosmaster':'ROSMASTER'}
+            lines=[]
+            if st.get('task'):
+                lines.append(f"<b>{st['task']}</b> · этап: {st.get('stage')} · {st.get('message','')}")
+                for robot,msg in (st.get('robots') or {}).items():lines.append(f"{names.get(robot,robot)}: {msg}")
+                for at,stage,msg in st.get('log',[])[-5:]:
+                    lines.append(f"<span style='opacity:.7'>{time.strftime('%H:%M:%S',time.localtime(at))} · {msg}</span>")
+            swarm_state.set_content('<br>'.join(lines) or 'Рой ждёт команду')
+            swarm_badge.set_text('работает' if st.get('active') else 'свободен')
+            miss=_handoff.missing()
+            handoff_state.set_text('Готово: все места передачи запомнены' if not miss else 'Не хватает: '+'; '.join(miss))
+        ui.timer(1,swarm_refresh)
+    with ui.card().classes('robot').style('width:100%;margin-bottom:14px'):
         with ui.row().style('width:100%;justify-content:space-between;align-items:center'):
             ui.label('Общая память роботов').style('font-size:17px;font-weight:700')
             memory_status=ui.label('').classes('muted')
@@ -291,13 +362,18 @@ def index(request:Request):
                     ui.button('Начать карту заново',icon='restart_alt',on_click=reset_map).props('flat dense')
                 explore_state=ui.label('').classes('muted')
         ui.label('Эпизоды автономной работы').style('font-size:15px;font-weight:700;margin-top:6px')
-        ui.label('Каждое задание записывается само: робот, задача, итог, время, путь, кадры и карта (папка episodes). Из этого считаются цифры для статьи.').classes('muted').style('font-size:12.5px')
+        with ui.row().style('width:100%;justify-content:space-between;align-items:center'):
+            ui.label('Каждое задание записывается само: робот, задача, итог, время, путь, кадры и карта (папка episodes). Из этого считаются цифры для статьи.').classes('muted').style('font-size:12.5px')
+            ui.link('Скачать таблицу (CSV)','/episodes.csv').style('color:#63e0b8')
         @ui.refreshable
-        def episode_table():
+        def fleet_episode_table():
             from . import episodes
-            names={'tank':'Tank','rosmaster':'ROSMASTER'};kinds={'goto':'подъехать к …','explore':'исследовать комнату'}
+            names={'tank':'Tank','rosmaster':'ROSMASTER','fleet':'Рой','fleet:team':'Рой (оба)','fleet:solo':'Рой (один робот)'}
+            kinds={'goto':'подъехать к …','explore':'исследовать комнату','team_explore':'рой: осмотр','team_find':'рой: поиск',
+                   'fetch':'рой: принести','team_goto':'рой: подъехать','drive':'доехать до места'}
             outcomes={'arrived':'приехал','explored':'обследовал','not_found':'не нашёл','cancelled':'остановлен человеком','intervened':'перехват человеком',
-                      'timeout':'время вышло','lost':'потерял себя','error':'ошибка'}
+                      'timeout':'время вышло','lost':'потерял себя','error':'ошибка','team_done':'нашёл другой робот',
+                      'failed':'не получилось','no_path':'нет пути'}
             st=episodes.stats()
             if not st:
                 ui.label('Пока ни одного эпизода.').classes('muted');return
@@ -313,7 +389,7 @@ def index(request:Request):
             ui.table(columns=[{'name':k,'label':l,'field':k,'align':'left'} for k,l in
                               (('when','Когда'),('robot','Робот'),('task','Задание'),('outcome','Итог'),('time','Время'),('path','Путь'))],
                      rows=rows).props('dense flat dark').style('width:100%;background:transparent')
-        episode_table()
+        fleet_episode_table()
         @ui.refreshable
         def memory_list():
             from . import world_memory
@@ -357,7 +433,7 @@ def index(request:Request):
             memory_status.set_text(' · '.join(poses))
             from .fleet_map import FLEET,LOCALIZER
             st=FLEET.status();names={'tank':'Tank','rosmaster':'ROSMASTER'}
-            states={'mapping':'строит карту','tracking':'знает, где он','weak':'неуверенно','searching':'ищет себя на карте','no_scan':'лидар молчит'}
+            states={'mapping':'строит карту','submap':'строит свою карту','tracking':'знает, где он','weak':'неуверенно','searching':'ищет себя на карте','no_scan':'лидар молчит'}
             lines=[]
             for robot in ('rosmaster','tank'):
                 info=st['robots'].get(robot)
@@ -378,7 +454,7 @@ def index(request:Request):
             if _runner.goal is not None and getattr(_runner.goal,'prompt','')=='explore':msgs.append('ROSMASTER: '+_runner.status()['message'])
             explore_state.set_text(' · '.join(msgs))
             memory_list.refresh()
-            episode_table.refresh()
+            fleet_episode_table.refresh()
         ui.timer(4,memory_refresh)
     with ui.element('div').classes('workspace'):
         selected=ui.label('Выбран: '+ROBOT_NAMES[control.robot]).classes('selected')
@@ -875,6 +951,8 @@ app.on_startup(recover_recording_checks)
 app.on_startup(scheduled_backup)
 app.timer(60,scheduled_backup)
 app.on_startup(lambda:catalog.event('info','Explorer 3.0 запущен без открытия аппаратуры'))
+from . import swarm as _swarm_module
+_swarm_module.install(control,session)
 def _start_fleet_localizer():
     from .fleet_map import LOCALIZER
     LOCALIZER.start()
@@ -883,6 +961,7 @@ def _stop_fleet_localizer():
     LOCALIZER.stop()
 app.on_startup(_start_fleet_localizer)
 app.on_shutdown(_stop_fleet_localizer)
+app.on_shutdown(lambda:_swarm_module.SWARM and _swarm_module.SWARM.stop('Служба останавливается'))
 app.on_shutdown(lambda:control.stop('Служба останавливается'))
 app.on_shutdown(lambda:jobs.cancel())
 from . import sim_service

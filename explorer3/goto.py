@@ -25,6 +25,8 @@ def wrap(a):
 # Russian -> English prompts for the detector's text encoder, matched by word stem so any case
 # form works («к носку», «носок», «носки»). Unknown words (and English input) pass through.
 STEMS = [
+    ('печень', 'cookie'), ('печен', 'cookie'), ('конфет', 'candy'), ('яблок', 'apple'), ('банан', 'banana'),
+    ('шоколад', 'chocolate bar'), ('орех', 'nut'), ('мандарин', 'tangerine'), ('апельсин', 'orange fruit'),
     ('носк', 'sock'), ('носок', 'sock'), ('чемодан', 'suitcase'), ('флакон', 'bottle'), ('порошк', 'detergent bottle'), ('кубик', 'cube'), ('куб', 'cube'), ('мяч', 'ball'), ('коробк', 'box'),
     ('коробок', 'box'), ('ящик', 'box'), ('стул', 'chair'), ('кресл', 'armchair'), ('табурет', 'stool'),
     ('бутыл', 'bottle'), ('кружк', 'mug'), ('чашк', 'cup'), ('стакан', 'glass'), ('игрушк', 'toy'),
@@ -49,7 +51,8 @@ STEMS = [
 ]
 STEMS.sort(key=lambda p: -len(p[0]))      # longest stem wins («коробк» before «кот»)
 SKIP = {'подъедь', 'подъехать', 'подъезжай', 'езжай', 'едь', 'поезжай', 'двигайся', 'к', 'ко', 'до', 'на', 'в',
-        'возьми', 'найди', 'и', 'the', 'to', 'go', 'a'}
+        'возьми', 'найди', 'и', 'the', 'to', 'go', 'a', 'принеси', 'привези', 'подай', 'дай', 'мне', 'найдите',
+        'осмотрите', 'ищи', 'ищите', 'где', 'пожалуйста', 'please', 'bring', 'find', 'me'}
 
 
 # Camera geometry (MentorPi T1 manufacturer model; replace when measured).
@@ -120,6 +123,30 @@ class Detector:
         if 'error' in reply:
             raise RuntimeError(reply['error'])
         return reply['boxes'], reply['ms']
+
+    def detect_many(self, rgb, prompts, conf=.45):
+        """{prompt: boxes} for many prompts in one vision pass (room inventory)."""
+        ok, jpeg = cv2.imencode('.jpg', cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_JPEG_QUALITY, 85])
+        with self.lock:
+            self.process.stdin.write(json.dumps({'prompts': list(prompts), 'conf': conf,
+                                                 'jpeg_b64': base64.b64encode(jpeg.tobytes()).decode()}) + '\n')
+            self.process.stdin.flush()
+            reply = json.loads(self.process.stdout.readline() or '{"error":"распознаватель остановился"}')
+        if 'error' in reply:
+            raise RuntimeError(reply['error'])
+        return reply['results'], reply['ms']
+
+
+def ground_geometry(c, box, height):
+    """Object foot point on the floor -> (distance, bearing from the robot centre, touches frame bottom)."""
+    u = (box[0] + box[2]) / 2
+    cam_bearing = math.atan2(-(u - c['cx']), c['fx'])                # left of centre = positive (CCW)
+    below = math.atan2(box[3] - c['cy'], c['fy']) + math.radians(c['pitch_down'])
+    ground = c['height'] / math.tan(below) if below > math.radians(1.5) else 9.9
+    a = c.get('yaw', 0.) + cam_bearing
+    x = c['forward'] + ground * math.cos(a)
+    y = c.get('lateral', 0.) + ground * math.sin(a)
+    return math.hypot(x, y), math.atan2(y, x), box[3] >= height * .97
 
 
 def iou(a, b):
@@ -194,16 +221,7 @@ class GoTo:
                     self.fresh = True
 
     def geometry(self, box, height):
-        """Object foot point on the floor -> distance and bearing from the robot centre."""
-        c = self.cam
-        u = (box[0] + box[2]) / 2
-        cam_bearing = math.atan2(-(u - c['cx']), c['fx'])                # left of centre = positive (CCW)
-        below = math.atan2(box[3] - c['cy'], c['fy']) + math.radians(c['pitch_down'])
-        ground = c['height'] / math.tan(below) if below > math.radians(1.5) else 9.9
-        a = c.get('yaw', 0.) + cam_bearing
-        x = c['forward'] + ground * math.cos(a)
-        y = c.get('lateral', 0.) + ground * math.sin(a)
-        return math.hypot(x, y), math.atan2(y, x), box[3] >= height * .97
+        return ground_geometry(self.cam, box, height)
 
     # ---- control (called every frame by the session loop)
     def _bookkeeping(self, rgb):

@@ -99,7 +99,8 @@ def stats():
     """Per robot and task kind: episodes, success rate, operator stops, median time."""
     groups = {}
     for item in load():
-        groups.setdefault((item['robot'], item['kind']), []).append(item)
+        key = item['robot'] if item['robot'] != 'fleet' else 'fleet:' + item.get('condition', 'team')
+        groups.setdefault((key, item['kind']), []).append(item)
     out = []
     for (robot, kind), items in sorted(groups.items()):
         times = sorted(i['seconds'] for i in items if i['success'])
@@ -108,3 +109,21 @@ def stats():
                     'operator_stops': sum(i['operator_stopped'] for i in items),
                     'median_success_s': times[len(times) // 2] if times else None})
     return out
+
+
+def to_csv():
+    """All episodes as CSV text (one row per episode; fetch stages flattened) for the article."""
+    import csv
+    import io
+    cols = ['id', 'robot', 'kind', 'task', 'condition', 'robots', 'outcome', 'success', 'operator_stopped', 'seconds',
+            'path_m', 'localized_share', 'found', 'stages', 'message']
+    out = io.StringIO()
+    w = csv.DictWriter(out, cols, extrasaction='ignore')
+    w.writeheader()
+    for item in sorted(load(), key=lambda i: i['started']):
+        row = dict(item)
+        row['robots'] = ' '.join(item.get('robots') or [])
+        row['found'] = ' '.join(item.get('found') or [])
+        row['stages'] = ' '.join(f"{s['stage']}:{s.get('seconds', '')}:{'ok' if s.get('ok') else 'fail'}" for s in item.get('stages') or [])
+        w.writerow(row)
+    return out.getvalue()

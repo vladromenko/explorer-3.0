@@ -89,6 +89,7 @@ def test_robot_explores_the_room_by_itself(fleet, robot):
     dt, closest = .25, 9.
     for _ in range(1600):
         fleet.update(robot, packet(robot, true), true if robot == 'rosmaster' else None)
+        fleet.track[robot]['global_at'] = 0.
         v, w = task.command(None)
         if not task.active:
             break
@@ -99,7 +100,9 @@ def test_robot_explores_the_room_by_itself(fleet, robot):
     assert closest > half_width + .02                    # never touched furniture with its side
     free = fleet.grid.known_free()
     ys, xs = np.nonzero(free)
-    room = (xs - fm.SIZE // 2) * fm.RES, (ys - fm.SIZE // 2) * fm.RES
+    origin = (-1.5, -1., 0.) if robot == 'tank' else (-1.2, -.8, 0.3)   # the map starts at the first robot's pose
+    pts = fm.transform(np.stack([(xs - fm.SIZE // 2 + .5) * fm.RES, (ys - fm.SIZE // 2 + .5) * fm.RES], 1), origin)
+    room = pts[:, 0], pts[:, 1]
     seen_right = ((room[0] > .6) & (room[0] < 2.8) & (room[1] > -1.3) & (room[1] < 0.)).sum() * fm.RES ** 2
     assert seen_right > .8                               # the half behind the partition was mapped
     item = episodes.load()[0]
@@ -137,3 +140,37 @@ def test_goto_drives_around_furniture_to_a_reported_place(fleet, monkeypatch):
     assert math.dist(true[:2], (1.9, -1.0)) < .8          # arrived near the reported place
     g.cancel()
     assert episodes.load()[0]['kind'] == 'goto'
+
+
+def test_tank_own_map_is_stitched_into_the_shared_one(fleet):
+    # ROSMASTER knows only the left half; Tank starts behind the partition (right half).
+    for pose in [(0., 0., 0.), (-1., -.5, 0.), (-1., .8, 0.)]:
+        fleet.update('rosmaster', packet('rosmaster', pose), pose)
+    right_before = fleet.grid.known_free()[int(-1.0 / fm.RES) + fm.SIZE // 2, int(1.0 / fm.RES) + fm.SIZE // 2]
+    route = [(1.0, -1.0, 1.57), (1.0, -.7, 1.57), (1.0, -.3, 1.57), (1.0, .1, 1.57), (1.0, .5, 1.8), (.9, .9, 2.2),
+             (.6, 1.1, 2.6), (.2, 1.2, 3.0), (-.2, 1.0, 3.1)]
+    states = []
+    for true in route:
+        s = fleet.update('tank', packet('tank', true))
+        fleet.track['tank']['global_at'] = 0.                 # no 4 s throttle in the test
+        states.append(s['state'])
+    assert states[0] == 'submap' and states[-1] == 'tracking', states
+    assert math.dist(s['pose'][:2], route[-1][:2]) < .1 and abs(fm.wrap(s['pose'][2] - route[-1][2])) < .08
+    assert fleet.contrib.get('tank', 0) >= 3                   # Tank's own scans went into the shared map
+    assert not right_before and fleet.grid.known_free()[int(-1.0 / fm.RES) + fm.SIZE // 2, int(1.0 / fm.RES) + fm.SIZE // 2]
+
+
+def test_two_robots_split_the_frontiers(fleet):
+    for pose in [(0., 0., 0.)]:
+        fleet.update('rosmaster', packet('rosmaster', pose), pose)
+    for _ in range(3):
+        fleet.update('tank', packet('tank', (-1.0, -.6, 0.)))
+        fleet.track['tank']['global_at'] = 0.
+    assert fleet.track['tank']['state'] == 'tracking'
+    a = explore.Explore('rosmaster')
+    b = explore.Explore('tank')
+    a.command(None)
+    b.command(None)
+    assert a.target is not None and b.target is not None
+    assert math.dist(a.target, b.target) > .5                 # different parts of the boundary
+    a.cancel(); b.cancel()

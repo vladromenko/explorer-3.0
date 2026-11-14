@@ -168,18 +168,26 @@ def frontiers(grid, robot, pose, min_size_m=.3, banned=()):
             if 0 <= nx < n and 0 <= ny < n and passable[ny, nx] and dist[ny, nx] > d:
                 dist[ny, nx] = d
                 queue.append((nx, ny))
-    out = []
+    # A long boundary is cut into ~1 m pieces so that two robots can take different parts of it.
+    tile = max(1, int(round(1.0 / PRES)))
+    pieces = []
     for i in range(1, count):
-        size = stats[i, cv2.CC_STAT_AREA] * PRES
-        if size < min_size_m:
+        if stats[i, cv2.CC_STAT_AREA] * PRES < min_size_m:
             continue
         ys, xs = np.nonzero(labels == i)
+        keys = (ys // tile) * 100000 + xs // tile
+        for k in np.unique(keys):
+            sel = keys == k
+            pieces.append((xs[sel], ys[sel]))
+    out = []
+    for xs, ys in pieces:
+        size = len(xs) * PRES
         d = dist[ys, xs]
         if not np.isfinite(d).any():
             continue
         # The cell of the cluster closest to its centre among reachable ones.
         ok = np.isfinite(d)
-        cx, cy = cents[i]
+        cx, cy = xs.mean(), ys.mean()
         j = int(np.argmin(np.where(ok, (xs - cx) ** 2 + (ys - cy) ** 2, np.inf)))
         x, y = _xy((int(xs[j]), int(ys[j])))
         if any(math.hypot(x - bx, y - by) < .4 for bx, by in banned):

@@ -190,9 +190,9 @@ def forget(prompt=None):
         _save([] if prompt is None else [i for i in _load() if i['prompt'] != prompt])
 
 
-def target_for(robot, prompt):
+def target_for(robot, prompt, max_age_s=3600):
     """Room position of `prompt` if any robot placed it in the room frame, else None."""
-    for item in known_objects():
+    for item in known_objects(max_age_s):
         if item['prompt'] == prompt and item['room_xy']:
             return item
     return None

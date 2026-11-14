@@ -179,6 +179,15 @@ class Grid:
         ok = (c >= 0).all(1) & (c < SIZE).all(1)
         return float((self.field[c[ok, 1], c[ok, 0]] > math.exp(-(tol ** 2) / (2 * SIGMA ** 2))).sum() / max(1, len(pts)))
 
+    def conflicts(self, pts, pose, clear=.15):
+        """Share of points that land where the map has repeatedly seen free space, far from any
+        wall: a pose that puts the scan's walls into known empty floor is wrong."""
+        c = self.cells(transform(pts, pose))
+        ok = (c >= 0).all(1) & (c < SIZE).all(1)
+        cy, cx = c[ok, 1], c[ok, 0]
+        far = self.field[cy, cx] < math.exp(-(clear ** 2) / (2 * SIGMA ** 2))
+        return float((far & (self.free[cy, cx] >= 2)).sum() / max(1, len(pts)))
+
     def locate_global(self, pts):
         """Where in the whole map could this scan have been taken? -> (quality, pose, ambiguous)."""
         ys, xs = np.nonzero(self.hits)
@@ -200,7 +209,10 @@ class Grid:
             q, pose = self.refine(pts, (x, y, t), rounds=((.2, .05, math.radians(5), math.radians(1.)),
                                                          (.06, .015, math.radians(1.5), math.radians(.5)),
                                                          (.02, .005, math.radians(.5), math.radians(.25))))
-            results.append((self.inliers(pts, pose), q, pose))
+            inl = self.inliers(pts, pose)
+            # Points in known empty floor count against the pose (twice): it rejects «the partition
+            # looks like the left wall» kind of matches that a plain overlap score accepts.
+            results.append((inl - 2 * self.conflicts(pts, pose), q, pose))
         results.sort(key=lambda r: -r[0])
         best = results[0]
         # Ambiguous when another, clearly different pose explains the scan almost as well
@@ -218,10 +230,12 @@ class FleetMap:
         self.lock = threading.Lock()
         self.track = {}      # robot -> {'pose', 'quality', 'at', 'odom', 'state', 'message'}
         self.last_key = {}
+        self.subs = {}       # robot -> own map while it has not found itself in the shared one
+        self.contrib = {}    # robot -> scans it added to the shared map
 
     def status(self):
         with self.lock:
-            return {'scans': self.grid.scans, 'robots': {r: {k: v for k, v in s.items() if k not in HIDDEN} for r, s in self.track.items()}}
+            return {'scans': self.grid.scans, 'contrib': dict(self.contrib), 'robots': {r: {k: v for k, v in s.items() if k not in HIDDEN} for r, s in self.track.items()}}
 
     def pose(self, robot, max_age=3.):
         """Latest confident pose and the time it was measured, or (None, None)."""
@@ -251,6 +265,7 @@ class FleetMap:
                 pose = (0., 0., 0.)                       # the first robot that scans defines the room frame
                 self.grid.add(transform(pts, pose), pose)
                 self.last_key[robot] = pose
+                self.contrib[robot] = self.contrib.get(robot, 0) + 1
                 return self._set(robot, pose=pose, quality=1., state='mapping', odom=odom, scan=fine,
                                  message='Карта начата этим роботом')
             prior = None
@@ -268,25 +283,102 @@ class FleetMap:
                 if inl < .45 and odom is None:
                     prior = None                          # lost: fall back to global search
             if prior is None:
-                # Global search costs ~1 s of CPU: at most every 4 s per robot.
-                if time.time() - s.get('global_at', 0) < 4:
-                    return {k: v for k, v in s.items() if k not in HIDDEN}
-                s['global_at'] = time.time()
-                inl, pose, ambiguous = self.grid.locate_global(fine)
-                if pose is None or inl < .55 or ambiguous:
-                    return self._set(robot, state='searching', quality=round(inl, 2), odom=odom, pose=None, scan=fine,
-                                     message='Ищет себя на общей карте' + (' (комната симметрична, нужно подъехать)' if ambiguous else ''))
+                # Global search costs ~1 s of CPU: at most every 4 s per robot. Meanwhile the robot
+                # keeps its own small map, which is stitched into the shared one once it is found.
+                found = False
+                if time.time() - s.get('global_at', 0) >= 4:
+                    s['global_at'] = time.time()
+                    inl, pose, ambiguous = self.grid.locate_global(fine)
+                    found = pose is not None and inl >= .55 and not ambiguous
+                    s['global_note'] = ' (комната симметрична, нужно подъехать)' if ambiguous else ''
+                    # Two independent global fixes must agree before the robot joins the shared map
+                    # (relative to its own map when it has one, else in place).
+                    sub = self.subs.get(robot)
+                    if found:
+                        ref = compose(pose, inverse(sub['pose'])) if sub and sub['pose'] is not None else pose
+                        prev = s.get('candidate')
+                        agree = prev is not None and math.dist(prev[:2], ref[:2]) < .2 and abs(wrap(prev[2] - ref[2])) < .1
+                        s['candidate'] = ref
+                        if not agree:
+                            found = False
+                            s['global_note'] = ' (похоже, узнал место: проверяю ещё раз)'
+                    else:
+                        s['candidate'] = None
+                if not found:
+                    return self._submap(robot, pts, fine, odom)
+                merged = self._merge_submap(robot, pose)
+                if merged:
+                    s['merged_note'] = f'своя карта вшита в общую: {merged} сканов'
             # Grow the map only from confident poses, and only after the robot moved.
             moved = self.last_key.get(robot)
             if inl > .6 and (moved is None or math.dist(moved[:2], pose[:2]) > .2 or abs(wrap(moved[2] - pose[2])) > .2):
                 self.grid.add(transform(pts, pose), pose)
                 self.last_key[robot] = pose
             state = 'tracking' if inl > .45 else 'weak'
-            out = self._set(robot, pose=pose, quality=round(inl, 2), state=state, odom=odom, scan=fine,
-                            message=f'На карте: {inl:.0%} точек совпало')
+            note = s.pop('merged_note', '') if time.time() - s.get('global_at', 0) > 8 else s.get('merged_note', '')
+            out = self._set(robot, pose=pose, quality=round(inl, 2), state=state, odom=odom, scan=fine, sub_pose=None,
+                            message=f'На карте: {inl:.0%} точек совпало' + (f' · {note}' if note else ''))
+            self.contrib[robot] = self.contrib.get(robot, 0) + (1 if self.last_key.get(robot) == pose else 0)
         if state == 'tracking':
             world_memory.POSES[robot].fix(*pose, source='lidar')
         return out
+
+    def _submap(self, robot, pts, fine, odom):
+        """Track the robot in its own map (until it recognises the shared one). Caller holds the lock."""
+        sub = self.subs.get(robot)
+        if sub is None:
+            sub = self.subs[robot] = {'grid': Grid(), 'pose': None, 'odom': None, 'keys': [], 'at': 0.}
+        if sub['grid'].empty():
+            pose = (0., 0., 0.)
+        else:
+            prior = sub['pose'] if sub['pose'] is not None and time.time() - sub['at'] < 10 else None
+            if prior is None:
+                sub['grid'] = Grid()                         # lost in its own map too: start it again
+                sub['keys'] = []
+                pose = (0., 0., 0.)
+            else:
+                if odom is not None and sub['odom'] is not None:
+                    prior = compose(prior, delta(sub['odom'], odom))
+                first = (.25, .05, math.radians(12), math.radians(3)) if odom is not None else (.4, .05, math.radians(40), math.radians(4))
+                _, pose = sub['grid'].refine(fine, prior, rounds=(first, (.06, .015, math.radians(3), math.radians(.75)),
+                                                                  (.02, .005, math.radians(.75), math.radians(.25))))
+                if sub['grid'].inliers(fine, pose) < .45:
+                    pose = prior
+        last = sub['keys'][-1][0] if sub['keys'] else None
+        if last is None or math.dist(last[:2], pose[:2]) > .2 or abs(wrap(last[2] - pose[2])) > .2:
+            sub['grid'].add(transform(pts, pose), pose)
+            sub['keys'].append((pose, thin(pts, .03, 600)))
+        sub.update(pose=pose, odom=odom, at=time.time())
+        s = self.track.get(robot) or {}
+        return self._set(robot, state='submap', pose=None, sub_pose=pose, odom=odom, scan=fine, quality=None,
+                         message=f'Строит свою карту ({len(sub["keys"])} сканов), пока не узнает общие стены'
+                                 + s.get('global_note', ''))
+
+    def _merge_submap(self, robot, main_pose):
+        """The robot was found in the shared map: move its own map into it. Caller holds the lock."""
+        sub = self.subs.pop(robot, None)
+        if not sub or sub['pose'] is None or not sub['keys']:
+            return 0
+        T = compose(main_pose, inverse(sub['pose']))      # own-map frame -> shared frame
+        for key_pose, pts in sub['keys']:
+            pose = compose(T, key_pose)
+            self.grid.add(transform(pts, pose), pose)
+        self.contrib[robot] = self.contrib.get(robot, 0) + len(sub['keys'])
+        return len(sub['keys'])
+
+    def nav(self, robot, max_age=3.):
+        """Where the robot can navigate right now: ('main', grid, pose, at) on the shared map, or
+        ('sub:<n>', own grid, pose, at) while it only knows its own map; None if neither."""
+        with self.lock:
+            s = self.track.get(robot) or {}
+            if time.time() - s.get('at', 0) > max_age:
+                return None
+            if s.get('pose') is not None and s.get('state') in ('mapping', 'tracking'):
+                return 'main', self.grid, s['pose'], s['at']
+            sub = self.subs.get(robot)
+            if sub is not None and sub['pose'] is not None:
+                return f'sub:{id(sub["grid"])}', sub['grid'], sub['pose'], sub['at']
+            return None
 
     def _set(self, robot, **values):
         s = self.track.setdefault(robot, {})
@@ -343,12 +435,15 @@ class FleetMap:
     def save(self):
         MAP_DIR.mkdir(parents=True, exist_ok=True)
         with self.lock:
-            np.savez_compressed(MAP_DIR / 'map.npz', hits=self.grid.hits, free=self.grid.free, scans=self.grid.scans)
+            tmp = MAP_DIR / 'map.tmp.npz'                  # atomic: a stop mid-write never corrupts the map
+            np.savez_compressed(tmp, hits=self.grid.hits, free=self.grid.free, scans=self.grid.scans)
+            tmp.replace(MAP_DIR / 'map.npz')
 
     def load(self):
         try:
             data = np.load(MAP_DIR / 'map.npz')
-        except (OSError, ValueError):
+            data['hits']
+        except Exception:                                # missing or damaged file: start a new map
             return False
         with self.lock:
             self.grid.hits = data['hits'].astype(np.float32)
@@ -362,10 +457,12 @@ class FleetMap:
             self.grid = Grid()
             self.track.clear()
             self.last_key.clear()
+            self.subs.clear()
+            self.contrib.clear()
         (MAP_DIR / 'map.npz').unlink(missing_ok=True)
 
 
-HIDDEN = ('odom', 'scan', 'global_at', 'path')
+HIDDEN = ('odom', 'scan', 'global_at', 'path', 'global_note', 'merged_note', 'candidate')
 
 
 def delta(a, b):
@@ -373,6 +470,11 @@ def delta(a, b):
     dx, dy = b[0] - a[0], b[1] - a[1]
     c, s = math.cos(a[2]), math.sin(a[2])
     return (c * dx + s * dy, -s * dx + c * dy, wrap(b[2] - a[2]))
+
+
+def inverse(p):
+    c, s = math.cos(p[2]), math.sin(p[2])
+    return (-c * p[0] - s * p[1], s * p[0] - c * p[1], wrap(-p[2]))
 
 
 def compose(p, d):

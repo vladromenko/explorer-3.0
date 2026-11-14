@@ -1,0 +1,19 @@
+# What the robots look for while exploring (English prompts for SAM 3, Russian names for the UI).
+# Edit freely: one line per object. Everything found goes to the shared fleet memory.
+objects:
+  - {prompt: cookie, name: печенье}
+  - {prompt: cup, name: кружка}
+  - {prompt: bottle, name: бутылка}
+  - {prompt: sock, name: носок}
+  - {prompt: shoe, name: обувь}
+  - {prompt: toy, name: игрушка}
+  - {prompt: box, name: коробка}
+  - {prompt: cube, name: кубик}
+  - {prompt: ball, name: мяч}
+  - {prompt: bag, name: сумка}
+  - {prompt: book, name: книга}
+  - {prompt: phone, name: телефон}
+  - {prompt: remote control, name: пульт}
+  - {prompt: keys, name: ключи}
+  - {prompt: suitcase, name: чемодан}
+  - {prompt: chair, name: стул}

@@ -53,6 +53,16 @@ def isolated(monkeypatch, tmp_path):
         p.x = p.y = p.theta = None
 
 
+def locate(fleet, robot, pk, tries=3):
+    """A robot joins the shared map after two agreeing global fixes (4 s apart live)."""
+    for _ in range(tries):
+        s = fleet.update(robot, pk)
+        fleet.track[robot]['global_at'] = 0.
+        if s['state'] == 'tracking':
+            return s
+    return s
+
+
 def close(a, b, xy=.08, th=.06):
     return math.dist(a[:2], b[:2]) < xy and abs(fm.wrap(a[2] - b[2])) < th
 
@@ -78,7 +88,7 @@ def test_rosmaster_maps_and_tank_finds_itself():
         assert close(s['pose'], pose), (i, s['pose'], pose)
     # Tank appears somewhere in the room facing an arbitrary direction: global search.
     tank = (2.2, -.9, 2.5)
-    s = fleet.update('tank', packet('tank', tank))
+    s = locate(fleet, 'tank', packet('tank', tank))
     assert s['state'] == 'tracking' and close(s['pose'], tank), s
     assert world_memory.POSES['tank'].source == 'lidar'
     # Tank drives and turns without encoders; it is tracked scan to scan.
@@ -94,7 +104,7 @@ def test_rosmaster_maps_and_tank_finds_itself():
 def test_sighting_by_one_robot_is_a_goal_for_the_other():
     fleet = fm.FleetMap()
     fleet.update('rosmaster', packet('rosmaster', (0., 0., 0.)), (0., 0., 0.))
-    fleet.update('tank', packet('tank', (1.0, 1.5, -1.57)))
+    locate(fleet, 'tank', packet('tank', (1.0, 1.5, -1.57)))
     item = world_memory.record('tank', 'к носку', 'sock', 1.0, 0.0)       # 1 m straight ahead of Tank
     assert item['room_xy'] == pytest.approx([1.0, .5], abs=.1)
     assert world_memory.target_for('rosmaster', 'sock')['robot'] == 'tank'
@@ -106,7 +116,7 @@ def test_unrelated_place_is_not_forced_into_the_map():
     corridor = {'arrays': {'scan': np.where(np.arange(450) % 225 < 112, .3, 1.5).astype(np.float32)},
                 'meta': {'streams': {'scan': {'angle_min': 0., 'angle_increment': 2 * math.pi / 450}}}}
     s = fleet.update('tank', corridor)
-    assert s['state'] == 'searching' and s['pose'] is None
+    assert s['state'] == 'submap' and s['pose'] is None                 # keeps its own map meanwhile
 
 
 def test_map_survives_restart(tmp_path):
@@ -115,6 +125,6 @@ def test_map_survives_restart(tmp_path):
     fleet.save()
     again = fm.FleetMap()
     assert again.load() and again.grid.scans == 1
-    s = again.update('tank', packet('tank', (2.0, 1.5, 1.0)))
+    s = locate(again, 'tank', packet('tank', (2.0, 1.5, 1.0)))
     assert close(s['pose'], (2.0, 1.5, 1.0))
     assert again.image() is not None
