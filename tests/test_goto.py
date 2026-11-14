@@ -13,6 +13,8 @@ def isolated_memory(monkeypatch, tmp_path):
     from explorer3 import world_memory
     monkeypatch.setattr(world_memory, 'MEMORY', tmp_path / 'memory.json')
     monkeypatch.setattr(world_memory, 'SNAPSHOTS', tmp_path / 'snap')
+    from explorer3 import episodes
+    monkeypatch.setattr(episodes, 'ROOT', tmp_path / 'episodes')
     monkeypatch.setattr(world_memory, 'beacons', lambda: {})
     for p in world_memory.POSES.values():
         p.x = p.y = p.theta = None

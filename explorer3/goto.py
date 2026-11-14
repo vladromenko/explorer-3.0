@@ -159,6 +159,13 @@ class GoTo:
         self.last_cmd = (0., 0.)
         self.last_locate = 0.
         self.last_record = 0.
+        self.path = None
+        self.planned_at = 0.
+        self.roam = None
+        self.roams = 0
+        from .episodes import Episode
+        self.episode = Episode(robot, 'goto', text)
+        self.episode.extra['prompt'] = self.prompt
         self.lock = threading.Lock()
         self.thread = threading.Thread(target=self._detect_loop, daemon=True)
         self.thread.start()
@@ -230,16 +237,70 @@ class GoTo:
             return None                                  # close: look for it with the camera
         b = wrap(math.atan2(dy, dx) - self.pose.theta)
         self.state = 'memory'
+        pose = (self.pose.x, self.pose.y, self.pose.theta)
+        drive = self._map_drive(pose, (tx, ty))
+        if drive is not None:
+            v, w, remaining, why = drive
+            self.message = (f'Объезжаю: {why}' if why else
+                            f'Еду по карте к месту, где {who} видел «{self.text}»: {remaining:.1f} м')
+            return [v, w]
         self.message = f'Еду к месту, где {who} видел «{self.text}»: {dist:.1f} м, {math.degrees(b):+.0f}°'
         w = max(-self.w_max, min(self.w_max, 1.4 * b))
         v = 0. if abs(b) > .4 else min(self.v_max, .5 * dist)
+        return self._guarded([v, w])
+
+    def _map_drive(self, pose, target):
+        """Path around furniture on the shared lidar map; None when there is no map here."""
+        from . import navigation
+        from .fleet_map import FLEET
+        if FLEET.grid.empty():
+            return None
+        now = time.monotonic()
+        if self.path is None or now - self.planned_at > 2.:
+            self.planned_at = now
+            self.path = navigation.plan(FLEET.grid, self.robot, pose[:2], target, allow_unknown=True)
+            FLEET.track.setdefault(self.robot, {})['path'] = None if self.path is None else list(self.path)
+        if self.path is None:
+            return None
+        v, w, remaining = navigation.follow(pose, self.path, self.v_max, self.w_max)
+        v, w, why = navigation.guard(FLEET.scan(self.robot), self.robot, v, w)
+        return v, w, remaining, why
+
+    def _guarded(self, cmd):
+        from . import navigation
+        from .fleet_map import FLEET
+        v, w, why = navigation.guard(FLEET.scan(self.robot), self.robot, cmd[0], cmd[1])
+        if why:
+            self.message = 'Объезжаю: ' + why
         return [v, w]
+
+    def _roam(self):
+        """Nothing around: drive to the next unexplored place on the map and look again."""
+        from .explore import Explore
+        from .fleet_map import FLEET
+        if self.roams >= 4 or FLEET.grid.empty() or not self.pose.known():
+            return None
+        if self.roam is None:
+            self.roam = Explore(self.robot, record=False, v_max=self.v_max)
+        cmd = self.roam.command(None)
+        if not self.roam.active or self.roam.targets_done:
+            done_all = not self.roam.active
+            self.roam, self.roams, self.searched = None, self.roams + 1, 0.
+            if done_all:
+                self.roams = 99                          # whole room seen
+            return [0., 0.]
+        self.state = 'roam'
+        self.message = f'Вокруг «{self.text}» нет: еду осмотреть другое место ({self.roams + 1}/4)'
+        return cmd
 
     def command(self, rgb):
         if not self.active:
             return [0., 0.]
         self._bookkeeping(rgb)
-        return self._out(self._command(rgb))
+        cmd = self._out(self._command(rgb))
+        pose = (self.pose.x, self.pose.y, self.pose.theta) if self.pose.known() else None
+        self.episode.step(pose, cmd, self.state, rgb, distance=None if self.distance is None else round(self.distance, 2))
+        return cmd
 
     def _command(self, rgb):
         with self.lock:
@@ -278,6 +339,7 @@ class GoTo:
             w = max(-self.w_max, min(self.w_max, 1.6 * b))
             v = 0. if abs(b) > .35 else min(self.v_max, .6 * (d - self.stop_m) + .05)
             self.searched = 0.
+            self.roam = None
             return [v, w]
         # not seen: wait briefly for the detector, then turn in place in steps
         if box is not None and age < 2.5:
@@ -287,8 +349,12 @@ class GoTo:
         if drive is not None:
             return drive
         self.state = 'search'
-        if self.searched > 2 * math.pi + .5:
-            self.finish('not_found', f'Не вижу «{self.text}» вокруг себя')
+        if self.roam is not None or self.searched > 2 * math.pi + .5:
+            roam = self._roam()
+            if roam is not None:
+                return roam
+            self.finish('not_found', f'Не вижу «{self.text}» ни вокруг себя, ни в осмотренных местах'
+                        if self.roams else f'Не вижу «{self.text}» вокруг себя')
             return [0., 0.]
         phase = (time.monotonic() - self.started) % 1.6                 # turn 0.8 s, hold 0.8 s for a sharp frame
         if phase < .8:
@@ -300,6 +366,13 @@ class GoTo:
 
     def finish(self, state, message):
         self.state, self.message, self.active = state, message, False
+        try:
+            self.episode.extra.update(roams=self.roams, final_distance=self.distance)
+            self.episode.finish(state, message)
+            from .fleet_map import FLEET
+            FLEET.track.setdefault(self.robot, {})['path'] = None
+        except Exception:
+            pass
         try:
             (DATA / 'logs').mkdir(parents=True, exist_ok=True)
             with (DATA / 'logs' / 'goto.jsonl').open('a') as log:

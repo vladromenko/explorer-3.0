@@ -124,9 +124,9 @@ class SensorClient:
         self.http=httpx.Client(base_url=f"http://{cfg['host']}:{port}",headers={'X-Explorer-Token':cfg['token']},
                                timeout=3.,trust_env=False)
 
-    def snapshot(self):
+    def snapshot(self,only=None):
         start=time.monotonic()
-        response=self.http.get('/snapshot.npz');response.raise_for_status()
+        response=self.http.get('/snapshot.npz',params={'only':','.join(only)} if only else None);response.raise_for_status()
         received=time.monotonic_ns()
         packet=decode_packet(response.content,received,time.monotonic()-start)
         if packet['meta']['robot']!=self.robot:raise ValueError('Sensor packet came from another robot')

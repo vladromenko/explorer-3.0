@@ -216,8 +216,13 @@ def make_app(store,token):
         try:return Response(capture(),media_type='audio/wav',headers={'Cache-Control':'no-store'})
         except (RuntimeError,TimeoutError) as exc:raise HTTPException(503,str(exc)) from exc
     @app.get('/snapshot.npz')
-    def snapshot():
-        meta,arrays=store.capture()
+    def snapshot(only:str|None=None):
+        # only=scan,scan_rear,odometry: a few kB for fleet localization instead of full camera frames.
+        wanted=None if not only else set(only.split(','))
+        meta,arrays=store.capture(include_history=wanted is None)
+        if wanted is not None:
+            arrays={k:v for k,v in arrays.items() if k in wanted}
+            meta['streams']={k:v for k,v in meta['streams'].items() if k in wanted}
         if not arrays:raise HTTPException(503,'Датчики ещё не передали данные')
         # RGB is already a video modality; compress only colour for Wi-Fi.
         # Depth/IR/scan/IMU remain lossless numeric arrays.

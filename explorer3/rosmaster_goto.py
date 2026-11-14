@@ -28,14 +28,15 @@ class RosmasterGoTo:
             return {'message': self.error or '', 'active': False}
         return {**self.goal.status(), 'message': self.error or self.goal.status()['message']}
 
-    def start(self, text):
+    def start(self, text=None, task=None):
+        """text: «подъехать к …»; task: any goal object with command(rgb) (e.g. explore.Explore)."""
         operator = rosmaster_control.operator
         if self.running():
-            raise RuntimeError('ROSMASTER уже едет к цели')
+            raise RuntimeError('ROSMASTER уже выполняет задание')
         if operator.lease:
             raise RuntimeError('Сначала выключите ручное управление ROSMASTER (STOP в его панели)')
         rosmaster_control.ensure_agent()
-        goal = GoTo('rosmaster', text)
+        goal = task if task is not None else GoTo('rosmaster', text)
         operator.input(OWNER, rosmaster_control.ZERO)
         try:
             operator.enable(OWNER, 'rosmaster_dock', 'cartesian', True, source='policy')
@@ -65,7 +66,7 @@ class RosmasterGoTo:
                 if operator.owner != OWNER or not operator.lease:
                     goal.cancel(operator.error or 'Сессия ROSMASTER завершена')
                     break
-                if started - last_pose > 1.:
+                if started - last_pose > 1. and hasattr(goal, 'set_camera'):
                     servo = (client.get('/health').json().get('observation') or {}).get('arm_measured')
                     if servo and len(servo) == 6:
                         goal.set_camera(rosmaster_camera(servo))

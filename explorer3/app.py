@@ -266,7 +266,54 @@ def index(request:Request):
                 def reset_map():
                     from .fleet_map import FLEET
                     FLEET.reset();ui.notify('Карта очищена: её начнёт заново первый робот со свежим сканом')
-                ui.button('Начать карту заново',icon='restart_alt',on_click=reset_map).props('flat dense')
+                with ui.row().style('gap:8px;flex-wrap:wrap'):
+                    async def explore_ros():
+                        try:
+                            from .rosmaster_goto import runner
+                            from .explore import Explore
+                            await asyncio.to_thread(runner.start,None,Explore('rosmaster'))
+                            ui.notify('ROSMASTER исследует комнату')
+                        except Exception as exc:notify_error(exc)
+                    async def explore_tank():
+                        try:
+                            if control.robot!='tank' or control.owner!=owner or not (session.thread and session.thread.is_alive()):
+                                raise RuntimeError('Выберите Tank и нажмите «Включить управление»')
+                            from .explore import Explore
+                            control.goal=Explore('tank')
+                            ui.notify('Tank исследует комнату')
+                        except Exception as exc:notify_error(exc)
+                    def explore_stop():
+                        from .rosmaster_goto import runner
+                        runner.cancel('Остановлено оператором');control.cancel_goal('Остановлено оператором')
+                    ui.button('ROSMASTER: исследовать комнату',icon='travel_explore',on_click=explore_ros).props('unelevated dense')
+                    ui.button('Tank: исследовать комнату',icon='travel_explore',on_click=explore_tank).props('unelevated dense')
+                    ui.button('Остановить задания',icon='stop',on_click=explore_stop).props('flat dense')
+                    ui.button('Начать карту заново',icon='restart_alt',on_click=reset_map).props('flat dense')
+                explore_state=ui.label('').classes('muted')
+        ui.label('Эпизоды автономной работы').style('font-size:15px;font-weight:700;margin-top:6px')
+        ui.label('Каждое задание записывается само: робот, задача, итог, время, путь, кадры и карта (папка episodes). Из этого считаются цифры для статьи.').classes('muted').style('font-size:12.5px')
+        @ui.refreshable
+        def episode_table():
+            from . import episodes
+            names={'tank':'Tank','rosmaster':'ROSMASTER'};kinds={'goto':'подъехать к …','explore':'исследовать комнату'}
+            outcomes={'arrived':'приехал','explored':'обследовал','not_found':'не нашёл','cancelled':'остановлен человеком','intervened':'перехват человеком',
+                      'timeout':'время вышло','lost':'потерял себя','error':'ошибка'}
+            st=episodes.stats()
+            if not st:
+                ui.label('Пока ни одного эпизода.').classes('muted');return
+            with ui.row().style('gap:10px;flex-wrap:wrap'):
+                for g in st:
+                    with ui.card().style('background:#10161e;border:1px solid #243041;border-radius:12px;padding:10px 14px'):
+                        ui.label(f"{names.get(g['robot'],g['robot'])} · {kinds.get(g['kind'],g['kind'])}").style('font-weight:650')
+                        med=f" · медиана {g['median_success_s']:.0f} с" if g['median_success_s'] else ''
+                        ui.label(f"успех {g['success_rate']:.0%} из {g['episodes']} · остановок человеком {g['operator_stops']}{med}").classes('muted')
+            rows=[{'when':time.strftime('%d.%m %H:%M',time.localtime(i['started'])),'robot':names.get(i['robot'],i['robot']),
+                   'task':i['task'],'outcome':outcomes.get(i['outcome'],i['outcome']),'time':f"{i['seconds']:.0f} с",'path':f"{i['path_m']:.1f} м"}
+                  for i in episodes.load(12)]
+            ui.table(columns=[{'name':k,'label':l,'field':k,'align':'left'} for k,l in
+                              (('when','Когда'),('robot','Робот'),('task','Задание'),('outcome','Итог'),('time','Время'),('path','Путь'))],
+                     rows=rows).props('dense flat dark').style('width:100%;background:transparent')
+        episode_table()
         @ui.refreshable
         def memory_list():
             from . import world_memory
@@ -325,7 +372,13 @@ def index(request:Request):
             lines.append(f"сканов в карте: {st['scans']}")
             map_text.set_content('<br>'.join(lines))
             map_image.set_source(f'/fleet-map.png?t={time.time():.0f}')
+            from .rosmaster_goto import runner as _runner
+            msgs=[]
+            if control.goal is not None and getattr(control.goal,'prompt','')=='explore':msgs.append('Tank: '+control.goal.status()['message'])
+            if _runner.goal is not None and getattr(_runner.goal,'prompt','')=='explore':msgs.append('ROSMASTER: '+_runner.status()['message'])
+            explore_state.set_text(' · '.join(msgs))
             memory_list.refresh()
+            episode_table.refresh()
         ui.timer(4,memory_refresh)
     with ui.element('div').classes('workspace'):
         selected=ui.label('Выбран: '+ROBOT_NAMES[control.robot]).classes('selected')

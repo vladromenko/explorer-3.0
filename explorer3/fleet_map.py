@@ -27,13 +27,19 @@ RES = .05                         # m per cell
 SIZE = 400                        # 20 x 20 m, origin in the middle
 SIGMA = .06                       # match tolerance (m)
 
-# Lidar mounting in the robot base frame (x forward, y left): (x, y, yaw).
+# Lidar mounting in the robot base frame (x forward, y left): (x, y, yaw, direction).
+# direction -1: the scan angle runs clockwise.
+#   ROSMASTER: 'scan' = /scan0 = laser0 (rear-left), 'scan_rear' = /scan1 = laser1 (front-right); positions
+#   from the CubeBot URDF. Orientation measured on the robot (2026-11-14): both MS200 scan clockwise,
+#   laser1 is turned by 180°. Chosen by (a) both lidars seeing the same walls and (b) agreement with
+#   the depth camera at lidar height; the URDF's yaw 0 / counter-clockwise put a phantom wall in front.
+#   Tank: tank.xacro, counter-clockwise (checked against the camera: radiator on the left).
 MOUNTS = {
-    'rosmaster': {'scan': (.10766, -.09078, 0.), 'scan_rear': (-.11617, .09156, 0.)},   # CubeBot URDF, laser1/laser0
-    'tank': {'scan': (-.00168, -.00135, 0.)},                                           # mentorpi tank.xacro
+    'rosmaster': {'scan': (-.11617, .09156, math.radians(-2.), -1), 'scan_rear': (.10766, -.09078, math.radians(178.), -1)},
+    'tank': {'scan': (-.00168, -.00135, 0., 1)},
 }
 # Points inside the robot's own body (arm, tracks, posts) are dropped: (x_min, x_max, y_min, y_max).
-BODY = {'rosmaster': (-.24, .24, -.18, .18), 'tank': (-.17, .17, -.14, .14)}
+BODY = {'rosmaster': (-.20, .20, -.18, .18), 'tank': (-.17, .17, -.14, .14)}
 
 
 def wrap(a):
@@ -43,13 +49,13 @@ def wrap(a):
 def scan_points(robot, packet, max_range=8.):
     """All valid lidar returns of one sensor packet as (N, 2) points in the robot base frame."""
     out = []
-    for name, (mx, my, myaw) in MOUNTS[robot].items():
+    for name, (mx, my, myaw, direction) in MOUNTS[robot].items():
         ranges = packet['arrays'].get(name)
         meta = packet['meta']['streams'].get(name)
         if ranges is None or meta is None:
             continue
         ranges = np.asarray(ranges, np.float64)
-        ang = float(meta['angle_min']) + np.arange(len(ranges)) * float(meta['angle_increment']) + myaw
+        ang = direction * (float(meta['angle_min']) + np.arange(len(ranges)) * float(meta['angle_increment'])) + myaw
         ok = np.isfinite(ranges) & (ranges > max(.05, float(meta.get('range_min') or 0))) & (ranges < max_range)
         r, a = ranges[ok], ang[ok]
         out.append(np.stack([mx + r * np.cos(a), my + r * np.sin(a)], 1))
@@ -83,6 +89,7 @@ class Grid:
 
     def __init__(self):
         self.hits = np.zeros((SIZE, SIZE), np.float32)
+        self.free = np.zeros((SIZE, SIZE), np.float32)     # how often a beam passed through the cell
         self.field = np.zeros((SIZE, SIZE), np.float32)
         self.coarse = {}
         self.scans = 0
@@ -90,15 +97,30 @@ class Grid:
     def cells(self, pts):
         return np.floor(pts / RES).astype(np.int64) + SIZE // 2
 
-    def add(self, pts_world):
+    def add(self, pts_world, origin=None):
         c = self.cells(pts_world)
         ok = (c >= 0).all(1) & (c < SIZE).all(1)
+        if origin is not None:
+            o = tuple(int(v) for v in self.cells(np.array([origin[:2]]))[0])
+            beams = np.zeros((SIZE, SIZE), np.uint8)
+            for x, y in c[ok]:
+                cv2.line(beams, o, (int(x), int(y)), 1, 1)
+            beams[c[ok, 1], c[ok, 0]] = 0                     # the end cell is the wall itself
+            self.free += beams
         np.add.at(self.hits, (c[ok, 1], c[ok, 0]), 1.)
         self.scans += 1
         self.refresh()
 
+    def occupied(self):
+        """Walls and furniture: hit often enough compared with beams passing through
+        (a person who walked by is cleared by later scans)."""
+        return (self.hits >= 1) & (self.hits * 4 >= self.free)
+
+    def known_free(self):
+        return (self.free >= 1) & ~self.occupied()
+
     def refresh(self):
-        occupied = (self.hits >= 1).astype(np.uint8)
+        occupied = self.occupied().astype(np.uint8)
         dist = cv2.distanceTransform(1 - occupied, cv2.DIST_L2, 5) * RES
         self.field = np.exp(-(dist ** 2) / (2 * SIGMA ** 2)).astype(np.float32)
         self.coarse = {}
@@ -199,21 +221,37 @@ class FleetMap:
 
     def status(self):
         with self.lock:
-            return {'scans': self.grid.scans, 'robots': {r: {k: v for k, v in s.items() if k != 'odom'} for r, s in self.track.items()}}
+            return {'scans': self.grid.scans, 'robots': {r: {k: v for k, v in s.items() if k not in HIDDEN} for r, s in self.track.items()}}
+
+    def pose(self, robot, max_age=3.):
+        """Latest confident pose and the time it was measured, or (None, None)."""
+        with self.lock:
+            s = self.track.get(robot) or {}
+            if s.get('pose') is None or s.get('state') not in ('mapping', 'tracking') or time.time() - s['at'] > max_age:
+                return None, None
+            return s['pose'], s['at']
+
+    def scan(self, robot, max_age=1.):
+        """Latest scan points in the robot base frame (for the collision guard)."""
+        with self.lock:
+            s = self.track.get(robot) or {}
+            if s.get('scan') is None or time.time() - s['at'] > max_age:
+                return None
+            return s['scan']
 
     def update(self, robot, packet, odom=None):
         """odom: (x, y, yaw) from wheel encoders if the robot has them. Returns the tracked state."""
         pts = scan_points(robot, packet)
         if len(pts) < 40:
-            return self._set(robot, state='no_scan', message='Лидар не передаёт данные')
+            return self._set(robot, state='no_scan', scan=None, message='Лидар не передаёт данные')
         fine = thin(pts, .04, 360)
         with self.lock:
             s = self.track.get(robot) or {}
             if self.grid.empty():
                 pose = (0., 0., 0.)                       # the first robot that scans defines the room frame
-                self.grid.add(transform(fine, pose))
+                self.grid.add(transform(pts, pose), pose)
                 self.last_key[robot] = pose
-                return self._set(robot, pose=pose, quality=1., state='mapping', odom=odom,
+                return self._set(robot, pose=pose, quality=1., state='mapping', odom=odom, scan=fine,
                                  message='Карта начата этим роботом')
             prior = None
             if s.get('pose') is not None and time.time() - s.get('at', 0) < 10:
@@ -232,19 +270,19 @@ class FleetMap:
             if prior is None:
                 # Global search costs ~1 s of CPU: at most every 4 s per robot.
                 if time.time() - s.get('global_at', 0) < 4:
-                    return {k: v for k, v in s.items() if k != 'odom'}
+                    return {k: v for k, v in s.items() if k not in HIDDEN}
                 s['global_at'] = time.time()
                 inl, pose, ambiguous = self.grid.locate_global(fine)
                 if pose is None or inl < .55 or ambiguous:
-                    return self._set(robot, state='searching', quality=round(inl, 2), odom=odom, pose=None,
+                    return self._set(robot, state='searching', quality=round(inl, 2), odom=odom, pose=None, scan=fine,
                                      message='Ищет себя на общей карте' + (' (комната симметрична, нужно подъехать)' if ambiguous else ''))
             # Grow the map only from confident poses, and only after the robot moved.
             moved = self.last_key.get(robot)
             if inl > .6 and (moved is None or math.dist(moved[:2], pose[:2]) > .2 or abs(wrap(moved[2] - pose[2])) > .2):
-                self.grid.add(transform(fine, pose))
+                self.grid.add(transform(pts, pose), pose)
                 self.last_key[robot] = pose
             state = 'tracking' if inl > .45 else 'weak'
-            out = self._set(robot, pose=pose, quality=round(inl, 2), state=state, odom=odom,
+            out = self._set(robot, pose=pose, quality=round(inl, 2), state=state, odom=odom, scan=fine,
                             message=f'На карте: {inl:.0%} точек совпало')
         if state == 'tracking':
             world_memory.POSES[robot].fix(*pose, source='lidar')
@@ -253,7 +291,7 @@ class FleetMap:
     def _set(self, robot, **values):
         s = self.track.setdefault(robot, {})
         s.update(values, at=time.time())
-        return {k: v for k, v in s.items() if k != 'odom'}
+        return {k: v for k, v in s.items() if k not in HIDDEN}
 
     def relative(self, a, b):
         """Pose of robot b as robot a sees it: (distance, bearing, b's heading relative to a)."""
@@ -267,15 +305,22 @@ class FleetMap:
     def image(self, scale=2):
         """Map with both robots drawn, as an RGB array (for the panel)."""
         with self.lock:
-            hits = self.grid.hits.copy()
+            hits = self.grid.occupied().astype(np.float32)
+            free = self.grid.known_free()
             track = {r: dict(s) for r, s in self.track.items()}
-        ys, xs = np.nonzero(hits)
+        ys, xs = np.nonzero(hits + free)
         if len(xs) == 0:
             return None
         x0, x1 = max(0, xs.min() - 20), min(SIZE, xs.max() + 21)
         y0, y1 = max(0, ys.min() - 20), min(SIZE, ys.max() + 21)
         img = np.full((y1 - y0, x1 - x0, 3), (17, 24, 33), np.uint8)
+        img[free[y0:y1, x0:x1]] = (31, 44, 58)
         img[(hits[y0:y1, x0:x1] > 0)] = (180, 200, 215)
+        for robot, s in track.items():
+            for x, y in s.get('path') or []:
+                p = (int((x / RES + SIZE // 2) - x0), int((y / RES + SIZE // 2) - y0))
+                if 0 <= p[0] < img.shape[1] and 0 <= p[1] < img.shape[0]:
+                    img[p[1], p[0]] = (99, 224, 184) if robot == 'tank' else (242, 182, 90)
         img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
         colors = {'tank': (95, 212, 168), 'rosmaster': (242, 182, 90)}
         for robot, s in track.items():
@@ -298,7 +343,7 @@ class FleetMap:
     def save(self):
         MAP_DIR.mkdir(parents=True, exist_ok=True)
         with self.lock:
-            np.savez_compressed(MAP_DIR / 'map.npz', hits=self.grid.hits, scans=self.grid.scans)
+            np.savez_compressed(MAP_DIR / 'map.npz', hits=self.grid.hits, free=self.grid.free, scans=self.grid.scans)
 
     def load(self):
         try:
@@ -307,6 +352,7 @@ class FleetMap:
             return False
         with self.lock:
             self.grid.hits = data['hits'].astype(np.float32)
+            self.grid.free = data['free'].astype(np.float32) if 'free' in data else np.zeros_like(self.grid.hits)
             self.grid.scans = int(data['scans'])
             self.grid.refresh()
         return True
@@ -317,6 +363,9 @@ class FleetMap:
             self.track.clear()
             self.last_key.clear()
         (MAP_DIR / 'map.npz').unlink(missing_ok=True)
+
+
+HIDDEN = ('odom', 'scan', 'global_at', 'path')
 
 
 def delta(a, b):
@@ -347,50 +396,55 @@ class FleetLocalizer:
 
     SOURCES = {'rosmaster': False, 'tank': True}         # SensorClient(isolated=...) that carries the scan
 
-    def __init__(self, interval=.5):
+    def __init__(self, interval=.4):
         self.interval = interval
-        self.thread = None
+        self.threads = []
         self.done = threading.Event()
         self.errors = {}
 
     def running(self):
-        return self.thread is not None and self.thread.is_alive()
+        return any(t.is_alive() for t in self.threads)
 
     def start(self):
         if self.running():
             return
         FLEET.load()
         self.done.clear()
-        self.thread = threading.Thread(target=self._run, daemon=True, name='fleet-localizer')
-        self.thread.start()
+        self.threads = [threading.Thread(target=self._run, args=(robot, isolated), daemon=True, name=f'fleet-{robot}')
+                        for robot, isolated in self.SOURCES.items()]
+        self.threads.append(threading.Thread(target=self._save_loop, daemon=True, name='fleet-save'))
+        for t in self.threads:
+            t.start()
 
     def stop(self):
         self.done.set()
 
-    def _run(self):
+    def _save_loop(self):
+        while not self.done.wait(30):
+            FLEET.save()
+        FLEET.save()
+
+    def _run(self, robot, isolated):
+        """One reader per robot: a slow Wi-Fi link to one robot does not delay the other."""
         from .sensors import SensorClient
-        clients, last_save = {}, time.monotonic()
+        client = None
         while not self.done.is_set():
             started = time.monotonic()
-            for robot, isolated in self.SOURCES.items():
-                try:
-                    if robot not in clients:
-                        clients[robot] = SensorClient(isolated=isolated, robot=robot)
-                    packet = clients[robot].snapshot()
-                    FLEET.update(robot, packet, odom_pose(packet) if robot == 'rosmaster' else None)
-                    self.errors.pop(robot, None)
-                except Exception as exc:                  # robot off / out of Wi-Fi: keep the other one going
-                    self.errors[robot] = str(exc)[:200]
-                    client = clients.pop(robot, None)
-                    if client is not None:
-                        client.close()
-            if time.monotonic() - last_save > 30:
-                FLEET.save()
-                last_save = time.monotonic()
+            try:
+                if client is None:
+                    client = SensorClient(isolated=isolated, robot=robot)
+                packet = client.snapshot(only=('scan', 'scan_rear', 'odometry'))
+                FLEET.update(robot, packet, odom_pose(packet) if robot == 'rosmaster' else None)
+                self.errors.pop(robot, None)
+            except Exception as exc:                      # robot off / out of Wi-Fi: retry, keep the other one going
+                self.errors[robot] = str(exc)[:200]
+                if client is not None:
+                    client.close()
+                client = None
+                self.done.wait(2)
             self.done.wait(max(.05, self.interval - (time.monotonic() - started)))
-        for client in clients.values():
+        if client is not None:
             client.close()
-        FLEET.save()
 
 
 LOCALIZER = FleetLocalizer()

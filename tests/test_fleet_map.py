@@ -15,13 +15,13 @@ SEGMENTS = [((-2, -1.5), (3, -1.5)), ((3, -1.5), (3, 2.5)), ((3, 2.5), (-2, 2.5)
             ((2.4, 1.0), (3, 1.0)), ((2.4, 1.0), (2.4, 2.0)), ((2.4, 2.0), (3, 2.0))]  # cupboard
 
 
-def raycast(pose, n=450, mount=(0., 0., 0.), noise=.01, rng=np.random.default_rng(0)):
+def raycast(pose, n=450, mount=(0., 0., 0., 1), noise=.01, rng=np.random.default_rng(0)):
     x, y, t = pose
-    mx, my, myaw = mount
+    mx, my, myaw, direction = mount
     ox, oy = x + math.cos(t) * mx - math.sin(t) * my, y + math.sin(t) * mx + math.cos(t) * my
     ranges = np.full(n, np.inf)
     for i in range(n):
-        a = t + myaw + 2 * math.pi * i / n
+        a = t + myaw + direction * 2 * math.pi * i / n
         d = np.array([math.cos(a), math.sin(a)])
         for (ax, ay), (bx, by) in SEGMENTS:
             e = np.array([bx - ax, by - ay])
@@ -47,6 +47,8 @@ def packet(robot, pose):
 def isolated(monkeypatch, tmp_path):
     monkeypatch.setattr(fm, 'MAP_DIR', tmp_path / 'map')
     monkeypatch.setattr(world_memory, 'MEMORY', tmp_path / 'memory.json')
+    from explorer3 import episodes
+    monkeypatch.setattr(episodes, 'ROOT', tmp_path / 'episodes')
     for p in world_memory.POSES.values():
         p.x = p.y = p.theta = None
 

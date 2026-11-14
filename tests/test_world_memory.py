@@ -47,6 +47,8 @@ def room(monkeypatch, tmp_path):
     monkeypatch.setattr(world_memory, 'beacons', lambda: table)
     monkeypatch.setattr(world_memory, 'MEMORY', tmp_path / 'memory.json')
     monkeypatch.setattr(world_memory, 'SNAPSHOTS', tmp_path / 'snap')
+    from explorer3 import episodes
+    monkeypatch.setattr(episodes, 'ROOT', tmp_path / 'episodes')
     for p in world_memory.POSES.values():
         p.x = p.y = p.theta = None
     return table
