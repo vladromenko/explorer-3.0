@@ -114,53 +114,35 @@ class ReplayActions:
 
 
 class PolicyActions:
+    """Real trials: the shared runtime (explorer3.policy_runtime), same as MuJoCo evaluation."""
     def __init__(self,plan):
         verify_policy_artifacts(plan)
-        import torch
-        from lerobot.configs.policies import PreTrainedConfig
-        from lerobot.policies.factory import get_policy_class,make_pre_post_processors
+        from .policy_runtime import PolicyCore
         root=Path(plan['checkpoint'])
         if hashlib.sha256((root/'model.safetensors').read_bytes()).hexdigest()!=plan['checkpoint_sha256']:
             raise ValueError('Policy checkpoint changed')
-        cfg=PreTrainedConfig.from_pretrained(root);cfg.device='cuda'
-        self.policy=get_policy_class(cfg.type).from_pretrained(root,config=cfg)
-        self.policy.eval()
-        self.environment_shape=cfg.input_features.get('observation.environment_state')
-        self.pre,self.post=make_pre_post_processors(cfg,pretrained_path=str(root),
-            preprocessor_overrides={'device_processor':{'device':'cuda'}},
-            postprocessor_overrides={'device_processor':{'device':'cpu'}})
+        self.core=PolicyCore(root,'cuda',instruction=plan.get('instruction'))
+        self.policy=self.core.policy
+        self.environment_shape=self.core.environment
         self.task=profile(plan['profile'])['task']
         self.decision_info={}
-        self.policy.reset()
 
     def needs_inference(self):
-        queue=getattr(self.policy,'_action_queue',getattr(self.policy,'_queues',{}).get('action'))
-        return queue is None or len(queue)==0
+        return self.core.needs_inference()
 
     def next(self,observation):
-        import torch
-        import numpy as np
-        batch={'observation.state':torch.tensor([observation['observation.state']],dtype=torch.float32),'task':[self.task]}
-        if self.environment_shape:
-            environment=observation.get('observation.environment_state')
-            if environment is None or len(environment)!=self.environment_shape.shape[0] or not np.isfinite(environment).all():
-                raise ValueError('Policy requires valid environment observations')
-            batch['observation.environment_state']=torch.tensor([environment],dtype=torch.float32)
-        for name,image in observation['images'].items():
-            rgb=np.array(image['image'],copy=True)
-            batch['observation.images.'+name]=torch.from_numpy(rgb).permute(2,0,1).float().unsqueeze(0)/255.
         replanned=self.needs_inference()
         start=time.monotonic_ns()
-        with torch.inference_mode():
-            action=self.post(self.policy.select_action(self.pre(batch))).cpu().numpy()[0].tolist()
+        action=self.core.act(observation['observation.state'],
+                             {name:image['image'] for name,image in observation['images'].items()},
+                             self.task,observation.get('observation.environment_state'))
         end=time.monotonic_ns()
         if replanned:
             self.decision_info={'policy_observation_timestamp_ns':observation.get('observation_timestamp_ns'),
                                 'policy_generation_start_ns':start,'policy_generation_end_ns':end}
         self.decision_info['policy_replanned']=replanned
-        if not all(math.isfinite(a) for a in action):raise ValueError('Nonfinite policy action')
         return action
 
     def reset(self):
-        self.policy.reset()
+        self.core.reset()
         self.decision_info={}

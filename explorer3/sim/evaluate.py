@@ -12,7 +12,7 @@ from explorer3.profiles import profile as profile_config
 from explorer3.act_client import ACTClient
 
 
-def evaluate(checkpoint,output,seeds,profile='so101_pick_place_sim',expected_model=None):
+def evaluate(checkpoint,output,seeds,profile='so101_pick_place_sim',expected_model=None,device='cuda'):
     output=Path(output);output.parent.mkdir(parents=True,exist_ok=True)
     env=make(profile,images=True)
     if expected_model is not None and env.manifest['xml_sha256']!=expected_model:
@@ -22,7 +22,7 @@ def evaluate(checkpoint,output,seeds,profile='so101_pick_place_sim',expected_mod
     client=None
     trials=[];latencies=[]
     try:
-        client=ACTClient(checkpoint,output.with_suffix('.inference.log'))
+        client=ACTClient(checkpoint,output.with_suffix('.inference.log'),device=device)
         for seed in seeds:
             obs,_=env.reset(seed=seed);client.request('reset')
             done=False

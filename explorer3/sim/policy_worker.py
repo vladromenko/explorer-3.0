@@ -13,17 +13,9 @@ from lerobot.policies.factory import get_policy_class,make_pre_post_processors
 
 def main(checkpoint,device):
     torch.set_num_threads(2)
-    cfg=PreTrainedConfig.from_pretrained(checkpoint)
-    if cfg.type not in {'act','smolvla','diffusion'}:
-        raise ValueError('Unsupported LeRobot policy')
-    if cfg.type=='smolvla' and getattr(cfg,'rtc_config',None) is not None:
-        raise ValueError('RTC state is not yet supported by this bounded evaluator')
-    cfg.device=device
-    policy=get_policy_class(cfg.type).from_pretrained(checkpoint,config=cfg).eval()
-    pre,post=make_pre_post_processors(cfg,pretrained_path=str(checkpoint),
-        preprocessor_overrides={'device_processor':{'device':device}},
-        postprocessor_overrides={'device_processor':{'device':'cpu'}})
-    policy.reset()
+    from explorer3.policy_runtime import PolicyCore
+    core=PolicyCore(checkpoint,device)          # the same runtime as real trials and the swarm
+    cfg,policy,pre,post=core.cfg,core.policy,core.pre,core.post
     import numpy as np
     fingerprint=hashlib.sha256(b''.join(p.name.encode()+hashlib.sha256(p.read_bytes()).digest()
         for p in sorted(checkpoint.iterdir()) if p.is_file())).hexdigest()
@@ -61,15 +53,14 @@ def main(checkpoint,device):
             bgr=cv2.imdecode(np.frombuffer(base64.b64decode(req['rgb']),dtype=np.uint8),cv2.IMREAD_COLOR)
             if bgr is None:raise ValueError('Invalid camera')
             rgb=cv2.cvtColor(bgr,cv2.COLOR_BGR2RGB)
-            batch={'observation.state':torch.tensor(req['state'],dtype=torch.float32).unsqueeze(0),
-                   req['camera_key']:torch.from_numpy(rgb.copy()).permute(2,0,1).float().unsqueeze(0)/255,
-                   'task':[req['task']]}
+            if req['command']=='action':
+                result={'action':core.act(req['state'],{req['camera_key']:rgb},req['task'])}
+                print('EXPLORER_JSON '+json.dumps(result),flush=True)
+                continue
+            batch=core.batch(req['state'],{req['camera_key']:rgb},req['task'])
             with torch.inference_mode():
                 prepared=pre(batch)
-                if req['command']=='action':
-                    action=post(policy.select_action(prepared))
-                    result={'action':action.reshape(-1).tolist()}
-                elif req['command']=='embed':
+                if req['command']=='embed':
                     if cfg.type!='act':raise ValueError('Support embeddings calibrated only for ACT')
                     embeddings=[policy.model.backbone(prepared[key])['feature_map'].mean(dim=(-2,-1)).cpu() for key in cfg.image_features]
                     result={'policy_id':fingerprint,'features':torch.stack(embeddings,dim=1)[0].tolist(),'queue_unchanged':True}

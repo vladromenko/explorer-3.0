@@ -180,7 +180,7 @@ class Jobs:
         _,model_hash=select_simulation_revision([e for group in split.values() for e in group])
         if model_hash is None:raise ValueError('Нет версии физики обучающего набора')
         return self._insert(source['profile'],source['policy'],{'kind':'sim_evaluate','profile':source['profile'],
-            'source_job':job_id,'checkpoint':source['checkpoint'],'device':'cpu',
+            'source_job':job_id,'checkpoint':source['checkpoint'],'device':'cuda',
             'expected_model_hash':model_hash,
             'episodes':3 if json.loads(source['config']).get('smoke') else 20})
 
@@ -333,7 +333,7 @@ class Jobs:
         ident = job['id']
         try:
             cfg=json.loads(job['config'])
-            gpu=cfg.get('kind','train') in {'train','evaluate','benchmark','vision','cognitive_simulation','cognitive_observation','cognitive_order'} and cfg.get('device','cuda').startswith('cuda')
+            gpu=cfg.get('kind','train') in {'train','evaluate','sim_evaluate','benchmark','vision','cognitive_simulation','cognitive_observation','cognitive_order'} and cfg.get('device','cuda').startswith('cuda')
             with ResourceLease('physical-activity'), ResourceLease('compute'), (ExistingTrainingLease() if gpu else contextlib.nullcontext()):
                 path = DATA/'jobs'/f'{ident}.json'
                 path.write_text(job['config'])
