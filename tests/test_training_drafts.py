@@ -68,3 +68,46 @@ def test_finetune_accepts_documentation_changes_but_not_channel_units():
     drafts.merge_plans(old,new)
     new['profile_contract']['units']=['cm/s']
     with pytest.raises(ValueError,match='версию модели'):drafts.merge_plans(old,new)
+
+
+def test_real_preparation_preserves_full_dataset_minimum_and_does_not_queue(tmp_path,monkeypatch):
+    monkeypatch.setattr(drafts,'DATA',tmp_path)
+    selected=plan([episode('a')],[episode('b')],[episode('c')])
+    selected.update(domain='real',profile='rosmaster_dock',sim_model_hash=None)
+    def freeze(name,smoke,**kw):
+        assert name=='rosmaster_dock' and smoke is False
+        assert kw['min_sim_episodes'] is None
+        assert kw.get('min_real_episodes') is None  # retain standard 50, not a 3-demo pilot
+        return 'p'*64,selected
+    monkeypatch.setattr(drafts.datasets,'freeze',freeze)
+    monkeypatch.setattr(drafts.datasets,'load_plan',lambda ident:selected)
+    ident,prepared=drafts.prepare('rosmaster_dock','act',['a','b','c'],steps=2000,batch=1,seed=1000,device='cpu')
+    assert prepared['domain']=='real' and prepared['preparation_only']
+    assert prepared['training_started'] is False
+    assert drafts.load(ident)==prepared
+    assert not (tmp_path/'jobs').exists()
+
+
+def test_real_finetune_preserves_holdouts_and_rejects_sim_mixing():
+    old=plan([episode('a')],[episode('b')],[episode('c')])
+    new=plan([episode('d')],[episode('e',scene='a')],[episode('f')])
+    for value in (old,new):value.update(domain='real',profile='rosmaster_dock',sim_model_hash=None)
+    merged=drafts.merge_plans(old,new)
+    assert {x['id'] for x in merged['splits']['train']}=={'a','d','e'}
+    assert {x['id'] for x in merged['splits']['validation']}=={'b'}
+    new['domain']='sim'
+    with pytest.raises(ValueError):drafts.merge_plans(old,new)
+
+
+def test_dataset_fingerprint_includes_raw_sensor_packets(tmp_path,monkeypatch):
+    from explorer3 import datasets
+    monkeypatch.setattr(datasets,'DATA',tmp_path)
+    root=tmp_path/'datasets'/'episode';(root/'sensors').mkdir(parents=True)
+    (root/'provenance.json').write_text('{}')
+    raw=root/'sensors'/'000000.npz';raw.write_bytes(b'fixture-sensor-before')
+    before=datasets.fingerprint(root)
+    raw.write_bytes(b'fixture-sensor-after')
+    assert datasets.fingerprint(root)!=before
+    outside=tmp_path/'outside.npz';outside.write_bytes(b'external')
+    (root/'sensors'/'linked.npz').symlink_to(outside)
+    with pytest.raises(ValueError,match='outside'):datasets.fingerprint(root)

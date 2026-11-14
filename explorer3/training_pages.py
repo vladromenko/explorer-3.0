@@ -3,17 +3,39 @@ import asyncio
 import json
 from nicegui import ui
 from . import catalog,datasets,training_drafts
-from .paths import DATA
-from .policy_catalog import POLICIES
+from .paths import DATA,ROOT
+from .profiles import PROFILES
+from .policy_catalog import POLICIES,validate_recipe
 from .sim_pages import STYLE
 
 
 def install(css,jobs):
     @ui.page('/sim/training')
     async def page():
+        await builder_page('sim')
+
+    @ui.page('/training/prepare')
+    async def real_page():
+        await builder_page('real')
+
+    @ui.page('/datasets/guide')
+    async def guide_page():
+        ui.add_css(css+STYLE);ui.dark_mode().enable()
+        with ui.row():
+            ui.link('Explorer','/');ui.link('Подготовить обучение','/training/prepare')
+        ui.markdown((ROOT/'docs/DATASET_GUIDE_RU.md').read_text()).classes('w-full')
+
+    async def builder_page(domain):
         ui.add_css(css+STYLE);ui.dark_mode().enable();ui.colors(primary='#2b9c8f',secondary='#748aa4',negative='#d45050')
         draft_id=None;preparing=False
         def refresh():
+            available={}
+            for ident,label in POLICIES.items():
+                try:
+                    validate_recipe(ident,profile.value);available[ident]=label
+                except ValueError:pass
+            if policy.options!=available:
+                policy.set_options(available,value=policy.value if policy.value in available else 'act')
             shows={e['id']:e['id'][:8]+' · '+str(e['frames'])+' кадров · '+e['category'] for e in datasets.eligible(profile.value)}
             episodes.set_options(shows,value=[])
             sources={'new':'Новая модель · без прежнего checkpoint'}
@@ -44,20 +66,23 @@ def install(css,jobs):
             with ui.column():
                 ui.label('HOMEBRAIN / ПОДГОТОВКА ОБУЧЕНИЯ').classes('kicker');ui.html('<h1>Explorer 3.0</h1>')
                 ui.label('Сначала проверить план, затем запустить самостоятельно').classes('muted')
-            ui.label('Симуляционные данные').classes('sim-badge')
+            ui.label('Реальные записи' if domain=='real' else 'Симуляционные данные').classes('sim-badge')
         with ui.row():
-            ui.link('← Симуляция','/sim');ui.link('Сравнение помощи','/sim/branches')
+            ui.link('← Explorer','/');ui.link('Как собрать датасет','/datasets/guide')
+        names=({key:value.get('label',key) for key,value in PROFILES.items()} if domain=='real' else
+            {'so101_pick_place_sim':'SO-101 · кубик в коробку','tank_dock_sim':'Tank · подъезд к цели',
+             'rosmaster_pick_place_sim':'ROSMASTER · кубик в коробку','rosmaster_dock_sim':'ROSMASTER · подъезд к цели'})
         with ui.element('div').classes('sim-layout') as builder:
             with ui.column().classes('sim-panel'):
                 ui.label('Данные и исходная модель').classes('sim-title')
-                profile=ui.select({'so101_pick_place_sim':'SO-101 · кубик в коробку','tank_dock_sim':'Tank · подъезд к цели',
-                    'rosmaster_pick_place_sim':'ROSMASTER · кубик в коробку','rosmaster_dock_sim':'ROSMASTER · подъезд к цели'},
-                    value='so101_pick_place_sim',label='Задача',on_change=lambda:refresh()).classes('w-full')
+                profile=ui.select(names,value=next(iter(names)),label='Задача',on_change=lambda:refresh()).classes('w-full')
                 policy=ui.select(POLICIES,value='act',label='Модель',on_change=lambda:refresh()).classes('w-full')
                 source=ui.select({},label='Начать заново или дообучить').classes('w-full')
                 episodes=ui.select({},multiple=True,label='Показы и исправления для нового плана').props('use-chips').classes('w-full')
                 ui.button('Обновить список данных',icon='refresh',on_click=refresh).props('outline')
-                ui.label('Выберите успешные проверенные записи одной версии физики. Нужны минимум три независимые группы. Это позволяет разделить данные, но не гарантирует достаточного количества для навыка.').classes('muted')
+                ui.label(('Нужны минимум 50 успешных пригодных показов одного профиля и минимум три независимые группы.' if domain=='real' else
+                    'Выберите успешные записи одной версии физики, минимум три независимые группы.')+
+                    ' Общие сессии ИЛИ расстановки не разделяются между обучением и проверкой. Количество не гарантирует навык.').classes('muted')
                 ui.label('При дообучении прежние данные сохраняются. Сцены исходного обучения не попадут в проверку; прежние контрольные группы останутся контрольными.').classes('muted')
                 refresh()
             with ui.column().classes('sim-panel'):
@@ -71,7 +96,8 @@ def install(css,jobs):
         def saved():
             directory=DATA/'training-drafts'
             return {p.stem:p.stem[:8]+' · '+json.loads(p.read_text())['policy'].upper() for p in sorted(directory.glob('*.json'))
-                if json.loads(p.read_text()).get('profile','').endswith('_sim')} if directory.exists() else {}
+                if json.loads(p.read_text()).get('profile','') in names
+                and json.loads(p.read_text()).get('mode') in ('new_training','fine_tune_new_optimizer')} if directory.exists() else {}
         async def open_saved():
             nonlocal draft_id
             if history.value:
@@ -100,7 +126,7 @@ def install(css,jobs):
                     if json.loads(task['config']).get('draft_id')==draft_id:ui.link(task['status']+' · '+task['id'][:8],'/jobs/'+task['id'])
             with summary:
                 ui.label('Готовый план · '+draft_id[:8]).classes('sim-title')
-                ui.label(draft['policy'].upper()+' · '+{'tank_dock_sim':'Tank · подъезд к цели','so101_pick_place_sim':'SO-101 · кубик в коробку'}.get(draft['profile'],draft['profile'])+' · '+str(draft['steps'])+' обновлений · пакет '+str(draft['batch_size'])+' · '+draft['device'])
+                ui.label(draft['policy'].upper()+' · '+names.get(draft['profile'],draft['profile'])+' · '+str(draft['steps'])+' обновлений · пакет '+str(draft['batch_size'])+' · '+draft['device'])
                 ui.table(columns=[{'name':'part','label':'Часть данных','field':'part'},
                     {'name':'episodes','label':'Записей','field':'episodes'},{'name':'frames','label':'Кадров','field':'frames'}],
                     rows=[{'part':{'train':'Обучение','validation':'Проверка при обучении','test':'Итоговая проверка'}[role],

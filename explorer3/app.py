@@ -178,6 +178,8 @@ def index():
     ui.link('ROSMASTER · датчики и окружение', '/rosmaster/sensors')
     ui.link('Общий обзор роботов · связь и датчики', '/fleet/live')
     ui.link('Команда · совместная задача и память', '/team')
+    ui.link('Собрать датасет · инструкция', '/datasets/guide')
+    ui.link('Подготовить обучение на реальных записях', '/training/prepare')
     ui.label('РЕАЛЬНЫЕ РОБОТЫ').classes('kicker')
     stage_label=ui.label('Этап A · программная подготовка. Движение не разрешено. Запись и физические испытания ещё не проверены.').classes('notice')
     ready=ui.label('').classes('muted')
@@ -284,6 +286,7 @@ def index():
                 task_description=ui.label('').classes('muted')
                 collection=ui.input('Сессия сбора (одна для серии показов)',value=time.strftime('%Y-%m-%d')+'-session-01')
                 scene=ui.input('Расстановка',value='scene-01')
+                ui.label('Для отдельной независимой серии нужны новые сессия и расстановка. Изменение имени без изменения условий не делает данные независимыми.').classes('muted')
                 category=ui.select({'demonstration':'Исходный показ','correction':'Отдельный сегмент коррекции'},value='demonstration',label='Тип записи')
                 ui.label('Коррекцию начинайте отдельной записью после остановки предыдущего исполнения: границы источников не смешиваются.').classes('muted')
                 def begin():
@@ -328,6 +331,7 @@ def index():
                 ui.button('Проверить данные и видео',on_click=validate_selected)
                 collection_info=ui.label().classes('muted')
             with ui.tab_panel(training):
+                ui.link('Сначала подготовить и проверить план без запуска', '/training/prepare')
                 ui.label('Один trainer · отдельная политика для каждой задачи').style('font-size:19px')
                 ui.label('ACT: upstream LeRobot 0.6.1. Smoke: 50 шагов; это проверка тракта, не навык.').classes('muted')
                 async def enqueue_policy(policy,smoke):

@@ -1,4 +1,4 @@
-"""Immutable, reviewable sim training drafts. Preparation never queues a trainer."""
+"""Immutable training drafts for separate real/sim corpora; no trainer queued."""
 import hashlib
 import json
 from pathlib import Path
@@ -34,7 +34,7 @@ def semantic_contract(value):
 
 def merge_plans(old,new):
     """Keep prior hold-outs and prevent old training scenes leaking into new test."""
-    if old['domain']!='sim' or new['domain']!='sim' or old['profile']!=new['profile'] or old['sim_model_hash']!=new['sim_model_hash'] or semantic_contract(old.get('profile_contract'))!=semantic_contract(new.get('profile_contract')):
+    if old['domain'] not in ('real','sim') or new['domain']!=old['domain'] or old['profile']!=new['profile'] or old['sim_model_hash']!=new['sim_model_hash'] or semantic_contract(old.get('profile_contract'))!=semantic_contract(new.get('profile_contract')):
         raise ValueError('Дообучение требует тот же профиль и версию модели; sim→real — отдельный протокол')
     anchored={e['id']:role for role,entries in old['splits'].items() for e in entries}
     roles={e['id']:role for role,entries in new['splits'].items() for e in entries}
@@ -63,9 +63,11 @@ def validate_budget(steps,batch,seed,device):
 
 def prepare(name,policy,episode_ids,*,steps,batch,seed,device,source=None):
     validate_budget(steps,batch,seed,device)
-    if profile(name).get('domain')!='sim':raise ValueError('Этот конструктор предназначен для симуляции')
+    domain=profile(name).get('domain','real')
+    if domain not in ('real','sim'):raise ValueError('Unknown recording domain')
     validate_recipe(policy,name)
-    plan_id,plan=datasets.freeze(name,False,seed=seed,selected_ids=episode_ids,min_sim_episodes=3)
+    plan_id,plan=datasets.freeze(name,False,seed=seed,selected_ids=episode_ids,
+        min_sim_episodes=3 if domain=='sim' else None)
     # A draft is a new run; resume is a separate existing job action.
     initial=None;prior=None;source_plan_id=None;fingerprint=None
     if source:
@@ -85,7 +87,7 @@ def prepare(name,policy,episode_ids,*,steps,batch,seed,device,source=None):
     old_ids={e['id'] for e in prior['splits']['train']} if prior else set()
     frames={role:sum(e['frames'] for e in entries) for role,entries in plan['splits'].items()}
     old_frames=sum(e['frames'] for e in plan['splits']['train'] if e['id'] in old_ids)
-    draft={'version':1,'kind':'train','profile':name,'policy':policy,'smoke':False,'plan_id':plan_id,
+    draft={'version':1,'kind':'train','domain':domain,'profile':name,'policy':policy,'smoke':False,'plan_id':plan_id,
         'steps':steps,'batch_size':batch,'seed':seed,'device':device,
         'initial_checkpoint':initial,'initial_checkpoint_sha256':fingerprint,'source_job':source['id'] if source else None,
         'source_plan_id':source_plan_id,'mode':'fine_tune_new_optimizer' if source else 'new_training',
@@ -95,7 +97,7 @@ def prepare(name,policy,episode_ids,*,steps,batch,seed,device,source=None):
         'split_counts':{role:len(entries) for role,entries in plan['splits'].items()},'frames':frames,
         'test_rule':'prior hold-outs retained; test not used for training or validation selection',
         'training_started':False,'preparation_only':True,
-        'limitation':'Three independent groups only make a valid split; they do not guarantee an adequate learning dataset'}
+        'limitation':'Independent groups and the recording count are technical gates, not proof of sufficient data or learned skill'}
     return save_content(DATA/'training-drafts',draft),draft
 
 

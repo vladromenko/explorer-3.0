@@ -74,7 +74,8 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
   <div class="card"><h2>Запись показа</h2>
    <div class="row"><select id="rprof"><option value="rosmaster_pick_place">Кубик → коробка (рука)</option><option value="rosmaster_dock">Подъезд к цели (база)</option><option value="rosmaster_pick_place_rgbd_lidar">Рука + глубина и лидары</option><option value="rosmaster_dock_rgbd_lidar">База + глубина и лидары</option></select>
     <input id="rscene" value="scene-01" size="8" title="Расстановка: меняйте при новой расстановке предметов"></div>
-   <div class="help">Задача записи определяет управление: рука или шасси.</div>
+   <div class="row" style="margin-top:8px"><label for="rcollection">Сессия сбора</label><input id="rcollection" value="session-01" maxlength="80" title="Одна сессия для серии показов; новая независимая серия — новое имя"></div>
+   <div class="help">Задача записи определяет управление: рука или шасси. Для независимой серии меняйте и сессию, и расстановку; не переименовывайте одинаковую сцену ради разделения данных. <a href="/datasets/guide" target="_blank">Как собрать датасет</a></div>
    <div class="row" style="margin-top:8px" id="recstart"><button class="go" onclick="startRecording()">● Начать запись</button></div>
    <div class="row" style="margin-top:8px;display:none" id="recout"><button class="go" onclick="send({action:'record_finish',outcome:'success'})">✓ Успех</button><button onclick="send({action:'record_finish',outcome:'failure'})">✗ Неуспех</button><button onclick="send({action:'record_finish',outcome:'aborted'})">Прервать</button></div>
    <div class="help" id="rstate" style="margin-top:6px">—</div></div>
@@ -114,7 +115,7 @@ function startRecording(){
  const motorProfile=profile.replace(/_rgbd_lidar$/,'');
  $('control-profile').value=motorProfile;profileControls();
  try{localStorage.setItem('explorerManualProfile',motorProfile)}catch(e){}
- send({action:'record_start',profile,category:$('rcat').value,scene:$('rscene').value,observing:true});
+ send({action:'record_start',profile,category:$('rcat').value,scene:$('rscene').value,collection:$('rcollection').value,observing:true});
 }
 function profileControls(){
  const p=$('control-profile').value;
@@ -180,7 +181,7 @@ function render(s){
   $('mcheck').innerHTML='<tr><th style="text-align:left">сустав</th><th>Leader Δ°</th><th>робот Δ°</th><th>знак</th><th></th></tr>'+MC.rows.map((r,i)=>{return '<tr><td>'+N[i]+'</td><td style="text-align:center">'+(r.leader??'—')+'</td><td style="text-align:center">'+(r.robot??'—')+'</td><td style="text-align:center">'+(MC.sign?(MC.sign[i]>0?'+':'−'):'?')+'</td><td><button onclick="send({action:\'mirror_flip\',joint:'+i+'})">⇄</button>'+'</td></tr>'}).join('');
   $('gstate').textContent='Leader '+(MC.leader_gripper??'—')+(MC.gripper_map?' · соответствие '+MC.gripper_map.map(v=>(+v).toFixed(0)).join(' → ')+' (открыт → закрыт)':' · относительный (прежний)');}
  const R=s.recording||{};const P=R.pilot||{};const rec=R.phase&&R.phase!=='idle';
- $('control-profile').disabled=!!rec;$('rprof').disabled=!!rec;$('rscene').disabled=!!rec;$('rcat').disabled=!!rec;
+ $('control-profile').disabled=!!rec;$('rprof').disabled=!!rec;$('rscene').disabled=!!rec;$('rcat').disabled=!!rec;$('rcollection').disabled=!!rec;
  $('recstart').style.display=rec?'none':'flex';$('recout').style.display=rec?'flex':'none';
  const canFinish=R.phase==='recording'&&R.frames>0;
  $('recout').querySelectorAll('button').forEach((b,i)=>{b.disabled=R.phase==='saving'||(i<2&&!canFinish);});

@@ -12,9 +12,10 @@ def fingerprint(root):
     root = Path(root).resolve()
     if not root.is_relative_to(DATA / 'datasets'):
         raise ValueError('Dataset outside Explorer storage')
-    files = sorted(p for p in root.rglob('*') if p.is_file() and p.suffix in {'.json', '.jsonl', '.parquet', '.mp4'})
+    files = sorted(p for p in root.rglob('*') if p.is_file() and p.suffix in {'.json', '.jsonl', '.parquet', '.mp4', '.npz'})
     digest = hashlib.sha256()
     for path in files:
+        if not path.resolve().is_relative_to(root):raise ValueError('Dataset file points outside its recording')
         digest.update(str(path.relative_to(root)).encode())
         with path.open('rb') as source:
             for block in iter(lambda: source.read(1024 * 1024), b''):
@@ -87,6 +88,9 @@ def freeze(name, smoke, seed=1000, sim_model_hash=None, *, selected_ids=None, mi
     for episode in episodes:
         root = Path(episode['dataset'])
         provenance = json.loads((root / 'provenance.json').read_text())
+        from .training_drafts import semantic_contract
+        if semantic_contract(provenance.get('profile'))!=semantic_contract(profile(name)):
+            raise ValueError('Камера, частота, единицы или каналы записи отличаются от текущего профиля: '+episode['id'])
         if provenance.get('hardware',{}).get('pipeline_check') or provenance.get('hardware',{}).get('training_eligible') is False:
             raise ValueError('Диагностическая или не принятая запись не является обучающим показом')
         if provenance.get('domain','real')!=domain or provenance.get('synthetic') is not (domain!='real'):
