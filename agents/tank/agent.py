@@ -88,7 +88,7 @@ class Hardware:
     def status(self):
         with self.lock:
             return {'robot':'tank','software':self.software,'armed':self.armed,'hardware_open':self.board is not None,
-                    'sensor_errors':getattr(self,'sensor_errors',{}),
+                    'sensor_errors':getattr(self,'sensor_errors',{}),'lidar':{'running':lidar_alive(),'error':LIDAR_STATE['error'],'restarts':LIDAR_STATE['restarts']},
                     'motion_paused':self.motion_paused,'mode':self.mode,'task_profile':self.task_profile,
                     'reason':self.reason,'action':self.last_action,'motor_acknowledged':False,
                     'fault':self.fault,'neutral_written':self.neutral_written,
@@ -302,12 +302,8 @@ class Hardware:
             # Camera and lidar are optional for driving: a failure is reported, not fatal.
             try:self.start_camera()
             except Exception as exc:self.sensor_errors['camera']=str(exc)
-            try:
-                if __package__:from .lidar import Lidar
-                else:from lidar import Lidar
-                self.lidar=Lidar();self.lidar.start(ROOT)
-            except Exception as exc:
-                self.lidar=None;self.sensor_errors['lidar']=str(exc)
+            # Lidar is always on (keep_lidar thread): read-only, needed for fleet localization too.
+            if not lidar_alive():self.sensor_errors['lidar']=LIDAR_STATE.get('error') or 'Лидар перезапускается'
             deadline=time.monotonic()+3          # short wait so the first camera frame is usually there
             while time.monotonic()<deadline and not self.cancel_start.is_set():
                 with self.lock:
@@ -376,9 +372,6 @@ class Hardware:
 
     def _close(self,errors):
         self.ros_stop.set()
-        if self.lidar is not None:
-            try:self.lidar.close();self.lidar=None
-            except Exception as exc:errors.append('Lidar close: '+str(exc))
         if self.camera is not None:
             try:
                 self.camera.send_signal(signal.SIGINT)
@@ -411,6 +404,30 @@ class Hardware:
             self.imu=None;self.imu_time=None
 
 
+LIDAR_STATE={'lidar':None,'error':None,'restarts':0}
+
+
+def lidar_alive():
+    lidar=LIDAR_STATE['lidar']
+    return lidar is not None and lidar.process is not None and lidar.process.poll() is None
+
+
+def keep_lidar(done):
+    """MS200 runs for the whole agent lifetime (read-only scans for docking and fleet
+    localization); a crashed driver is restarted. It never touches the motor port."""
+    if __package__:from .lidar import Lidar
+    else:from lidar import Lidar
+    while not done.is_set():
+        if not lidar_alive():
+            try:
+                if LIDAR_STATE['lidar'] is not None:LIDAR_STATE['lidar'].close()
+                lidar=Lidar();lidar.start(ROOT)
+                LIDAR_STATE.update(lidar=lidar,error=None,restarts=LIDAR_STATE['restarts']+1)
+            except Exception as exc:
+                LIDAR_STATE.update(lidar=None,error=str(exc))
+        done.wait(5)
+
+
 hardware=None
 @asynccontextmanager
 async def lifespan(app):
@@ -418,10 +435,14 @@ async def lifespan(app):
     hardware=Hardware()
     hardware.udev.start()
     (ROOT/'agent.pid').write_text(str(os.getpid()))
+    keeper=threading.Thread(target=keep_lidar,args=(hardware.done,),daemon=True);keeper.start()
     yield
     try:hardware.close()
     finally:
         hardware.done.set();hardware.watchdog.join(timeout=2);hardware.udev.close()
+        if LIDAR_STATE.get('lidar') is not None:
+            try:LIDAR_STATE['lidar'].close()
+            except Exception:pass
 
 app=FastAPI(lifespan=lifespan)
 @app.middleware('http')

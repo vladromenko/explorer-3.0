@@ -1,4 +1,5 @@
 """Explorer 3.0 — one NiceGUI/FastAPI server, local assets, inert startup."""
+import math
 import asyncio
 import json
 import os
@@ -159,6 +160,15 @@ from . import learn_pages
 learn_pages.install(jobs)
 (DATA/'world').mkdir(parents=True,exist_ok=True)
 app.add_media_files('/world-media',DATA/'world')
+from fastapi.responses import Response as _Response
+@app.get('/fleet-map.png')
+def fleet_map_png():
+    import cv2
+    from .fleet_map import FLEET
+    img=FLEET.image(3)
+    if img is None:return _Response(status_code=204)
+    ok,data=cv2.imencode('.png',cv2.cvtColor(img,cv2.COLOR_RGB2BGR))
+    return _Response(data.tobytes(),media_type='image/png',headers={'Cache-Control':'no-store'})
 from . import fleet_policy_pages
 fleet_policy_pages.install(CSS,jobs)
 from . import gain_pages
@@ -246,7 +256,17 @@ def index(request:Request):
         with ui.row().style('width:100%;justify-content:space-between;align-items:center'):
             ui.label('Общая память роботов').style('font-size:17px;font-weight:700')
             memory_status=ui.label('').classes('muted')
-        ui.label('Что один робот увидел, знает и другой: кнопка «Отправить» посылает второго робота к этому месту, рядом он находит предмет своей камерой. Точное место в комнате появляется, когда роботы видят маяки на стенах (configs/room_beacons.yaml).').classes('muted')
+        ui.label('Что один робот увидел, знает и другой: кнопка «Отправить» посылает второго робота к этому месту, рядом он находит предмет своей камерой. Где кто находится, роботы узнают по общей карте комнаты из своих лидаров — без меток.').classes('muted')
+        with ui.row().style('width:100%;gap:16px;align-items:flex-start;flex-wrap:wrap'):
+            map_image=ui.image('/fleet-map.png').style('width:340px;max-width:100%;border-radius:12px;border:1px solid #243041;background:#111821')
+            with ui.column().style('gap:6px;flex:1;min-width:260px'):
+                ui.label('Карта комнаты по лидарам').style('font-weight:650')
+                map_text=ui.html('').classes('muted')
+                ui.label('Зелёный — Tank, оранжевый — ROSMASTER, красные крестики — найденные предметы. Карта растёт, когда роботы ездят; Tank находит себя на ней сам, как только видит уже знакомые стены и мебель.').classes('muted').style('font-size:12.5px')
+                def reset_map():
+                    from .fleet_map import FLEET
+                    FLEET.reset();ui.notify('Карта очищена: её начнёт заново первый робот со свежим сканом')
+                ui.button('Начать карту заново',icon='restart_alt',on_click=reset_map).props('flat dense')
         @ui.refreshable
         def memory_list():
             from . import world_memory
@@ -287,7 +307,24 @@ def index(request:Request):
         def memory_refresh():
             from . import world_memory
             poses=[f"{n}: ({p.x:.1f}; {p.y:.1f}) {p.source}" if p.known() else f"{n}: место неизвестно" for n,p in (('Tank',world_memory.POSES['tank']),('ROSMASTER',world_memory.POSES['rosmaster']))]
-            memory_status.set_text(f"маяков: {len(world_memory.beacons())} · "+' · '.join(poses))
+            memory_status.set_text(' · '.join(poses))
+            from .fleet_map import FLEET,LOCALIZER
+            st=FLEET.status();names={'tank':'Tank','rosmaster':'ROSMASTER'}
+            states={'mapping':'строит карту','tracking':'знает, где он','weak':'неуверенно','searching':'ищет себя на карте','no_scan':'лидар молчит'}
+            lines=[]
+            for robot in ('rosmaster','tank'):
+                info=st['robots'].get(robot)
+                if robot in LOCALIZER.errors and not info:lines.append(f"<b>{names[robot]}</b>: нет связи с датчиками");continue
+                if not info:lines.append(f"<b>{names[robot]}</b>: ждём скан");continue
+                where=f" · ({info['pose'][0]:.2f}; {info['pose'][1]:.2f}) м, курс {math.degrees(info['pose'][2]):.0f}°" if info.get('pose') else ''
+                lines.append(f"<b>{names[robot]}</b>: {states.get(info.get('state'),info.get('state'))}{where} · {info.get('message','')}")
+            rel=FLEET.relative('tank','rosmaster')
+            if rel:
+                side='слева' if rel['bearing']>.2 else 'справа' if rel['bearing']<-.2 else 'впереди' if abs(rel['bearing'])<1.5 else 'сзади'
+                lines.append(f"Tank видит ROSMASTER в {rel['distance']:.1f} м {side} ({math.degrees(rel['bearing']):.0f}°)")
+            lines.append(f"сканов в карте: {st['scans']}")
+            map_text.set_content('<br>'.join(lines))
+            map_image.set_source(f'/fleet-map.png?t={time.time():.0f}')
             memory_list.refresh()
         ui.timer(4,memory_refresh)
     with ui.element('div').classes('workspace'):
@@ -785,6 +822,14 @@ app.on_startup(recover_recording_checks)
 app.on_startup(scheduled_backup)
 app.timer(60,scheduled_backup)
 app.on_startup(lambda:catalog.event('info','Explorer 3.0 запущен без открытия аппаратуры'))
+def _start_fleet_localizer():
+    from .fleet_map import LOCALIZER
+    LOCALIZER.start()
+def _stop_fleet_localizer():
+    from .fleet_map import LOCALIZER
+    LOCALIZER.stop()
+app.on_startup(_start_fleet_localizer)
+app.on_shutdown(_stop_fleet_localizer)
 app.on_shutdown(lambda:control.stop('Служба останавливается'))
 app.on_shutdown(lambda:jobs.cancel())
 from . import sim_service

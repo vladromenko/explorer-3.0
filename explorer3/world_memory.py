@@ -55,9 +55,9 @@ class Pose:
     def known(self):
         return self.x is not None
 
-    def fix(self, x, y, theta):
+    def fix(self, x, y, theta, source='beacon'):
         self.x, self.y, self.theta = x, y, theta
-        self.fixed_at, self.source, self.drift_m = time.time(), 'beacon', 0.
+        self.fixed_at, self.source, self.drift_m = time.time(), source, 0.
 
     def move(self, vx, vy, w, dt):
         if not self.known():
