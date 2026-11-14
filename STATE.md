@@ -1312,3 +1312,7 @@ UI-кнопка подтверждения USB добавлена в исход�
 - Модельные forward/fit намеренно пропущены. Программные тесты не доказывают физический STOP. Обучение и команды роботам не выполнялись.
 - Физическая приёмка новой версии, измеренная калибровка, реальные мультимодальные показы остаются оператору. RGB Tank ~9.3 Hz и сырые часы ~28–32 ms не объявляются зелёными. Глобальные часы и заводские службы не менялись.
 - В чужие незавершённые изменения simlab/dock_gpu.py и scripts/simlab_sysid.py не вмешивались и в коммит R9 не включали.
+
+## Tank physical wizard clarification — 2026-11-14
+
+Operator reported an empty panel. Reproduced live page: wizard controls rendered, but the intentionally unavailable control iframe occupied 1250px of blank space. Hide it until charger check PASS and display explicit instructions instead; remove circular instruction to enable controls before the panel is available. Browser regression PASS (tests-20261114T140226Z), verifies placeholder visible and iframe hidden. No motor commands or training.

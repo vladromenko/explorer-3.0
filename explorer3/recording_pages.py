@@ -246,6 +246,7 @@ def install_physical(local_reader=lambda:{}):
                 selector.enable();start_button.enable()
                 if robot=='tank' and run.results.get('charger',{}).get('result')=='PASS':
                     control_frame.props('src='+json.dumps(src))
+                    control_frame.set_visibility(True);panel_notice.set_visibility(False)
                 status.set_text('Шаг сохранён; выберите следующий или повторите этот')
             except Exception as exc:ui.notify(str(exc),type='negative')
             finally:finish_button.enable()
@@ -259,8 +260,11 @@ def install_physical(local_reader=lambda:{}):
             if run.thread and not run.thread.is_alive() and run.current:status.set_text('Чтение закончено; подтвердите и сохраните результат или отметьте FAIL')
         ui.timer(.5,refresh)
         ui.label('Панель управления · движение только по вашим кнопкам').style('font-size:20px')
+        panel_notice=ui.label('Панель появится после проверки питания. Выше нажмите «Начать измерение шага», подождите 10 секунд, отметьте «Зарядник физически отсоединён» и нажмите «Проверить и сохранить результат».').classes('ready-card ready-action')
+        panel_notice.set_visibility(robot=='tank')
         src='/rosmaster/control' if robot=='rosmaster' else '/?robot='+robot
         control_frame=ui.element('iframe').props('id="physical-control" src='+json.dumps('about:blank' if robot=='tank' else src)+' allow="gamepad"').style('width:100%;height:1250px;border:1px solid #344253;border-radius:14px;background:#10161f')
+        control_frame.set_visibility(robot!='tank')
         ui.add_body_html('''<script>window.addEventListener('keydown',e=>{
           if(e.code==='Space'){e.preventDefault();document.getElementById('physical-control')?.contentWindow.postMessage({explorerRecordingStop:true},location.origin);}
         });</script>''')
