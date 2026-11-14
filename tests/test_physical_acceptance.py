@@ -21,13 +21,19 @@ def test_stop_needs_operator_and_disarm_not_just_zero_command():
     assert evaluate('tank','stop',rows,True)['result']=='FAIL'
 
 
-def test_charger_requires_confirmation_time_voltage_and_trend():
+def test_charger_accepts_full_battery_but_requires_confirmation_and_fresh_power():
     rows=samples()
     assert evaluate('tank','charger',rows,True)['result']=='FAIL' # too short
     rows=[{**rows[0],'at':i*.1} for i in range(110)]
     assert evaluate('tank','charger',rows,True)['result']=='PASS'
     assert evaluate('tank','charger',rows,False)['result']=='FAIL'
-    rows[-1]['battery_v']=8.4
+    for row in rows:row['battery_v']=8.4
+    assert evaluate('tank','charger',rows,True)['result']=='PASS'
+    rows[-1]['battery_v']=8.45  # Sensor variation is not charger detection.
+    assert evaluate('tank','charger',rows,True)['result']=='PASS'
+    for row in rows:row['battery_fresh']=False
+    assert evaluate('tank','charger',rows,True)['result']=='FAIL'
+    for row in rows:row.update(battery_fresh=True,battery_v=6.8)
     assert evaluate('tank','charger',rows,True)['result']=='FAIL'
 
 

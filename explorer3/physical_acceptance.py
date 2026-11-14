@@ -121,9 +121,11 @@ def evaluate(robot,step,samples,confirmed,*,trial=None):
             stopped=bool(commands and all(abs(v)<.01 for v in commands[-1]))
             if step=='charger':
                 volts=[s['battery_v'] for s in valid if s.get('battery_fresh') and finite(s.get('battery_v'))]
-                check('Зарядник отключён по подтверждению, напряжение <8.3 В и не растёт',
-                    len(volts)>=5 and valid[-1]['at']-valid[0]['at']>=8 and max(volts)<8.3 and volts[-1]-volts[0]<=.05,
-                    'Отсоедините зарядник и снимайте напряжение не менее 10 секунд; одного напряжения недостаточно без вашего подтверждения')
+                from agents.tank.limits import load as tank_limits
+                minimum=tank_limits(DATA)['battery_stop_v']
+                check('Свежие измерения питания за 10 секунд; зарядник отключён по подтверждению оператора',
+                    len(volts)>=5 and valid[-1]['at']-valid[0]['at']>=8 and min(volts)>=minimum,
+                    f'Нужны свежие измерения не ниже {minimum:g} В за 10 секунд и подтверждение отключения зарядника. Ждать разрядки не нужно.')
             elif step in {'forward','backward','left','right'}:
                 axis=0 if step in {'forward','backward'} else 1
                 sign=1 if step in {'forward','left'} else -1

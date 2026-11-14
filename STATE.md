@@ -1316,3 +1316,7 @@ UI-кнопка подтверждения USB добавлена в исход�
 ## Tank physical wizard clarification — 2026-11-14
 
 Operator reported an empty panel. Reproduced live page: wizard controls rendered, but the intentionally unavailable control iframe occupied 1250px of blank space. Hide it until charger check PASS and display explicit instructions instead; remove circular instruction to enable controls before the panel is available. Browser regression PASS (tests-20261114T140226Z), verifies placeholder visible and iframe hidden. No motor commands or training.
+
+## Correct charger check — 2026-11-14
+
+User confirms Tank powered on and charger disconnected. Removed incorrect <8.3 V and non-rising voltage conditions: neither detects charger presence and a full disconnected battery can exceed 8.3 V. Retained explicit operator confirmation, fresh measurements over 10 seconds and configured lower battery threshold. No control/STOP protections changed. Six physical evaluator tests PASS, including 8.4 V full battery, small variation, missing confirmation, stale and low battery. No motion commands sent.
