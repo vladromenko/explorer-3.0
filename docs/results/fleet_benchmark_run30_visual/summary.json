@@ -1,0 +1,22 @@
+{
+ "find/solo": {
+  "runs": 30,
+  "found": 29,
+  "median_find_s": 47.5,
+  "mean_find_s": 49.1
+ },
+ "find/team": {
+  "runs": 30,
+  "found": 28,
+  "median_find_s": 19.0,
+  "mean_find_s": 27.2
+ },
+ "find/team3": {
+  "runs": 30,
+  "found": 28,
+  "median_find_s": 14.25,
+  "mean_find_s": 17.0
+ },
+ "speedup_find/team": 1.43,
+ "speedup_find/team3": 2.37
+}

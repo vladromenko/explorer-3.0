@@ -147,7 +147,7 @@ class Explore:
             self.progress = (pose, now)
         elif now - since > 10:
             if self.visual and frame == 'main' and self.target is not None:
-                grid.mark_seen(self.target, .3)
+                grid.mark_seen(self.target, .2)
             self.banned.append(self.target)
             self.target = None
             self.message = 'Не получается проехать: выбираю другое место'
@@ -156,7 +156,7 @@ class Explore:
         if remaining < .25:
             self.targets_done += 1
             if self.visual and frame == 'main':
-                grid.mark_seen(self.target)              # arrived: this piece of floor is looked at
+                grid.mark_seen(self.target, .25)         # arrived: only the floor under the robot (the camera looks ahead)
             self.target = None
             return [0., 0.]
         v, w, why = navigation.guard(FLEET.scan(self.robot), self.robot, v, w)
