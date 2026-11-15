@@ -274,6 +274,10 @@ class Jobs:
         """Fit the MuJoCo scenes of blocks 3/4 to the recorded real demonstrations (scripts/sim_align.py)."""
         return self._insert('sim_alignment','sim_align',{'kind':'sim_align','device':'cpu'})
 
+    def help_experiment(self, rooms=30):
+        """M0/M2/M3 help comparison in the virtual room (scripts/swarm_help_experiment.py)."""
+        return self._insert('help_experiment','swarm',{'kind':'help_experiment','rooms':int(rooms),'device':'cpu'})
+
     def deploy_gate(self, job_id):
         """«Допуск к роботу» for a completed training (explorer3/deploy_gate.py); queues the MuJoCo
         check on the mirrored task first when it has not run."""

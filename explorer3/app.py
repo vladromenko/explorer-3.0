@@ -707,6 +707,12 @@ def index(request:Request):
                             ui.notify('Подстройка сцены MuJoCo под ваши показы: задание '+ident[:8])
                         except Exception as exc:notify_error(exc)
                     ui.button('Подстроить MuJoCo под мои показы',icon='tune',on_click=align_sim).props('flat')
+                    async def help_exp():
+                        try:
+                            ident=await asyncio.to_thread(jobs.help_experiment,30)
+                            ui.notify('Эксперимент помощи M0/M2/M3 (30 виртуальных комнат, ~10 ч): задание '+ident[:8])
+                        except Exception as exc:notify_error(exc)
+                    ui.button('Эксперимент помощи (симуляция)',icon='science',on_click=help_exp).props('flat')
                 with ui.row():
                     ui.button('ACT · smoke 50 шагов',on_click=act_smoke)
                     ui.button('ACT · основное обучение',on_click=act_full)

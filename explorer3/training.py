@@ -126,9 +126,22 @@ def run_job(path: Path):
     if cfg.get('kind') == 'sim_align':
         result = subprocess.run([str(ROOT/'.venv-sim/bin/python'), str(ROOT/'scripts/sim_align.py'), '--apply'],
                                 cwd=ROOT, env={**offline_environment(), 'MUJOCO_GL': 'egl'}, capture_output=True, text=True, timeout=600)
-        (work/'result.json').write_text(result.stdout or json.dumps({'error': result.stderr[-2000:]}))
+        (work/'alignment.json').write_text(result.stdout or json.dumps({'error': result.stderr[-2000:]}))
         if result.returncode:
             raise RuntimeError('Подстройка сцены не выполнена: ' + result.stderr[-300:])
+        # demonstrations of the (re)aligned scenes for co-training: 70 expert attempts per arm
+        import random
+        for name in ('so101_handover_sim', 'rosmaster_floor_pick_sim'):
+            subprocess.run([str(ROOT/'.venv-sim/bin/python'), '-m', 'explorer3.sim.collect', '--start', str(random.randint(20000, 900000)),
+                            '--count', str(cfg.get('demos', 70)), '--profile', name], cwd=ROOT,
+                           env={**offline_environment(), 'MUJOCO_GL': 'egl'}, check=True, timeout=4 * 3600)
+        (work/'result.json').write_text(json.dumps({'aligned': True, 'demos_per_task': cfg.get('demos', 70)}))
+        return
+    if cfg.get('kind') == 'help_experiment':
+        subprocess.run([sys.executable, str(ROOT/'scripts/swarm_help_experiment.py'), '--rooms', str(cfg.get('rooms', 30)),
+                        '--out', str(work)], cwd=ROOT, env=offline_environment(), check=True, timeout=48 * 3600)
+        runs = sorted(p for p in work.iterdir() if p.is_dir())
+        (work/'result.json').write_text((runs[-1]/'summary.json').read_text() if runs else '{}')
         return
     if cfg.get('kind') == 'deploy_gate':
         from .deploy_gate import run
