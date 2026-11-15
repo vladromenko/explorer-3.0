@@ -40,6 +40,13 @@ def _without_box(builder, variant, camera_roll_deg=0.):
         xml, manifest = builder()
         root = ET.fromstring(xml)
         root.find(".//body[@name='target_box']").set('pos', AWAY)
+        if variant == 'rosmaster_floor_pick':
+            # Runtime object geometry/inertia changed in v2. Keep old demonstrations out of
+            # the new physics revision even though the nominal 32 mm cube XML is unchanged.
+            custom = root.find('custom')
+            if custom is None:
+                custom = ET.SubElement(root, 'custom')
+            ET.SubElement(custom, 'numeric', name='explorer_floor_object_geometry_version', data='2')
         for site in root.iter('site'):           # debug markers must not appear in the policy camera
             site.set('rgba', '0 0 0 0')
         if camera_roll_deg:
@@ -202,9 +209,17 @@ class RosmasterFloorPick(RosmasterPickPlace):
             name = (options or {}).get('object') or str(rng.choice(self.GRASPABLE))
         half = np.array(self.OBJECTS[name])
         self.model.geom_size[g] = half
-        self.model.geom_rbound[g] = float(np.linalg.norm(half))
+        # Changing geom_size alone leaves MuJoCo's broad-phase boxes/BVH at the old cube
+        # dimensions. Rebuild those constants and the uniform box's inertia. The mass is
+        # still the explicit model assumption (35 g, with the selected variation), not measured.
+        body = self.model.body('task_cube').id
+        self.model.body_inertia[body] = self.model.body_mass[body] / 3 * np.array(
+            [half[1] ** 2 + half[2] ** 2, half[0] ** 2 + half[2] ** 2, half[0] ** 2 + half[1] ** 2])
+        mujoco.mj_setConst(self.model, mujoco.MjData(self.model))
         self.object_name = name
-        self.episode_parameters['object'] = {'name': name, 'size_m': (2 * half).round(4).tolist()}
+        self.episode_parameters['object'] = {'name': name, 'size_m': (2 * half).round(4).tolist(),
+                                             'geometry': 'box_proxy', 'mass_kg': float(self.model.body_mass[body]),
+                                             'geometry_version': 2}
         # task text: with the helper's knowledge (measured size, ±1.5 mm like the SO-101 station) or without
         self.task_text = None
         if self.vary_objects:
