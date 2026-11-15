@@ -1,0 +1,40 @@
+{
+ "privileged": {
+  "n": 60,
+  "success_rate": 0.3,
+  "by_object": {
+   "ball": "2/10",
+   "block": "4/9",
+   "bottle": "1/6",
+   "cookie": "0/9",
+   "cube": "10/10",
+   "sock": "1/16"
+  }
+ },
+ "none": {
+  "n": 60,
+  "success_rate": 0.3,
+  "by_object": {
+   "ball": "3/10",
+   "block": "4/9",
+   "bottle": "0/6",
+   "cookie": "0/9",
+   "cube": "10/10",
+   "sock": "1/16"
+  }
+ },
+ "so101": {
+  "n": 60,
+  "success_rate": 0.333,
+  "by_object": {
+   "ball": "3/10",
+   "block": "4/9",
+   "bottle": "2/6",
+   "cookie": "0/9",
+   "cube": "10/10",
+   "sock": "1/16"
+  }
+ },
+ "note": "MuJoCo, scripted grasp with the console IK; modelled object sizes; level of evidence: simulation",
+ "created": "2026-11-16 02:07"
+}
