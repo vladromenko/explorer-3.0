@@ -55,8 +55,7 @@ class SimSO101Station:
             return {'ok': False, 'reason': f'«{prompt}» нет на столе SO-101'}
         self.log(f'SO-101: пробую взять «{prompt}» и измеряю')
         time.sleep(2.)
-        import random
-        s = size * (1 + random.uniform(-.05, .05))
+        s = size * (1 + self.world.measure_rng.uniform(-.05, .05))
         item = knowledge.add(prompt, 'so101_station', {'width_m': round(s, 3), 'height_m': round(s, 3),
                                                        'grasp_height_m': round(max(.012, s / 2), 3)},
                              evidence={'sim': True}, success=True, domain='sim')

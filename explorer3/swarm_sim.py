@@ -26,10 +26,13 @@ WORLD = None                       # the running SimWorld, or None (real robots)
 
 
 class SimWorld:
-    def __init__(self, seed=None, robots=('rosmaster', 'tank')):
+    def __init__(self, seed=None, robots=('rosmaster', 'tank'), active_robots=None):
         from . import fleet_map as fm
         self.seed = int(time.time()) % 100000 if seed is None else seed
         self.rng = np.random.default_rng(self.seed)
+        self.active_robots = tuple(robots if active_robots is None else active_robots)
+        if not self.active_robots or not set(self.active_robots).issubset(robots):
+            raise ValueError('Simulation participants must be a nonempty subset of the layout robots')
         self.room = sim2d.make_room(self.rng)
         starts = []
         for _ in robots:
@@ -50,6 +53,9 @@ class SimWorld:
         # robots: a single-view estimate of the size is off by ~±40 %, and the grasp needs the width
         # within ±1.5 cm — so wide/flat objects need knowledge from the SO-101 station.
         self.sizes = {'cookie': .075, 'sock': .085, 'cube': .04, 'bottle': .07, 'cup': .085, 'ball': .065}
+        # Independent streams: helper measurements must not consume navigation/sensor noise.
+        self.grasp_rng = np.random.default_rng(self.seed + 104729)
+        self.measure_rng = np.random.default_rng(self.seed + 130363)
         self.relocate_after_seen = set()        # «a person moved it» once, 5 s after the first sighting
         self.vanish_after_seen = set()          # «a person took it away»: help cannot succeed
         self.vanished = set()
@@ -98,7 +104,7 @@ class SimWorld:
         tick = 0
         while not self.stop_event.is_set():
             started = time.monotonic()
-            robots = list(self.true)
+            robots = self.active_robots
             if tick % 4 == 0:                            # lidars at 2.5 Hz, as the real localizer
                 for r in robots:
                     try:
@@ -216,7 +222,7 @@ class SimArm:
                 time.sleep(1.)
                 size = w.sizes.get(prompt, .04)
                 known = ((knowledge or {}).get('params') or {}).get('width_m')
-                guess = known if known else .04 * (1 + w.rng.uniform(-.4, .4))      # single view, no knowledge
+                guess = known if known else .04 * (1 + w.grasp_rng.uniform(-.4, .4))      # single view, no knowledge
                 if abs(guess - size) > .015:
                     self.log(f'захват промахнулся: ширину «{prompt}» оценил в {guess * 100:.1f} см, на деле {size * 100:.1f} см')
                     return {'ok': False, 'reason': 'неверная оценка ширины предмета'}
@@ -313,9 +319,12 @@ def approach(world, robot, text):
 _saved = {}
 
 
-def enter(seed=None):
+def enter(seed=None, robots=('rosmaster', 'tank')):
     """Switch the swarm page to the virtual room. Returns the simulated Swarm."""
     global WORLD
+    robots = tuple(robots)
+    if not robots or len(set(robots)) != len(robots) or not set(robots) <= {'rosmaster', 'tank'}:
+        raise ValueError('Unknown or duplicate simulation participant')
     from . import swarm, fleet_map, world_memory, episodes, so101_handoff, explore
     if WORLD is not None:
         return swarm.SWARM
@@ -354,7 +363,9 @@ def enter(seed=None):
     for p in world_memory.POSES.values():
         p.__init__(p.robot)
     explore.ACTIVE.clear()
-    world = SimWorld(seed)
+    # Generate the same room/starts/objects for paired conditions, but an absent helper must
+    # supply neither camera sightings nor lidar scans (including while standing still).
+    world = SimWorld(seed, active_robots=robots)
     world.start()
     so101_handoff.save(world.handover_config())
 
@@ -363,7 +374,8 @@ def enter(seed=None):
         return explore.Explore(robot, **kw)
 
     from .so101_station import SimSO101Station
-    swarm.SWARM = swarm.Swarm(tank=SimLink(world, 'tank'), ros=SimLink(world, 'rosmaster'),
+    swarm.SWARM = swarm.Swarm(tank=SimLink(world, 'tank') if 'tank' in robots else None,
+                              ros=SimLink(world, 'rosmaster') if 'rosmaster' in robots else None,
                               station_factory=lambda log: SimSO101Station(world, log),
                               arm_factory=lambda say: SimArm(world, lambda m: say('pick', m)),
                               so101_factory=lambda prompt, log: SimHandoff(world, prompt, log),
