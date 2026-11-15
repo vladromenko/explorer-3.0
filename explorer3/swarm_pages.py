@@ -202,6 +202,12 @@ def install(app, ui, control, notify_error, css=''):
         data = camera_jpeg(robot)
         return Response(data, media_type='image/jpeg', headers={'Cache-Control': 'no-store'}) if data else Response(status_code=204)
 
+    @app.get('/research/search_trials.csv')
+    def search_trials_csv():
+        from . import research_log
+        return Response(research_log.to_csv().encode('utf-8-sig'), media_type='text/csv',
+                        headers={'Content-Disposition': 'attachment; filename=search_trials.csv'})
+
     @ui.page('/swarm')
     def page():
         from . import swarm as _swarm, world_memory, so101_handoff
@@ -306,6 +312,28 @@ def install(app, ui, control, notify_error, css=''):
             log_box = ui.html('').classes('sw-muted')
         with ui.element('div').classes('sw-card').style('margin:0 6px 12px;width:calc(100% - 12px)'):
             with ui.row().style('justify-content:space-between;width:100%;align-items:center'):
+                ui.label('Эксперимент поиска: один робот против двух').style('font-weight:700;font-size:17px;color:#e6edf3')
+                ui.link('Скачать журнал (CSV)', '/research/search_trials.csv').style('color:#63e0b8')
+            ui.label('A1 — только ROSMASTER; A2 — оба с делением участков; A3 — оба без деления (контроль). '
+                     'Перед каждой попыткой одинаково: «Начать карту заново», роботы на метках старта, предмет на отмеченном месте. '
+                     'Потом сверьте находку с настоящим местом предмета и подтвердите.').classes('sw-muted')
+            from .scout import inventory as _inv
+            with ui.row().style('gap:8px;align-items:center;flex-wrap:wrap'):
+                exp_obj = ui.select({k: v for k, v in _inv()}, value='cube', label='Предмет').props('dense outlined dark').style('min-width:150px')
+                exp_scene = ui.input('Сцена (ID расстановки)', value='S01').props('dense outlined dark').style('width:150px')
+                exp_cond = ui.select(['A1', 'A2', 'A3'], value='A1', label='Условие').props('dense outlined dark').style('width:110px')
+                exp_t = ui.number('Срок T, с', value=180, min=30, max=900).props('dense outlined dark').style('width:110px')
+
+                def start_trial():
+                    try:
+                        team().search_trial(exp_obj.value, exp_cond.value, exp_scene.value.strip() or 'S?', float(exp_t.value or 180))
+                        ui.notify(f'Попытка {exp_cond.value}, сцена {exp_scene.value}: идёт поиск')
+                    except Exception as exc:
+                        notify_error(exc)
+                ui.button('Начать попытку', icon='play_arrow', on_click=start_trial).props('unelevated')
+            trials_box = ui.column().style('gap:4px;width:100%')
+        with ui.element('div').classes('sw-card').style('margin:0 6px 12px;width:calc(100% - 12px)'):
+            with ui.row().style('justify-content:space-between;width:100%;align-items:center'):
                 ui.label('Агенты').style('font-weight:700;font-size:17px;color:#e6edf3')
                 ui.label('шесть ролей из AGENTIC_ADDENDUM: решают по правилам и общей памяти помощи; моторами управляют только проверенные исполнители').classes('sw-muted')
             agents_grid = ui.element('div').style('display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px;width:100%')
@@ -323,7 +351,7 @@ def install(app, ui, control, notify_error, css=''):
         stage_names = {'help': 'помощь', 'search': 'поиск', 'explore': 'осмотр', 'approach': 'подъезд', 'pick': 'захват', 'deliver': 'доставка',
                        'place': 'на площадку', 'handoff': 'SO-101 передаёт', 'goto': 'подъезд'}
         last_found = [None]
-        last_agents, last_memory = [None], [None]
+        last_agents, last_memory, last_trials = [None], [None], [None]
 
         async def refresh():
             import asyncio
@@ -417,6 +445,28 @@ def install(app, ui, control, notify_error, css=''):
                         ui.label(f"{NAMES.get(c['donor'], c['donor'])} → {NAMES.get(c['recipient'], c['recipient'])} · {c['assistance_type']} · "
                                  f"причина: {c['reason']} · {status_ru} · помощник {c['helper_outcome']}, получатель {c['recipient_outcome']}, задача {c['task_outcome']}"
                                  f" · {'симуляция' if c['domain'] == 'sim' else 'реальность'}").style('font-size:13px;color:#c9d4e0')
+            from . import research_log
+            recent = research_log.rows()[-6:][::-1]
+            key_tr = str([(r['trial_id'], r['confirmed']) for r in recent])
+            if key_tr != last_trials[0]:
+                last_trials[0] = key_tr
+                trials_box.clear()
+                with trials_box:
+                    for r in recent:
+                        with ui.row().style('gap:6px;align-items:center;flex-wrap:wrap'):
+                            ui.label(f"{r['date'][5:16]} · {r['scene']} · {r['condition']} · {r['prompt']} · программа: {r['program_outcome']} "
+                                     f"за {r['seconds']} с" + (f" · подтверждено: {r['confirmed']}, вмешательств {r['interventions']}" if r['confirmed'] else '')).style(
+                                'font-size:13px;color:' + ('#7fe0bd' if r['confirmed'] == 'верно' else '#c9d4e0'))
+                            if not r['confirmed']:
+                                iv = ui.number('вмешательств', value=0, min=0).props('dense outlined dark').style('width:120px')
+                                for verdict in ('верно', 'ошибка', 'не найдено'):
+                                    def mark(v=verdict, t=r['trial_id'], n=iv):
+                                        try:
+                                            research_log.confirm(t, v, int(n.value or 0))
+                                            last_trials[0] = None
+                                        except Exception as exc:
+                                            notify_error(exc)
+                                    ui.button(verdict, on_click=mark).props('flat dense no-caps')
             items = world_memory.known_objects(max_age_s=24 * 3600)
             key = tuple((i['prompt'], i['at']) for i in items[:12])
             if key != last_found[0]:

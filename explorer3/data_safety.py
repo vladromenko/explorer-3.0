@@ -43,7 +43,7 @@ def external_destination():
             if path==DATA or path.is_relative_to(DATA) or DATA.is_relative_to(path):
                 raise ValueError('Для внешней копии нужен отдельный каталог, не хранилище Explorer')
             return path
-    for base in (Path('/media')/os.environ.get('USER','jetsonnx'),Path('/run/media')/os.environ.get('USER','jetsonnx')):
+    for base in (Path('/media')/os.environ.get('USER','jetsonnx'),Path('/run/media')/os.environ.get('USER','jetsonnx'),Path('/mnt')):
         if base.is_dir():
             for mount in sorted(base.iterdir()):
                 candidate=mount/'explorer3-backup'

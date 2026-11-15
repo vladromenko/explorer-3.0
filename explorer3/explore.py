@@ -93,7 +93,11 @@ class Explore:
                           target=None if self.target is None else [round(v, 2) for v in self.target], frame=self.frame)
         return cmd
 
+    coordinate = True     # False: control condition A3 — no frontier split with the other robots
+
     def _peer_targets(self):
+        if not self.coordinate:
+            return []
         out = []
         for robot, other in list(ACTIVE.items()):
             if robot != self.robot and other.active and other.frame == 'main':
@@ -151,8 +155,8 @@ class Explore:
         if ref is not None and math.dist(ref[:2], pose[:2]) > .15:
             self.progress = (pose, now)
         elif now - since > 10:
-            if self.visual and frame == 'main' and self.target is not None:
-                grid.mark_seen(self.target, .2)
+            # could not get there: «temporarily unreachable», NOT «seen» — the object may still be
+            # there; the banned list is retried once before the search ends
             self.banned.append(self.target)
             self.target = None
             self.message = 'Не получается проехать: выбираю другое место'

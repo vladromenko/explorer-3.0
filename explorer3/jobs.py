@@ -45,7 +45,8 @@ class Jobs:
         from .datasets import SIM_FOR_REAL
         sim = SIM_FOR_REAL.get(name)
         rows = [j for j in catalog.rows('jobs') if j['profile'] == sim and j['policy'] == policy and j['status'] == 'completed'
-                and j['checkpoint'] and json.loads(j['config']).get('kind', 'train') == 'train' and not json.loads(j['config']).get('smoke')]
+                and j['checkpoint'] and Path(j['checkpoint']).is_dir()          # weights may have been cleaned up
+                and json.loads(j['config']).get('kind', 'train') == 'train' and not json.loads(j['config']).get('smoke')]
         return max(rows, key=lambda j: j['created']) if rows else None
 
     def enqueue(self, name, policy, smoke=True, sim_model_hash=None, cotrain_sim=None, from_sim=False):

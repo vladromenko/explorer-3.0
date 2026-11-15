@@ -150,6 +150,16 @@ class Swarm:
             world_memory.LISTENERS.append(_on_sighting)
 
     # ------------------------------------------------------------------ public API
+    def search_trial(self, prompt, condition, scene, time_limit_s=180):
+        """Experiment A (one robot vs two): a «найдите» attempt under a fixed protocol.
+        A1 = ROSMASTER alone; A2 = ROSMASTER + Tank with frontier split; A3 = both, no split (control)."""
+        robots = {'A1': ['rosmaster'], 'A2': ['rosmaster', 'tank'], 'A3': ['rosmaster', 'tank']}[condition]
+        self.trial = {'condition': condition, 'scene': scene, 'time_limit_s': float(time_limit_s), 'prompt': prompt,
+                      'started': time.time(), 'coordinate': condition != 'A3'}
+        from .goto import STEMS
+        stems = {english: stem for stem, english in STEMS}
+        return self.command('найдите ' + stems.get(prompt, prompt), robots)
+
     def command(self, text, robots=None):
         """robots: subset of mobile robots that take part (solo vs team runs for the article)."""
         if self.thread is not None and self.thread.is_alive():
@@ -274,6 +284,13 @@ class Swarm:
             self.skill = self.handoff = None
             self.say(outcome, message)
             self.agents.finish(outcome, message)
+            trial, self.trial = getattr(self, 'trial', None), None
+            if trial is not None:
+                from . import research_log
+                found = world_memory.target_for(None, trial['prompt'])
+                research_log.record_trial(trial, outcome, message, time.time() - trial['started'],
+                                          found if found and found['at'] >= trial['started'] else None,
+                                          episode.id, self.mobile())
             self.state['active'] = False
             episode.extra.update(stages=stages, robots=self.mobile(), condition='team' if len(self.mobile()) > 1 else 'solo')
             episode.finish({'done': 'arrived', 'explored': 'explored'}.get(outcome, outcome), message)
@@ -323,10 +340,16 @@ class Swarm:
                 return f'{NAMES.get(item["robot"], item["robot"])} нашёл «{prompt}»'
             return None
 
-        goals = self._team(robots, scout=True, look_for=prompt, stop_when=found, kind='explore', text=f'поиск {prompt} (рой)')
+        trial = getattr(self, 'trial', None)
+        limit = trial['time_limit_s'] if trial else 900
+        goals = self._team(robots, scout=True, look_for=prompt, stop_when=found, kind='explore', text=f'поиск {prompt} (рой)',
+                           time_limit_s=limit)
+        if trial and not trial['coordinate']:
+            for g in goals.values():
+                g.coordinate = False
         for r in goals:
             self.agents.step('search', r, 'идёт')
-        self._wait(list(goals.values()), 900)
+        self._wait(list(goals.values()), limit + 5)
         item = world_memory.target_for(None, prompt)
         if item is None or item['at'] < started:
             item = latest_sighting(prompt, started)

@@ -124,9 +124,10 @@ MAC_LAUNCHER = r"""#!/bin/bash
 # Роботы: меню запуска Explorer 3, Wristlab и Куба (ROSMASTER). Работает без Claude.
 HB="${HOMEBRAIN:-192.168.0.168}"
 ROBOT="192.168.0.177"
-choice=$(osascript -e 'choose from list {"Explorer 3 · Рой", "Explorer 3 · главная", "Explorer 3 · сбор датасета", "Wristlab · SO-101", "Куб · ROSMASTER", "Пульт Homebrain"} with title "Роботы" with prompt "Что запустить?" default items {"Explorer 3 · Рой"}')
+choice=$(osascript -e 'choose from list {"Что делать сегодня", "Explorer 3 · Рой", "Explorer 3 · главная", "Explorer 3 · сбор датасета", "Wristlab · SO-101", "Куб · ROSMASTER", "Пульт Homebrain"} with title "Роботы" with prompt "Что запустить?" default items {"Что делать сегодня"}')
 start() { curl -s -m 60 -X POST "http://$HB:8000/api/$1/start" >/dev/null || osascript -e 'display alert "Homebrain не отвечает" message "Проверьте, что Homebrain включён и Mac в той же сети."'; }
 case "$choice" in
+  "Что делать сегодня") start explorer; sleep 2; open "http://$HB:8030/today" ;;
   "Explorer 3 · Рой") start explorer; sleep 2; open "http://$HB:8030/swarm" ;;
   "Explorer 3 · главная") start explorer; sleep 2; open "http://$HB:8030/" ;;
   "Explorer 3 · сбор датасета") start explorer; sleep 2; open "http://$HB:8030/recording/collect" ;;

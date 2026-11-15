@@ -79,7 +79,8 @@ def fleet_skills():
         version = _hash({'code': _file_hash(source), 'skill': name, 'policy': policy})
         cards[ident] = SkillCard(
             skill_id=ident, robot=robot, version=version, kind=kind, source_ref=source, profile='fleet',
-            policy_sha256=policy or version, camera_sha256=_hash({'robot': robot, 'skill': name}),
+            policy_sha256=policy or version, camera_sha256=camera_fingerprint(robot),
+            calibration_sha256=calibration_fingerprint(robot),
             state_schema={'frame': 'fleet_map'}, action_schema={'executor': source},
             goals=['named_object'], cameras=['front' if robot != 'so101' else 'wrist'],
             verified_scope=['fleet swarm executor; scripted/geometric, not a learned policy'],
@@ -88,6 +89,24 @@ def fleet_skills():
             verifier='explorer3.fleet_agents.OutcomeVerifier', sim_admission='available', real_admission='available',
             limitation='Program skill of the fleet; its success on the real robot is measured, not assumed')
     return cards
+
+
+def camera_fingerprint(robot):
+    """What the recipient's camera is: lidar/camera mounts used by the fleet + the robot's camera
+    contract (resolution, rate). A changed mount or camera gives another scope for the help memory."""
+    from .fleet_map import CAMERA, MOUNTS
+    from .profiles import PROFILES
+    contract = {n: {k: p.get(k) for k in ('camera', 'image_shape', 'fps')} for n, p in PROFILES.items() if p.get('robot') == robot}
+    return _hash({'robot': robot, 'camera_mount': CAMERA.get(robot), 'lidar_mounts': MOUNTS.get(robot), 'contract': contract})
+
+
+def calibration_fingerprint(robot):
+    """Hash of the robot's calibration files on Homebrain, or None when there are none."""
+    from .paths import DATA
+    files = {'so101': ['calibration/follower.json', 'calibration/leader.json'],
+             'rosmaster': ['provenance/rosmaster-bridge-current/explorer3/config/controller-calibration.json']}.get(robot, [])
+    present = [DATA / f for f in files if (DATA / f).is_file()]
+    return hashlib.sha256(b''.join(p.read_bytes() for p in present)).hexdigest() if present else None
 
 
 class Role:
@@ -115,6 +134,7 @@ class FleetAgents:
         if comparison not in self.COMPARISONS:
             raise ValueError('Unknown comparison')
         self.comparison = comparison
+        self.frozen = False                # experiment test series: memory is read, never written
         self.roles = {name: Role(name) for name in ROLES}
         self.plan = []
         self.mission = None
@@ -277,9 +297,11 @@ class FleetAgents:
 
     # ------------------------------------------------------------------ MemoryCurator / OutcomeVerifier
     def _candidate(self, recipient, donor, skill, prompt, reason, kind, evidence_ids):
+        if self.frozen:
+            return None
         card = self.card(recipient, skill)
         compat = {'recipient_skill_id': card.skill_id, 'recipient_version': card.version, 'policy_sha256': card.policy_sha256,
-                  'camera_sha256': card.camera_sha256, 'calibration_sha256': None, 'domain': self.domain(),
+                  'camera_sha256': card.camera_sha256, 'calibration_sha256': card.calibration_sha256, 'domain': self.domain(),
                   'goal_id': 'named_object', 'checked_conditions': ['recipient_localized', 'object_named'],
                   'unknown_conditions': [], 'evidence_ids': evidence_ids[:4]}
         ident = f'fleet-case:{uuid.uuid4().hex[:24]}'
@@ -329,9 +351,8 @@ def learning_summary():
     try:
         from . import catalog
         from .paths import ROOT
-        rows = catalog.rows('episodes')
-        real = {p: sum(1 for e in rows if e['profile'] == p and e['outcome'] == 'success' and not e.get('excluded'))
-                for p in ('rosmaster_pick_place', 'so101_pick_place')}
+        from .datasets import eligible
+        real = {p: len(eligible(p)) for p in ('rosmaster_pick_place', 'so101_pick_place')}   # only this block's demos
         align = json.loads((ROOT / 'configs/sim-alignment.json').read_text())
         src = {k: v.get('source', '?') for k, v in align.items() if isinstance(v, dict)}
         from .deploy_gate import GATES

@@ -87,3 +87,18 @@ def test_team_finds_an_object_in_the_virtual_room(real):
     assert swarm_sim.truth_overlay()['collisions'] == 0
     index = (swarm_sim.SIM / 'episodes' / 'index.jsonl').read_text().splitlines()
     assert json.loads(index[-1])['kind'] == 'team_find'
+
+
+def test_search_trial_is_journaled_and_confirmed_by_the_operator(real, monkeypatch):
+    from explorer3 import research_log
+    monkeypatch.setattr(research_log, 'LOG', real / 'research' / 'search_trials.jsonl')
+    team = swarm_sim.enter(seed=11)
+    team.search_trial('sock', 'A3', 'S01', 200)
+    end = time.monotonic() + 240
+    while team.thread.is_alive() and time.monotonic() < end:
+        time.sleep(.5)
+    rows = research_log.rows()
+    assert len(rows) == 1 and rows[0]['condition'] == 'A3' and rows[0]['world'] == 'sim' and rows[0]['confirmed'] is None
+    assert rows[0]['seconds'] <= 200
+    research_log.confirm(rows[0]['trial_id'], 'верно', 0)
+    assert research_log.rows()[0]['confirmed'] == 'верно' and 'A3' in research_log.to_csv()

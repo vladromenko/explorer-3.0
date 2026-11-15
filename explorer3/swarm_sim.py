@@ -47,6 +47,8 @@ class SimWorld:
         self.collisions = 0
         self.last_seen = {}
         self.relocate_after_seen = set()        # «a person moved it» once, 5 s after the first sighting
+        self.vanish_after_seen = set()          # «a person took it away»: help cannot succeed
+        self.vanished = set()
         self.relocations = []
         self.lock = threading.Lock()
         self.links = {}
@@ -110,6 +112,9 @@ class SimWorld:
                         seen = sim2d.visible(self.room, self.true[r], xy)
                         if seen is not None:
                             if time.time() - self.last_seen.get((r, name), 0) > 3:
+                                if name in self.vanish_after_seen and name not in self.vanished:
+                                    self.vanished.add(name)
+                                    threading.Timer(5., lambda n=name: self.objects.pop(n, None)).start()
                                 if name in self.relocate_after_seen and not any(n == name for n, _ in self.relocations):
                                     threading.Timer(5., self.relocate, args=(name,)).start()
                                     self.relocations.append((name, None))
