@@ -197,7 +197,7 @@
     "deadline_s": 30,
     "interpretation": "Task mirrors the real recording block (explorer3/sim/aligned.py). Finite pilot budget, deadline is failure.",
     "smolvla": {
-      "steps": 5000,
+      "steps": 10000,
       "batch_size": 8,
       "device": "cuda",
       "seed": 1000
@@ -208,7 +208,8 @@
       "device": "cuda",
       "seed": 1000
     },
-    "rehearsal_note": "Pipeline rehearsal before real demos: same dataset format, trainer, runtime (explorer3.policy_runtime) and evaluation path as the robots. Orin NX: ACT ~1 s/step, SmolVLA 1.56 s/step at batch 8."
+    "rehearsal_note": "Pipeline rehearsal before real demos: same dataset format, trainer, runtime (explorer3.policy_runtime) and evaluation path as the robots. Orin NX: ACT ~1 s/step, SmolVLA 1.56 s/step at batch 8.",
+    "pretraining_note": "Pre-training for real fine-tuning (jobs.enqueue from_sim): weights start the real block-3/4 training."
   },
   "rosmaster_floor_pick_sim": {
     "demonstration_seeds": [
@@ -233,7 +234,7 @@
     "deadline_s": 25,
     "interpretation": "Task mirrors the real recording block (explorer3/sim/aligned.py). Finite pilot budget, deadline is failure.",
     "smolvla": {
-      "steps": 5000,
+      "steps": 12000,
       "batch_size": 8,
       "device": "cuda",
       "seed": 1000
@@ -244,6 +245,7 @@
       "device": "cuda",
       "seed": 1000
     },
-    "rehearsal_note": "Pipeline rehearsal before real demos: same dataset format, trainer, runtime (explorer3.policy_runtime) and evaluation path as the robots. Orin NX: ACT ~1 s/step, SmolVLA 1.56 s/step at batch 8."
+    "rehearsal_note": "Pipeline rehearsal before real demos: same dataset format, trainer, runtime (explorer3.policy_runtime) and evaluation path as the robots. Orin NX: ACT ~1 s/step, SmolVLA 1.56 s/step at batch 8.",
+    "pretraining_note": "Pre-training for real fine-tuning (jobs.enqueue from_sim): weights start the real block-3/4 training."
   }
 }

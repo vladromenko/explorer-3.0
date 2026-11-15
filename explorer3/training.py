@@ -129,13 +129,24 @@ def run_job(path: Path):
         (work/'alignment.json').write_text(result.stdout or json.dumps({'error': result.stderr[-2000:]}))
         if result.returncode:
             raise RuntimeError('Подстройка сцены не выполнена: ' + result.stderr[-300:])
-        # demonstrations of the (re)aligned scenes for co-training: 70 expert attempts per arm
+        report = json.loads(result.stdout[result.stdout.index('{'):])
+        # demonstrations of the (re)aligned scenes for co-training; report what was really obtained
         import random
-        for name in ('so101_handover_sim', 'rosmaster_floor_pick_sim'):
-            subprocess.run([str(ROOT/'.venv-sim/bin/python'), '-m', 'explorer3.sim.collect', '--start', str(random.randint(20000, 900000)),
-                            '--count', str(cfg.get('demos', 70)), '--profile', name], cwd=ROOT,
-                           env={**offline_environment(), 'MUJOCO_GL': 'egl'}, check=True, timeout=4 * 3600)
-        (work/'result.json').write_text(json.dumps({'aligned': True, 'demos_per_task': cfg.get('demos', 70)}))
+        from . import catalog as _catalog
+        def successes(name):
+            return sum(1 for e in _catalog.rows('episodes') if e['profile'] == name and e['outcome'] == 'success')
+        demos = {}
+        for name, block in (('so101_handover_sim', 'so101_handover'), ('rosmaster_floor_pick_sim', 'rosmaster_floor_pick')):
+            before = successes(name)
+            start = random.randint(20000, 900000)
+            proc = subprocess.run([str(ROOT/'.venv-sim/bin/python'), '-m', 'explorer3.sim.collect', '--start', str(start),
+                                   '--count', str(cfg.get('demos', 70)), '--profile', name], cwd=ROOT,
+                                  env={**offline_environment(), 'MUJOCO_GL': 'egl'}, capture_output=True, text=True, timeout=4 * 3600)
+            demos[name] = {'scene_from': 'measured' if 'measured' in report.get(block, {}) else 'instructions (not enough real demonstrations)',
+                           'kept': report.get(block, {}).get('kept'), 'seeds': [start, start + cfg.get('demos', 70)],
+                           'attempts': cfg.get('demos', 70), 'successful_demonstrations': successes(name) - before,
+                           'process_error': proc.stderr[-500:] if proc.returncode else None}
+        (work/'result.json').write_text(json.dumps({'alignment': report, 'demonstrations': demos}, ensure_ascii=False, indent=1))
         return
     if cfg.get('kind') == 'help_experiment':
         subprocess.run([sys.executable, str(ROOT/'scripts/swarm_help_experiment.py'), '--rooms', str(cfg.get('rooms', 30)),

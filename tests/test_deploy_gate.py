@@ -48,10 +48,14 @@ def test_trial_needs_a_passed_gate_for_the_same_weights(tmp_path, monkeypatch):
 
 
 def test_holdout_excludes_training_episodes(monkeypatch):
-    rows = [{'id': i, 'profile': 'so101_pick_place', 'outcome': 'success', 'excluded': 0, 'category': 'demonstration'} for i in 'abcd']
+    rows = [{'id': i, 'profile': 'so101_pick_place', 'outcome': 'success', 'excluded': 0, 'category': 'demonstration',
+             'session': 'old' if i == 'd' else 's'} for i in 'abcde']
     monkeypatch.setattr(deploy_gate.catalog, 'rows', lambda table: rows)
+    from explorer3 import datasets
+    monkeypatch.setattr(datasets, 'series_text', lambda: {'s': 'передача: кубик hand over the cube', 'old': 'кубик в коробку'})
     monkeypatch.setattr(deploy_gate, 'training_ids', lambda job: {'a', 'b'})
-    assert [e['id'] for e in deploy_gate.holdout_episodes({}, 'so101_pick_place')] == ['c', 'd']
+    # training episodes and the old «into the box» task are not the hand-over test set
+    assert [e['id'] for e in deploy_gate.holdout_episodes({}, 'so101_pick_place')] == ['c', 'e']
 
 
 def test_cotraining_adds_sim_only_to_train_and_caps_frames(monkeypatch, tmp_path):

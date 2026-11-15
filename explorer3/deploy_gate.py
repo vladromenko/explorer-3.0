@@ -49,9 +49,12 @@ def training_ids(job):
 
 def holdout_episodes(job, real):
     """Real demonstrations of the robot's task that the policy never trained on."""
+    from .datasets import in_task_block, series_text
     seen = training_ids(job)
+    texts = series_text()
     return [e for e in catalog.rows('episodes') if e['profile'] == real and e['outcome'] == 'success'
-            and not e.get('excluded') and e['id'] not in seen and e.get('category', 'demonstration') == 'demonstration']
+            and not e.get('excluded') and e['id'] not in seen and e.get('category', 'demonstration') == 'demonstration'
+            and in_task_block(e, texts)]
 
 
 def check_contract(core, real, job_id):

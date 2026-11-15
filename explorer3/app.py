@@ -692,7 +692,7 @@ def index(request:Request):
                 async def enqueue_policy(policy,smoke):
                     try:
                         cotrain=1. if (cotrain_box.value and not smoke) else None
-                        ident=await asyncio.to_thread(jobs.enqueue,task.value,policy,smoke,None,cotrain)
+                        ident=await asyncio.to_thread(jobs.enqueue,task.value,policy,smoke,None,cotrain,bool(from_sim_box.value and not smoke))
                         ui.notify('Задание '+ident[:8]+' поставлено в очередь; состав данных зафиксирован')
                     except Exception as exc:notify_error(exc)
                 async def act_smoke():await enqueue_policy('act',True)
@@ -701,6 +701,7 @@ def index(request:Request):
                 async def smol_full():await enqueue_policy('smolvla',False)
                 with ui.row().style('align-items:center'):
                     cotrain_box=ui.checkbox('Добавить показы MuJoCo (совместное обучение: только в обучающую часть, не больше настоящих)',value=False)
+                    from_sim_box=ui.checkbox('Начать с весов MuJoCo (дообучение на ваших показах)',value=True)
                     async def align_sim():
                         try:
                             ident=await asyncio.to_thread(jobs.sim_align)

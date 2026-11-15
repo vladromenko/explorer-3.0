@@ -23,10 +23,36 @@ def fingerprint(root):
     return digest.hexdigest()
 
 
+# One motor profile carries several recorded tasks (e.g. SO-101: the old «cube into the box» and
+# block 4 «hand over»). Training/evaluation of the current task uses only its recording block,
+# recognised by the series description/instruction; older tasks stay recorded, untouched.
+TASK_BLOCKS = {'rosmaster_pick_place': ('взять с пола', 'pick up'),
+               'so101_pick_place': ('передач', 'hand over')}
+
+
+def series_text():
+    try:
+        with catalog.connect() as db:
+            return {r[0]: ((r[1] or '') + ' ' + (r[2] or '')).lower()
+                    for r in db.execute('SELECT id, description, instruction FROM collection_series')}
+    except Exception:
+        return {}
+
+
+def in_task_block(episode, texts=None):
+    words = TASK_BLOCKS.get(episode['profile'])
+    if words is None:
+        return True
+    texts = series_text() if texts is None else texts
+    return any(w in texts.get(episode['session'], '') for w in words)
+
+
 def eligible(name):
     profile(name)
+    texts = series_text()
     return [e for e in catalog.rows('episodes') if e['profile'] == name and not e['excluded']
-            and e['category'] in {'demonstration', 'correction'} and e['outcome'] == 'success']
+            and e['category'] in {'demonstration', 'correction'} and e['outcome'] == 'success'
+            and in_task_block(e, texts)]
 
 
 def connected_groups(episodes):

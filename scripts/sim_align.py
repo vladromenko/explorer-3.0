@@ -20,6 +20,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 MIN_DEMOS = 5
+SPLIT = {}
 
 
 def demos(profile, words):
@@ -33,10 +34,23 @@ def demos(profile, words):
             continue
         text = ' '.join(series.get(e['session'], ('', ''))).lower()
         if any(w in text for w in words):
+            out.append(e)
+    # Only the part that training will use: the same grouped split (sessions/layouts, seed 1000)
+    # as datasets.freeze, so validation/test never shape the simulated scene.
+    from explorer3.datasets import grouped_split
+    try:
+        keep = {e['id'] for e in grouped_split(out, 1000)['train']}
+        SPLIT['used'] = 'train part of the frozen grouping (seed 1000)'
+    except ValueError:
+        keep = {e['id'] for e in out}
+        SPLIT['used'] = 'all (fewer than 3 independent groups: pilot only)'
+    result = []
+    for e in out:
+        if e['id'] in keep:
             rows = [json.loads(line) for line in (Path(e['dataset']) / 'research.jsonl').read_text().splitlines()]
-            out.append((e['id'], np.array([r['observation.state'][:6] for r in rows], float),
-                        np.array([r['action'][:6] for r in rows], float)))
-    return out
+            result.append((e['id'], np.array([r['observation.state'][:6] for r in rows], float),
+                           np.array([r['action'][:6] for r in rows], float)))
+    return result
 
 
 def fk(env, state):
@@ -124,6 +138,8 @@ def main():
     else:
         r['kept'] = f'нужно ≥{MIN_DEMOS} успешных показов блока 3 («взять с пола: …»)'
 
+    report['split'] = SPLIT.get('used')
+    report['scene_sha256'] = __import__('hashlib').sha256(json.dumps(cfg, sort_keys=True).encode()).hexdigest()
     if a.apply:
         path.write_text(json.dumps(cfg, indent=1, ensure_ascii=False) + '\n')
     print(json.dumps(report, indent=1, ensure_ascii=False))

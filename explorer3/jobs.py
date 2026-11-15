@@ -27,7 +27,8 @@ def resumable_checkpoint(ident):
     return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
-from .datasets import SIM_FOR_REAL  # noqa: E402  (real recording block -> mirrored MuJoCo task)
+from .datasets import SIM_FOR_REAL  # noqa: E402
+from .profiles import TRAINING  # noqa: E402  (real recording block -> mirrored MuJoCo task)
 
 
 class Jobs:
@@ -39,7 +40,15 @@ class Jobs:
         self.cancel_requested = threading.Event()
         self.lock = threading.RLock()
 
-    def enqueue(self, name, policy, smoke=True, sim_model_hash=None, cotrain_sim=None):
+    def latest_sim_checkpoint(self, name, policy):
+        """Newest completed training of the MuJoCo task that mirrors this real recording block."""
+        from .datasets import SIM_FOR_REAL
+        sim = SIM_FOR_REAL.get(name)
+        rows = [j for j in catalog.rows('jobs') if j['profile'] == sim and j['policy'] == policy and j['status'] == 'completed'
+                and j['checkpoint'] and json.loads(j['config']).get('kind', 'train') == 'train' and not json.loads(j['config']).get('smoke')]
+        return max(rows, key=lambda j: j['created']) if rows else None
+
+    def enqueue(self, name, policy, smoke=True, sim_model_hash=None, cotrain_sim=None, from_sim=False):
         profile(name)
         if policy not in {'act', 'smolvla','diffusion'}:
             raise ValueError('Unknown trainer')
@@ -51,6 +60,13 @@ class Jobs:
         if profile(name).get('domain')=='sim' and not smoke:
             recipe=json.loads((ROOT/'configs/sim-budgets.json').read_text())[name][policy]
             cfg.update(steps=recipe['steps'],batch_size=recipe['batch_size'],device=recipe['device'],seed=recipe['seed'])
+        if from_sim:
+            # sim pre-training -> real fine-tuning: same channels/camera/rate (checked), new optimizer,
+            # the real data's own normalization statistics
+            source=self.latest_sim_checkpoint(name,policy)
+            if source is None:raise ValueError('Нет завершённого обучения MuJoCo для этой задачи и модели')
+            cfg.update(initial_checkpoint=source['checkpoint'],initial_from_job=source['id'],
+                       steps=int(TRAINING[policy].get('finetune_steps',TRAINING[policy].get('steps',20000)//2)))
         return self._insert(name,policy,cfg)
 
     def cognitive_simulation(self,comparison='M3',seed=17,scene='workshop'):

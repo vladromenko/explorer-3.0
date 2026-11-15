@@ -189,7 +189,11 @@ class Handoff:
             opened[5] = P['grasp'][5]
             self.move(opened, settle=1.2)
             self.move(P['home'])
-            return {'ok': True, 'pan_correction': pan, 'taken_by_button': self.taken.is_set()}
+            if not self.taken.is_set():
+                # holding it out and opening on a timeout is not a hand-over: nobody confirmed it
+                return {'ok': False, 'reason': 'получение не подтверждено кнопкой «Забрал»', 'pan_correction': pan,
+                        'taken_by_button': False}
+            return {'ok': True, 'pan_correction': pan, 'taken_by_button': True}
         finally:
             try:
                 self.source.close()
