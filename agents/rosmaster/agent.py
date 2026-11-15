@@ -86,6 +86,25 @@ def health():
             'reason': 'Explicit start from Homebrain required'}
 
 
+@app.get('/scans.npz')
+def scans():
+    """Both lidars + odometry while Explorer owns the serial port (the native bridge is stopped)."""
+    import io as _io
+    import numpy as np
+    if runtime is None:raise HTTPException(409,'Runtime not acquired: the native bridge publishes the scans')
+    packet=runtime.scans_packet()
+    arrays={};meta={'streams':{}}
+    for topic,name in (('scan0','scan'),('scan1','scan_rear')):
+        item=packet['scans'].get(topic)
+        if item is None or item['age_s']>1.:continue
+        arrays[name]=np.array([v if v and v>0 else np.inf for v in item['ranges']],np.float32)
+        meta['streams'][name]={'angle_min':0.,'angle_increment':2*np.pi/666,'range_min':.02,'sequence':item['sequence'],'age_s':item['age_s']}
+    x,y,th=packet['odom_pose']
+    arrays['odometry']=np.array([x,y,0.,0.,np.sin(th/2),np.cos(th/2),0.,0.,0.],np.float64)
+    buf=_io.BytesIO();np.savez(buf,meta=np.array(json.dumps(meta)),**arrays)
+    return Response(buf.getvalue(),media_type='application/octet-stream',headers={'Cache-Control':'no-store'})
+
+
 @app.get('/frame.jpg')
 def frame():
     if observer is None:

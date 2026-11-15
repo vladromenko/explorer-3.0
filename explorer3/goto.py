@@ -220,8 +220,27 @@ class GoTo:
                     self.box, self.box_time, self.score = pick[:4], time.monotonic(), pick[4]
                     self.fresh = True
 
+    depth = None                       # (time, metres HxW) from a depth camera aligned with rgb, if any
+
     def geometry(self, box, height):
-        return ground_geometry(self.cam, box, height)
+        d, b, at_bottom = ground_geometry(self.cam, box, height)
+        # The floor-contact estimate assumes the object stands on the floor; on a shelf it reads too
+        # far. A fresh aligned depth image inside the box gives the real distance (camera ->
+        # object); the nearer of the two is used.
+        if self.depth is not None and time.monotonic() - self.depth[0] < 1.5:
+            img = self.depth[1]
+            h, w = img.shape
+            x1, y1, x2, y2 = [int(v) for v in box]
+            sx, sy = w / max(1, self.depth_rgb_size[0]), h / max(1, self.depth_rgb_size[1])
+            cx1, cx2 = int((x1 + (x2 - x1) / 4) * sx), int((x2 - (x2 - x1) / 4) * sx)
+            cy1, cy2 = int((y1 + (y2 - y1) / 4) * sy), int((y2 - (y2 - y1) / 4) * sy)
+            patch = img[max(0, cy1):max(0, cy2), max(0, cx1):max(0, cx2)]
+            valid = patch[(patch > .08) & (patch < 4.)]
+            if valid.size > 20:
+                d = min(d, float(np.median(valid)))
+        return d, b, at_bottom
+
+    depth_rgb_size = (640, 480)
 
     # ---- control (called every frame by the session loop)
     def _bookkeeping(self, rgb):

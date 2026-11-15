@@ -294,6 +294,12 @@ class FleetMap:
                 return None, None
             return s['pose'], s['at']
 
+    def stale(self, robot, message):
+        """The robot's lidar stopped updating: its pose and scan must not be used for driving."""
+        with self.lock:
+            s = self.track.setdefault(robot, {})
+            s.update(state='no_scan', scan=None, message=message)       # 'at' unchanged: the pose ages out
+
     def scan(self, robot, max_age=1.):
         """Latest scan points in the robot base frame (for the collision guard)."""
         with self.lock:
@@ -571,6 +577,38 @@ def compose(p, d):
     return (p[0] + c * d[0] - s * d[1], p[1] + s * d[0] + c * d[1], wrap(p[2] + d[2]))
 
 
+STALE_S = 1.5
+
+
+def fresh_marker(packet):
+    """Something that changes with every new scan (sequence/stamp of each stream)."""
+    streams = packet.get('meta', {}).get('streams', {})
+    return tuple((name, streams.get(name, {}).get('sequence'), streams.get(name, {}).get('source_timestamp_ns'))
+                 for name in ('scan', 'scan_rear') if name in streams)
+
+
+def agent_scans(robot):
+    """ROSMASTER's lidars from its Explorer agent while the agent owns the serial port; None if not."""
+    if robot != 'rosmaster':
+        return None
+    import io
+    import json as _json
+    try:
+        from . import rosmaster_control
+        with rosmaster_control._connection(3) as client:
+            r = client.get('/scans.npz')
+            if r.status_code != 200:
+                return None
+            data = np.load(io.BytesIO(r.content))
+            meta = _json.loads(str(data['meta']))
+            arrays = {k: data[k] for k in data.files if k != 'meta'}
+        if not any(k in arrays for k in ('scan', 'scan_rear')):
+            return None
+        return {'arrays': arrays, 'meta': {**meta, 'robot': 'rosmaster', 'source': 'explorer_agent'}}
+    except Exception:
+        return None
+
+
 def odom_pose(packet):
     v = packet['arrays'].get('odometry')
     if v is None or len(v) != 9 or not np.isfinite(v).all():
@@ -619,12 +657,25 @@ class FleetLocalizer:
         """One reader per robot: a slow Wi-Fi link to one robot does not delay the other."""
         from .sensors import SensorClient
         client = None
+        seen = {}
         while not self.done.is_set():
             started = time.monotonic()
             try:
                 if client is None:
                     client = SensorClient(isolated=isolated, robot=robot)
                 packet = client.snapshot(only=('scan', 'scan_rear', 'odometry'))
+                if fresh_marker(packet) == seen.get('marker'):
+                    if started - seen.get('since', started) > STALE_S:
+                        # the ROS publisher stopped (ROSMASTER: the native bridge hands the serial
+                        # port, lidars included, to the Explorer agent) -> read the agent instead
+                        packet = agent_scans(robot)
+                        if packet is None:
+                            FLEET.stale(robot, 'Лидар не обновляется: положение не используется для езды')
+                            self.errors[robot] = 'лидар не обновляется'
+                            self.done.wait(self.interval)
+                            continue
+                else:
+                    seen.update(marker=fresh_marker(packet), since=started)
                 FLEET.update(robot, packet, odom_pose(packet) if robot == 'rosmaster' else None)
                 self.errors.pop(robot, None)
             except Exception as exc:                      # robot off / out of Wi-Fi: retry, keep the other one going

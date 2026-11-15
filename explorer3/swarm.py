@@ -94,7 +94,17 @@ class RosLink:
     def __init__(self, runner):
         self.runner = runner
 
+    @staticmethod
+    def ensure():
+        """Like TankLink: the swarm starts ROSMASTER's agent after a reboot and takes the serial
+        port from the native bridge itself — no «Передать управление Explorer» click."""
+        from . import rosmaster_control
+        rosmaster_control.ensure_agent()
+        if not rosmaster_control.request('/health', timeout=4).get('hardware_open'):
+            rosmaster_control.request('/acquire', {}, 45)
+
     def start(self, goal):
+        self.ensure()
         end = time.monotonic() + 8
         while self.runner.running() and time.monotonic() < end:     # previous task is closing its session
             time.sleep(.1)

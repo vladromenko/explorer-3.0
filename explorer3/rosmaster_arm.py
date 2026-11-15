@@ -20,6 +20,7 @@ SEARCH_NEAR = [90, 130, 0, 5, 90, 30]          # camera ~45° down: floor from ~
 SEARCH_FAR = [90, 130, 0, 25, 90, 30]
 GRIP_OPEN, GRIP_CLOSE, GRIP_MAX, OVERDRIVE = 30, 125, 165, 55
 OPEN_WIDTH_M = .11
+STEP_DEG = 8.                                    # per command, under the agent's 12° tracking limit
 REACH_X = (.16, .26)                             # floor grasp window in front of the base (IK, measured)
 ARM = ArmModel()
 
@@ -142,9 +143,19 @@ class ArmSkills:
         if self.op.lease:
             raise RuntimeError('ROSMASTER занят другим управлением')
         self.rc.ensure_agent()
+        if not self.rc.request('/health', timeout=4).get('hardware_open'):
+            self.rc.request('/acquire', {}, 45)          # take the serial port from the native bridge
         self.op.input(OWNER, self.rc.ZERO)
         self.op.enable(OWNER, profile, 'joint' if profile == 'rosmaster_pick_place' else 'cartesian', True, source='policy')
         self.profile = profile
+        if getattr(self, 'beat', None) is None or not self.beat.is_alive():
+            # sign of life for the session watchdog while SAM 3 loads/recognizes (no motion implied)
+            def beat():
+                while self.profile is not None and not self.stop_event.is_set():
+                    self.op.input(OWNER, self.rc.ZERO)
+                    time.sleep(.1)
+            self.beat = threading.Thread(target=beat, daemon=True, name='rosmaster-arm-heartbeat')
+            self.beat.start()
         if self.client is None:
             self.client = self.rc.connection(2)
 
@@ -187,10 +198,12 @@ class ArmSkills:
         while time.monotonic() < end:
             self._check()
             self.op.input(OWNER, self.rc.ZERO)
-            self.op.set_direct({'arm': target})
             m = self.measured()
-            if max(abs(a - b) for a, b in zip(m[:5], target[:5])) < tol:
+            if max(abs(a - b) for a, b in zip(m[:5], target[:5])) < tol and abs(m[5] - target[5]) < 3 * tol:
                 return m
+            # the agent refuses policy targets more than 12° from the measured arm: walk there
+            step = [mv + max(-STEP_DEG, min(STEP_DEG, tv - mv)) for mv, tv in zip(m, target)]
+            self.op.set_direct({'arm': step})
             time.sleep(.1)
         return self.measured()
 

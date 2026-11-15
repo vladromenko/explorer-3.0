@@ -106,7 +106,7 @@ class Runtime:
         self.last_rgb_request=None
         self.steps=0;self.direct=None;self.direct_source=None;self.policy_session=False
         self.mirror_align=False
-        self.battery_value=None;self.battery_at=0.;self.odom=None;self.odom_at=0.
+        self.battery_value=None;self.battery_at=0.;self.odom=None;self.odom_at=0.;self.odom_pose=(0.,0.,0.)
         self.scans={};self.controller_started=False
         self.session=None
         from collections import deque
@@ -206,7 +206,14 @@ class Runtime:
     def receive(self,topic,data):
         now=time.monotonic()
         if topic=='battery':self.battery_value=data;self.battery_at=now
-        elif topic=='odom':self.odom=data['velocity'];self.odom_at=now
+        elif topic=='odom':
+            # integrated wheel odometry for the shared map while the native bridge (which published
+            # /odom_raw) is stopped; robot-frame velocity -> pose in the odometry frame
+            if self.odom is not None and self.odom_at:
+                dt=min(.2,max(0.,now-self.odom_at));vx,vy,wz=(float(v) for v in self.odom)
+                x,y,th=self.odom_pose
+                self.odom_pose=(x+(vx*math.cos(th)-vy*math.sin(th))*dt,y+(vx*math.sin(th)+vy*math.cos(th))*dt,th+wz*dt)
+            self.odom=data['velocity'];self.odom_at=now
         elif topic.startswith('scan'):
             self.scans[topic]=(data,now)
 
@@ -275,6 +282,14 @@ class Runtime:
                 elif self.lease is not None:
                     self.stop(self.core.stop_reason or 'Controller stopped')
                 if not self.link.thread.is_alive():raise RuntimeError('Serial reader exited')
+
+    def scans_packet(self):
+        """Raw lidar scans (as the bridge published /scan0 /scan1) + integrated odometry, for the
+        Homebrain shared map while this runtime owns the serial port. Read-only."""
+        now=time.monotonic();out={}
+        for topic,(scan,stamp) in list(self.scans.items()):
+            out[topic]={'ranges':list(scan['ranges']),'age_s':now-stamp,'sequence':int(stamp*1e6)}
+        return {'scans':out,'odom_pose':list(self.odom_pose),'odom_age_s':now-self.odom_at if self.odom_at else None}
 
     MIRROR_OVERRIDES='config/mirror-explorer.json'
 

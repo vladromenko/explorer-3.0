@@ -128,3 +128,14 @@ def test_map_survives_restart(tmp_path):
     s = locate(again, 'tank', packet('tank', (2.0, 1.5, 1.0)))
     assert close(s['pose'], (2.0, 1.5, 1.0))
     assert again.image() is not None
+
+
+def test_frozen_lidar_is_detected_and_not_used(monkeypatch):
+    """A ROS stream that stops changing (ROSMASTER's bridge stopped) must not keep a robot «localized»."""
+    p = {'meta': {'streams': {'scan': {'sequence': 5, 'source_timestamp_ns': 9}}}}
+    assert fm.fresh_marker(p) == fm.fresh_marker({'meta': {'streams': {'scan': {'sequence': 5, 'source_timestamp_ns': 9}}}})
+    assert fm.fresh_marker(p) != fm.fresh_marker({'meta': {'streams': {'scan': {'sequence': 6, 'source_timestamp_ns': 9}}}})
+    f = fm.FleetMap()
+    f.track['rosmaster'] = {'pose': (0., 0., 0.), 'state': 'tracking', 'at': 0., 'scan': 1}
+    f.stale('rosmaster', 'Лидар не обновляется')
+    assert f.track['rosmaster']['state'] == 'no_scan' and f.scan('rosmaster') is None and f.nav('rosmaster') is None
