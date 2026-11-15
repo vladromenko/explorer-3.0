@@ -1,0 +1,131 @@
+{
+ "started": 1794708858.9263744,
+ "smoke": false,
+ "results": [
+  {
+   "skill": "so101_handover_sim",
+   "real_profile": "so101_pick_place",
+   "policy": "smolvla",
+   "physics_model": "1e9b00986c7e4378b6f0e32dbfbd52f1c19d8b3ae822fe65bf0d8600a71bc67d",
+   "train": {
+    "job": "75f2d102044f48a5bf6c18d1e40fb869",
+    "status": "completed",
+    "checkpoint": "/home/jetsonnx/.local/share/explorer3/checkpoints/75f2d102044f48a5bf6c18d1e40fb869-b8/checkpoints/last/pretrained_model",
+    "error": null
+   },
+   "mujoco": {
+    "job": "63c7e01d84cb430c9ba39f3bff734409",
+    "status": "completed",
+    "episodes": 20,
+    "success_fraction": 0.05,
+    "latency_s_p50_p95_max": [
+     0.017180851005832665,
+     0.018565641265013255,
+     1.2098893329966813
+    ]
+   },
+   "real_inputs": {
+    "profile": "so101_pick_place",
+    "policy": "smolvla",
+    "source": "записанный показ SO-101 47c74f27 (597 кадров)",
+    "steps": 40,
+    "latency_s_p50_max": [
+     0.009,
+     1.142
+    ],
+    "finite": true,
+    "max_jump_deg": 96.8,
+    "within_limits": true,
+    "motor_commands_sent": 0
+   },
+   "deploy_gate": {
+    "verdict": "blocked",
+    "checks": {
+     "contract": {
+      "status": "pass",
+      "message": "входы и выходы совпадают с so101_pick_place: 6 суставов, камера wrist, 30 Гц"
+     },
+     "real_holdout": {
+      "status": "fail",
+      "message": "на 3 настоящих показах вне обучения: суставы ±16.5° (допуск 8.0°), захват ±7.9 (допуск 12.0)"
+     },
+     "first_step": {
+      "status": "fail",
+      "message": "первая цель отстоит от текущей позы руки на 93° (95-й процентиль, допуск 25.0°)"
+     },
+     "latency": {
+      "status": "pass",
+      "message": "перепланирование 0.76 с (95%), запас пачки действий 1.33 с"
+     },
+     "mujoco": {
+      "status": "fail",
+      "message": "MuJoCo «so101_handover_sim»: успех 5% на 20 новых сценах (нужно ≥50% на ≥20)"
+     }
+    }
+   }
+  },
+  {
+   "skill": "rosmaster_floor_pick_sim",
+   "real_profile": "rosmaster_pick_place",
+   "policy": "smolvla",
+   "physics_model": "6b331a2750b1e25608fdde56eb701fb1243ff189a02f8c272d35b1163a26f2e8",
+   "train": {
+    "job": "b2f3f79977c64319ad97df378f50a357",
+    "status": "completed",
+    "checkpoint": "/home/jetsonnx/.local/share/explorer3/checkpoints/b2f3f79977c64319ad97df378f50a357-b8/checkpoints/last/pretrained_model",
+    "error": null
+   },
+   "mujoco": {
+    "job": "084117b3edf34738a25b4c0f1507ecbe",
+    "status": "completed",
+    "episodes": 20,
+    "success_fraction": 0.0,
+    "latency_s_p50_p95_max": [
+     0.017255904516787268,
+     0.019084240455413237,
+     1.7602865340013523
+    ]
+   },
+   "real_inputs": {
+    "profile": "rosmaster_pick_place",
+    "policy": "smolvla",
+    "source": "живой ROSMASTER, теневой режим (действия считаются, не отправляются)",
+    "steps": 40,
+    "latency_s_p50_max": [
+     0.01,
+     0.788
+    ],
+    "finite": true,
+    "max_jump_deg": 93.2,
+    "within_limits": false,
+    "motor_commands_sent": 0
+   },
+   "deploy_gate": {
+    "verdict": "blocked",
+    "checks": {
+     "contract": {
+      "status": "pass",
+      "message": "входы и выходы совпадают с rosmaster_pick_place: 6 суставов, камера front, 20 Гц"
+     },
+     "real_holdout": {
+      "status": "blocked",
+      "message": "нужно ≥3 настоящих показов «rosmaster_pick_place», которых не было в обучении (есть 0). Без них нельзя сказать, что модель поймёт настоящую камеру и руку."
+     },
+     "first_step": {
+      "status": "blocked",
+      "message": "проверяется на тех же настоящих показах"
+     },
+     "latency": {
+      "status": "not_run",
+      "message": "измеряется на настоящих кадрах"
+     },
+     "mujoco": {
+      "status": "fail",
+      "message": "MuJoCo «rosmaster_floor_pick_sim»: успех 0% на 20 новых сценах (нужно ≥50% на ≥20)"
+     }
+    }
+   }
+  }
+ ],
+ "finished": 1794719678.4033506
+}
