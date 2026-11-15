@@ -140,14 +140,29 @@ def follow(pose, path, v_max=.15, w_max=.8, lookahead=.12):
 def guard(points, robot, v, w, stop_m=.18):
     """Collision guard from the latest scan (robot base frame). Stops forward motion when
     something is in the corridor ahead and turns toward the freer side.
+    Also the sides: a wall right beside the body (within 5 cm) forbids turning the body into it and
+    slows the robot (front corners sweep sideways when it turns).
     Returns (v, w, blocked_reason or None)."""
-    if points is None or v <= 0:
+    if points is None:
         return v, w, None
+    side_note = None
+    front_b, half_b = BODY_FRONT[robot], BODY_HALF_W[robot]
+    beside = points[(np.abs(points[:, 0]) < front_b) & (np.abs(points[:, 1]) >= half_b - .02) & (np.abs(points[:, 1]) < half_b + .05)]
+    if len(beside) >= 2:
+        near_left = bool((beside[:, 1] > 0).sum() >= 2)
+        near_right = bool((beside[:, 1] < 0).sum() >= 2)
+        # turning left swings the front corner left and the rear corner right (and vice versa)
+        if (w > 0 and near_left) or (w < 0 and near_right):
+            w = 0.
+            side_note = 'стена сбоку: не поворачиваю в неё'
+        v = min(v, .05)
+    if v <= 0:
+        return v, w, side_note
     front, half = BODY_FRONT[robot], BODY_HALF_W[robot] + .04
     reach = front + stop_m + v * .8
     ahead = points[(points[:, 0] > front - .02) & (points[:, 0] < reach) & (np.abs(points[:, 1]) < half)]
     if len(ahead) < 2:
-        return v, w, None
+        return v, w, side_note
     gap = float(ahead[:, 0].min() - front)
     left = points[(points[:, 0] > 0) & (points[:, 0] < reach + .3) & (points[:, 1] > 0) & (points[:, 1] < .6)]
     right = points[(points[:, 0] > 0) & (points[:, 0] < reach + .3) & (points[:, 1] < 0) & (points[:, 1] > -.6)]
@@ -195,6 +210,7 @@ def frontiers(grid, robot, pose, min_size_m=.3, banned=(), visual=False, look_m=
     # A long boundary is cut into ~1 m pieces so that two robots can take different parts of it.
     tile = max(1, int(round(1.0 / PRES)))
     look = int(round(look_m / PRES))
+    clear = cv2.distanceTransform((~blocked).astype(np.uint8), cv2.DIST_L2, 3)   # cells to the nearest blocked one
     pieces = []
     for i in range(1, count):
         if stats[i, cv2.CC_STAT_AREA] * PRES < min_size_m:
@@ -223,6 +239,9 @@ def frontiers(grid, robot, pose, min_size_m=.3, banned=(), visual=False, look_m=
             near = cv2.distanceTransform(mask, cv2.DIST_L2, 3)
             sub = dist[y0:y1, x0:x1]
             cand = np.isfinite(sub) & (near <= look)
+            roomy = cand & (clear[y0:y1, x0:x1] >= 2)        # not right at the edge of the inflation band
+            if roomy.any():
+                cand = roomy
             if not cand.any():
                 continue
             score = np.where(cand, near * 3 + sub, np.inf)
