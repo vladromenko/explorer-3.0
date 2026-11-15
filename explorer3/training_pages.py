@@ -87,7 +87,8 @@ def install(css,jobs):
             ui.link('← Explorer','/');ui.link('Как собрать датасет','/datasets/guide')
         names=({key:value.get('label',key) for key,value in PROFILES.items()} if domain=='real' else
             {'so101_pick_place_sim':'SO-101 · кубик в коробку','tank_dock_sim':'Tank · подъезд к цели',
-             'rosmaster_pick_place_sim':'ROSMASTER · кубик в коробку','rosmaster_dock_sim':'ROSMASTER · подъезд к цели'})
+             'rosmaster_pick_place_sim':'ROSMASTER · кубик в коробку','rosmaster_dock_sim':'ROSMASTER · подъезд к цели',
+             'so101_handover_sim':'SO-101 · передача человеку (как блок 4)','rosmaster_floor_pick_sim':'ROSMASTER · взять с пола (как блок 3)'})
         with ui.element('div').classes('sim-layout') as builder:
             with ui.column().classes('sim-panel'):
                 ui.label('Данные и исходная модель').classes('sim-title')

@@ -69,7 +69,44 @@ def select_simulation_revision(episodes, expected=None):
     return selected, next(iter(revisions),expected)
 
 
-def freeze(name, smoke, seed=1000, sim_model_hash=None, *, selected_ids=None, min_sim_episodes=None,min_real_episodes=None):
+# real recording block -> the MuJoCo task that mirrors it (explorer3/sim/aligned.py)
+SIM_FOR_REAL = {'so101_pick_place': 'so101_handover_sim', 'rosmaster_pick_place': 'rosmaster_floor_pick_sim'}
+
+
+def cotraining_episodes(name, real_train_frames, ratio):
+    """Sim-and-real co-training (Maddukuri et al., 2025, arXiv:2503.24361): demonstrations of the
+    MuJoCo task that mirrors the recording block join the TRAIN split only, at most ratio x the real
+    training frames, newest physics version only. Validation and test stay real."""
+    from .training_drafts import semantic_contract
+    sim_name = SIM_FOR_REAL.get(name)
+    if sim_name is None:
+        raise ValueError('Для этой задачи нет выровненной сцены MuJoCo')
+    sims = sorted(eligible(sim_name), key=lambda e: -e['created'])
+    if not sims:
+        raise ValueError('Нет показов MuJoCo для совместного обучения: сначала соберите их')
+    newest = simulation_model_hash(sims[0])
+    sims = [e for e in sims if simulation_model_hash(e) == newest]
+    def contract(p):
+        c = semantic_contract(p) or {}
+        c.pop('task', None)
+        return c
+    if contract(profile(sim_name)) != contract(profile(name)):
+        raise ValueError('Каналы, камера или частота MuJoCo-задачи отличаются от реальной')
+    chosen, frames = [], 0
+    for e in sims:
+        if frames + e['frames'] > ratio * real_train_frames:
+            break
+        sources = {json.loads(line)['command_source'] for line in (Path(e['dataset']) / 'research.jsonl').read_text().splitlines()}
+        if not sources.issubset({'scripted_expert', 'human', 'ppo_expert'}):
+            raise ValueError('Недопустимый источник команд в показе MuJoCo')
+        chosen.append({**e, 'sha256': fingerprint(e['dataset']), 'domain': 'sim'})
+        frames += e['frames']
+    return chosen, {'sim_profile': sim_name, 'sim_model_hash': newest, 'sim_episodes': len(chosen), 'sim_frames': frames,
+                    'real_train_frames': real_train_frames, 'ratio_limit': ratio, 'splits_with_sim': ['train'],
+                    'reference': 'Sim-and-Real Co-Training, arXiv:2503.24361'}
+
+
+def freeze(name, smoke, seed=1000, sim_model_hash=None, *, selected_ids=None, min_sim_episodes=None,min_real_episodes=None,cotrain_sim=None):
     domain=profile(name).get('domain','real')
     episodes = eligible(name)
     if selected_ids is not None:
@@ -113,6 +150,11 @@ def freeze(name, smoke, seed=1000, sim_model_hash=None, *, selected_ids=None, mi
             'limitation': 'Smoke использует все показы; это не независимая оценка качества' if smoke else
                           'Split заморожен; test не используется для выбора модели'}
     if min_real_episodes is not None:plan.update(pilot=True,minimum_episodes=min_real_episodes)
+    if cotrain_sim:
+        if domain!='real' or smoke:raise ValueError('Совместное обучение — для основного обучения на настоящих показах')
+        extra,info=cotraining_episodes(name,sum(e['frames'] for e in splits['train']),float(cotrain_sim))
+        splits['train']=splits['train']+extra
+        plan['cotraining']=info
     blob = json.dumps(plan, sort_keys=True, ensure_ascii=False, indent=2)
     ident = hashlib.sha256(blob.encode()).hexdigest()
     directory = DATA / 'plans'

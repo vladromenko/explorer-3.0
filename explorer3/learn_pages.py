@@ -77,7 +77,8 @@ NAMES = {'so101_pick_place': 'SO-101 · кубик в коробку', 'tank_doc
          'rosmaster_dock_rgbd_lidar': 'ROSMASTER · подъезд с глубиной и лидарами',
          'rosmaster_pick_place_rgbd_lidar': 'ROSMASTER · кубик в коробку с глубиной и лидарами',
          'so101_pick_place_sim': 'SO-101 · кубик в коробку (симуляция)', 'tank_dock_sim': 'Tank · подъезд (симуляция)',
-         'rosmaster_dock_sim': 'ROSMASTER · подъезд (симуляция)', 'rosmaster_pick_place_sim': 'ROSMASTER · кубик (симуляция)'}
+         'rosmaster_dock_sim': 'ROSMASTER · подъезд (симуляция)', 'rosmaster_pick_place_sim': 'ROSMASTER · кубик (симуляция)',
+         'so101_handover_sim': 'SO-101 · передача человеку (симуляция = блок 4)', 'rosmaster_floor_pick_sim': 'ROSMASTER · взять с пола (симуляция = блок 3)'}
 
 
 def task_name(name):

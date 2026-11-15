@@ -27,6 +27,9 @@ def resumable_checkpoint(ident):
     return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
+from .datasets import SIM_FOR_REAL  # noqa: E402  (real recording block -> mirrored MuJoCo task)
+
+
 class Jobs:
     def __init__(self, control):
         self.control = control
@@ -36,13 +39,13 @@ class Jobs:
         self.cancel_requested = threading.Event()
         self.lock = threading.RLock()
 
-    def enqueue(self, name, policy, smoke=True, sim_model_hash=None):
+    def enqueue(self, name, policy, smoke=True, sim_model_hash=None, cotrain_sim=None):
         profile(name)
         if policy not in {'act', 'smolvla','diffusion'}:
             raise ValueError('Unknown trainer')
         from .policy_catalog import validate_recipe
         validate_recipe(policy,name)
-        plan_id, _ = freeze(name, smoke,sim_model_hash=sim_model_hash)
+        plan_id, _ = freeze(name, smoke,sim_model_hash=sim_model_hash,cotrain_sim=cotrain_sim)
         cfg={'kind': 'train', 'profile': name, 'policy': policy,
             'smoke': bool(smoke), 'plan_id': plan_id, 'seed': 1000}
         if profile(name).get('domain')=='sim' and not smoke:
@@ -170,7 +173,13 @@ class Jobs:
         if source['status']!='completed' or source['policy'] not in {'act','smolvla','diffusion'} or not source['checkpoint']:
             raise ValueError('Выберите завершённое обучение политики')
         if profile(source['profile']).get('domain')!='sim':
-            raise ValueError('Нужен симуляционный профиль')
+            # A policy trained on real demonstrations is checked on the MuJoCo task that mirrors its
+            # recording block (same camera, joints, start pose and success rule).
+            target=SIM_FOR_REAL.get(source['profile'])
+            if target is None:raise ValueError('Для этой реальной задачи нет выровненной сцены MuJoCo')
+            return self._insert(source['profile'],source['policy'],{'kind':'sim_evaluate','profile':target,
+                'source_job':job_id,'checkpoint':source['checkpoint'],'device':'cuda','expected_model_hash':None,
+                'episodes':3 if json.loads(source['config']).get('smoke') else 20})
         from .datasets import load_plan,select_simulation_revision
         config=json.loads(source['config'])
         if config.get('plan_id'):
@@ -261,6 +270,19 @@ class Jobs:
         return self._insert(source['profile'],'act',{'kind':'support_calibration','source_job':job_id,
             'profile':source['profile'],'device':'cpu'})
 
+    def deploy_gate(self, job_id):
+        """«Допуск к роботу» for a completed training (explorer3/deploy_gate.py); queues the MuJoCo
+        check on the mirrored task first when it has not run."""
+        source=self.get(job_id)
+        if source['status']!='completed' or not source['checkpoint'] or source['policy'] not in {'act','smolvla','diffusion'}:
+            raise ValueError('Выберите завершённое обучение политики')
+        from .deploy_gate import mujoco_result
+        if mujoco_result(job_id) is None and not any(json.loads(j['config']).get('kind')=='sim_evaluate' and json.loads(j['config']).get('source_job')==job_id
+                                                     and j['status'] in ('queued','running') for j in catalog.rows('jobs')):
+            try:self.sim_evaluate(job_id)
+            except ValueError:pass
+        return self._insert(source['profile'],source['policy'],{'kind':'deploy_gate','source_job':job_id,'device':'cuda'})
+
     def evaluate(self, job_id, partition="validation"):
         if partition not in {"validation","test"}:raise ValueError("Unknown evaluation split")
         source = self.get(job_id)
@@ -333,7 +355,7 @@ class Jobs:
         ident = job['id']
         try:
             cfg=json.loads(job['config'])
-            gpu=cfg.get('kind','train') in {'train','evaluate','sim_evaluate','benchmark','vision','cognitive_simulation','cognitive_observation','cognitive_order'} and cfg.get('device','cuda').startswith('cuda')
+            gpu=cfg.get('kind','train') in {'train','evaluate','sim_evaluate','deploy_gate','benchmark','vision','cognitive_simulation','cognitive_observation','cognitive_order'} and cfg.get('device','cuda').startswith('cuda')
             with ResourceLease('physical-activity'), ResourceLease('compute'), (ExistingTrainingLease() if gpu else contextlib.nullcontext()):
                 path = DATA/'jobs'/f'{ident}.json'
                 path.write_text(job['config'])

@@ -704,7 +704,8 @@ def index(request:Request):
                     smol_button=ui.button('SmolVLA · smoke',on_click=smol_smoke)
                     smol_full_button=ui.button('SmolVLA · основное обучение',on_click=smol_full)
                 ui.label('Основной рецепт: ACT 40 000 шагов (~11 ч), SmolVLA 20 000 шагов (~9 ч) на Homebrain; checkpoint каждые 5 000. Validation отдельно; test не используется для подбора. Незавершённое обучение продолжается только явно.').classes('muted')
-                job_table=ui.table(columns=[{'name':k,'label':v,'field':k} for k,v in [('id','Задание'),('profile','Задача'),('policy','Модель'),('status','Состояние'),('checkpoint','Checkpoint'),('error','Ошибка')]],rows=[],row_key='id',selection='single')
+                job_table=ui.table(columns=[{'name':k,'label':v,'field':k} for k,v in [('id','Задание'),('profile','Задача'),('policy','Модель'),('status','Состояние'),('gate','Допуск к роботу'),('checkpoint','Checkpoint'),('error','Ошибка')]],rows=[],row_key='id',selection='single')
+                ui.label('«Допуск к роботу»: совпадение входов/выходов с роботом, время расчёта на Homebrain, точность на настоящих показах вне обучения, отсутствие рывка на старте и успех в MuJoCo на задаче, повторяющей блок записи. Испытание модели на роботе запускается только после допуска.').classes('muted')
                 def selected_job_action(action):
                     try:
                         if not job_table.selected:raise ValueError('Выберите задание')
@@ -714,6 +715,8 @@ def index(request:Request):
                         elif action=='cancel':jobs.cancel(ident)
                         elif action=='benchmark':
                             result=jobs.benchmark(ident);ui.notify('Проверка нагрузки в очереди '+result[:8])
+                        elif action=='gate':
+                            gate=jobs.deploy_gate(ident);ui.notify('Допуск к роботу: проверка в очереди '+gate[:8]+' (и проверка в MuJoCo, если её не было)')
                         elif action in {'evaluate','test'}:
                             result=jobs.evaluate(ident,'test' if action=='test' else 'validation');ui.notify('Диагностика в очереди '+result[:8])
                     except Exception as exc:notify_error(exc)
@@ -721,6 +724,7 @@ def index(request:Request):
                     ui.button('Журнал и результат',on_click=lambda:selected_job_action('open'))
                     ui.button('Продолжить с checkpoint',on_click=lambda:selected_job_action('resume'))
                     ui.button('Отменить выбранное',on_click=lambda:selected_job_action('cancel'))
+                    ui.button('Допуск к роботу',icon='verified',on_click=lambda:selected_job_action('gate')).props('unelevated')
                     ui.button('Проверить checkpoint на записях',on_click=lambda:selected_job_action('evaluate'))
                     ui.button('Финальный test выбранного checkpoint',on_click=lambda:selected_job_action('test'))
                     ui.button('Измерить нагрузку 3 копий политики',on_click=lambda:selected_job_action('benchmark'))
@@ -883,7 +887,11 @@ def index(request:Request):
         device_table.update()
         profile_table.rows=local_pages.profile_statuses();profile_table.update()
         episode_table.rows=catalog.rows('episodes');episode_table.update()
-        job_table.rows=catalog.rows('jobs');job_table.update()
+        from . import deploy_gate as _gate
+        def _gate_text(j):
+            g=_gate.latest(j['id']) if j.get('checkpoint') else None
+            return '' if g is None else ('допущена' if g['verdict']=='ready' else 'не допущена')
+        job_table.rows=[{**j,'gate':_gate_text(j)} for j in catalog.rows('jobs')];job_table.update()
         event_table.rows=catalog.rows('events')[:20];event_table.update()
         mode_label.set_text((session.error or phase_text) if control.robot=='tank' else control.mode+' · '+(session.error or phase_text))
         pause_reason=(session.latest or {}).get('pause_reason')

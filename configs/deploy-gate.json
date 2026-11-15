@@ -1,0 +1,11 @@
+{
+ "_note": "Thresholds of the «Допуск к роботу» check (explorer3/deploy_gate.py). Engineering starting values, changed only with a recorded reason, never tuned on the test split.",
+ "min_real_holdout_episodes": 3,
+ "frames_per_episode": 40,
+ "joint_mae_deg": 8.0,
+ "gripper_mae": 12.0,
+ "first_step_jump_deg_p95": 25.0,
+ "latency_budget_fraction": 0.8,
+ "mujoco_min_success": 0.5,
+ "mujoco_min_episodes": 20
+}

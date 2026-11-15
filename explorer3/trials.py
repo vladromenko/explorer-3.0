@@ -86,7 +86,10 @@ def require_physical(plan):
     if plan['profile'] not in {'so101_pick_place','tank_dock','tank_dock_rgbd_lidar','rosmaster_dock','rosmaster_pick_place','rosmaster_dock_rgbd_lidar','rosmaster_pick_place_rgbd_lidar'}:
         raise PermissionError('Исполнитель этого профиля ещё не принят; план сохранён без движения')
     # The operator's own start click is the authorization; no separate expiring permit file.
-    if plan['kind']=='policy':verify_policy_artifacts(plan)   # weights still match the saved plan
+    if plan['kind']=='policy':
+        verify_policy_artifacts(plan)   # weights still match the saved plan
+        from .deploy_gate import require
+        require(plan)                   # «Допуск к роботу» passed for exactly these weights
 
 
 class ReplayActions:

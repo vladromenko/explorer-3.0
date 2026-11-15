@@ -123,10 +123,14 @@ def run_job(path: Path):
         from .act_support import prepare
         prepare(cfg['source_job'],work)
         return
+    if cfg.get('kind') == 'deploy_gate':
+        from .deploy_gate import run
+        run(cfg['source_job'], work)
+        return
     if cfg.get('kind') == 'sim_evaluate':
         subprocess.run([str(ROOT/'.venv-sim/bin/python'),'-m','explorer3.sim.evaluate',cfg['checkpoint'],
-            str(work/'result.json'),'--profile',cfg['profile'],'--count',str(cfg['episodes']),
-            '--expected-model-sha256',cfg['expected_model_hash']],
+            str(work/'result.json'),'--profile',cfg['profile'],'--count',str(cfg['episodes'])]+
+            (['--expected-model-sha256',cfg['expected_model_hash']] if cfg.get('expected_model_hash') else []),
             check=True,env={**offline_environment(),'MUJOCO_GL':'egl'})
         return
     if cfg.get('kind') == 'sim_ppo':

@@ -187,5 +187,102 @@
     "domain": "sim",
     "real_profile": "rosmaster_pick_place",
     "model_status": "manufacturer_geometry_uncalibrated"
+  },
+  "so101_handover_sim": {
+    "robot": "so101",
+    "fps": 30,
+    "version": 1,
+    "task": "hand over the cube",
+    "policy": "act",
+    "camera": "wrist",
+    "channels": [
+      "shoulder_pan",
+      "shoulder_lift",
+      "elbow_flex",
+      "wrist_flex",
+      "wrist_roll",
+      "gripper"
+    ],
+    "units": [
+      "degrees",
+      "degrees",
+      "degrees",
+      "degrees",
+      "degrees",
+      "percent_calibrated_range"
+    ],
+    "schema_status": "simulation_aligned_to_recording_block_4",
+    "recording_status": "not_verified",
+    "training_status": "not_verified",
+    "physical_skill_status": "not_applicable",
+    "domain": "sim",
+    "real_profile": "so101_pick_place",
+    "model_status": "upstream_zero_direction_checked",
+    "task_variant": "so101_handover"
+  },
+  "rosmaster_floor_pick_sim": {
+    "robot": "rosmaster",
+    "fps": 20,
+    "version": 3,
+    "task": "pick up the cube",
+    "policy": "act",
+    "camera": "front",
+    "channels": [
+      "base_rotation",
+      "shoulder",
+      "elbow",
+      "wrist_pitch",
+      "wrist_roll",
+      "gripper"
+    ],
+    "units": [
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees"
+    ],
+    "schema_status": "simulation_aligned_to_recording_block_3",
+    "recording_status": "not_verified",
+    "training_status": "not_verified",
+    "physical_skill_status": "not_applicable",
+    "state_channels": [
+      "measured_base_rotation",
+      "measured_shoulder",
+      "measured_elbow",
+      "measured_wrist_pitch",
+      "measured_wrist_roll",
+      "measured_gripper"
+    ],
+    "state_provenance": "simulator observable state in the real profile channel order; not physical sensor data",
+    "camera_status": "orbbec_rgb_on_arm_480x640",
+    "image_shape": [
+      480,
+      640,
+      3
+    ],
+    "state_units": [
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees"
+    ],
+    "action_provenance": "submitted simulation control target; no hardware command or acknowledgement",
+    "base_rule": "base stays still (agent profile refuses drive input)",
+    "feature_scales": [
+      90.0,
+      90.0,
+      90.0,
+      90.0,
+      90.0,
+      90.0
+    ],
+    "domain": "sim",
+    "real_profile": "rosmaster_pick_place",
+    "model_status": "manufacturer_geometry_uncalibrated",
+    "task_variant": "rosmaster_floor_pick"
   }
 }

@@ -28,7 +28,8 @@ from explorer3 import catalog  # noqa: E402
 from explorer3.paths import DATA, offline_environment  # noqa: E402
 from explorer3.profiles import profile  # noqa: E402
 
-SKILLS = ['so101_pick_place_sim', 'rosmaster_pick_place_sim']
+# the MuJoCo tasks that mirror recording blocks 4 and 3 (explorer3/sim/aligned.py)
+SKILLS = ['so101_handover_sim', 'rosmaster_floor_pick_sim']
 POLICIES = ['smolvla', 'act']
 
 
@@ -55,18 +56,22 @@ def collect(name, need, workers=2):          # 3 MuJoCo renderers + a model hit 
     if have >= need:
         log(name, f'показов уже {have}')
         return have
-    missing = need - have
-    per = math.ceil(missing / workers)
-    start = 2000 + int(time.time()) % 100000          # fresh seeds every run
     env = {**offline_environment(), 'MUJOCO_GL': 'egl'}
-    procs = [subprocess.Popen([str(ROOT / '.venv-sim/bin/python'), '-m', 'explorer3.sim.collect', '--start', str(start + i * per),
-                               '--count', str(per), '--profile', name], cwd=ROOT, env=env,
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) for i in range(workers)]
-    log(name, f'собираю {missing} показов экспертом в MuJoCo ({workers} процесса)')
-    for p in procs:
-        p.wait()
-    have = len(successes(name))
-    log(name, f'показов теперь {have}')
+    for round_ in range(4):                       # the scripted expert fails some scenes: try until enough
+        missing = need - have
+        if missing <= 0:
+            break
+        tries = math.ceil(missing * (1.3 if round_ == 0 else 2.2))
+        per = math.ceil(tries / workers)
+        start = 2000 + (int(time.time()) + round_ * 7919) % 100000          # fresh seeds every run
+        procs = [subprocess.Popen([str(ROOT / '.venv-sim/bin/python'), '-m', 'explorer3.sim.collect', '--start', str(start + i * per),
+                                   '--count', str(per), '--profile', name], cwd=ROOT, env=env,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) for i in range(workers)]
+        log(name, f'не хватает {missing} показов: {tries} попыток эксперта в MuJoCo ({workers} процесса)')
+        for p in procs:
+            p.wait()
+        have = len(successes(name))
+        log(name, f'показов теперь {have}')
     return have
 
 
@@ -95,7 +100,7 @@ def real_inputs_check(checkpoint, real_profile, instruction=None, shadow_steps=4
     lat, actions, states = [], [], []
     if real_profile == 'so101_pick_place':
         from lerobot.datasets.lerobot_dataset import LeRobotDataset
-        recorded = [e for e in catalog.rows('episodes') if e['profile'] == 'so101_pick_place']
+        recorded = [e for e in catalog.rows('episodes') if e['profile'] == 'so101_pick_place' and e['outcome'] == 'success']
         if not recorded:
             out['source'] = 'нет записанных показов SO-101'
             return out
@@ -161,6 +166,7 @@ def main():
     ap.add_argument('--smoke', action='store_true')
     ap.add_argument('--skills', default=','.join(SKILLS))
     ap.add_argument('--policies', default=','.join(POLICIES))
+    ap.add_argument('--collect-only', action='store_true')
     a = ap.parse_args()
     out = DATA / 'simlab' / 'rehearsal' / time.strftime('%Y%m%d-%H%M%S')
     out.mkdir(parents=True, exist_ok=True)
@@ -170,6 +176,8 @@ def main():
     need = 6 if a.smoke else 50
     for name in a.skills.split(','):
         collect(name, need)
+    if a.collect_only:
+        return
     for name in a.skills.split(','):
         real = profile(name).get('real_profile')
         for policy in a.policies.split(','):
@@ -196,6 +204,12 @@ def main():
                 log(name, policy, 'реальные входы робота (без моторов)')
                 entry['real_inputs'] = real_inputs_check(train['checkpoint'], real)
                 log(name, policy, json.dumps(entry['real_inputs'], ensure_ascii=False))
+                log(name, policy, '«Допуск к роботу»')
+                from explorer3 import deploy_gate
+                gate = deploy_gate.run(ident)
+                entry['deploy_gate'] = {'verdict': gate['verdict'], 'checks': {k: {'status': c['status'], 'message': c['message']}
+                                                                              for k, c in gate['checks'].items()}}
+                log(name, policy, 'допуск:', gate['verdict'], '·', gate['meaning'][:300])
             except Exception as exc:
                 entry['error'] = f'{type(exc).__name__}: {exc}'
                 log(name, policy, 'ОШИБКА', entry['error'])
