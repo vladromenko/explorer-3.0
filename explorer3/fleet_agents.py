@@ -67,12 +67,19 @@ def fleet_skills():
         ('so101', 'handover', 'explorer3/so101_handoff.py', 'manual', ['person_took_object']),
     ]
     cards = {}
+    from .rosmaster_arm import learned_pick_job
+    learned = learned_pick_job()
     for robot, name, source, kind, post in specs:
         ident = f'{robot}.fleet_{name}.v1'
-        version = _hash({'code': _file_hash(source), 'skill': name})
+        policy = None
+        if (robot, name) == ('rosmaster', 'pick_floor') and learned is not None:
+            # a learned grasp is a different recipient: its memory scope is bound to these weights
+            from .deploy_gate import latest
+            policy, kind = latest(learned)['checkpoint_bundle_sha256'], 'learned'
+        version = _hash({'code': _file_hash(source), 'skill': name, 'policy': policy})
         cards[ident] = SkillCard(
             skill_id=ident, robot=robot, version=version, kind=kind, source_ref=source, profile='fleet',
-            policy_sha256=version, camera_sha256=_hash({'robot': robot, 'skill': name}),
+            policy_sha256=policy or version, camera_sha256=_hash({'robot': robot, 'skill': name}),
             state_schema={'frame': 'fleet_map'}, action_schema={'executor': source},
             goals=['named_object'], cameras=['front' if robot != 'so101' else 'wrist'],
             verified_scope=['fleet swarm executor; scripted/geometric, not a learned policy'],
@@ -130,6 +137,7 @@ class FleetAgents:
     def start(self, kind, prompt, robots):
         """Plan of registered skills for the command; raises with the reason when not executable."""
         c = self.role('MissionCoordinator')
+        self.skills = None                       # re-read: code or an admitted learned policy may have changed
         self.mission = uuid.uuid4().hex
         self.helps = 0
         mobile = [r for r in robots]
@@ -157,7 +165,9 @@ class FleetAgents:
         self.plan = []
         for i, (robot, skill, text) in enumerate(steps):
             card = self.card(robot, skill)          # unknown robot/skill -> error, never invented
-            self.plan.append({'id': f's{i + 1}', 'robot': robot, 'skill': card.skill_id, 'version': card.version[:12],
+            if card.kind == 'learned':
+                text += ' (обученная модель, допуск пройден)'
+            self.plan.append({'id': f's{i + 1}', 'robot': robot, 'skill': card.skill_id, 'version': card.version[:12], 'kind': card.kind,
                               'text': text, 'verify': ', '.join(card.postconditions), 'status': 'ждёт'})
         c.note('план', f'{len(self.plan)} шагов из зарегистрированных навыков: ' +
                ' → '.join(f'{p["robot"]}:{p["skill"].split(".")[1].removeprefix("fleet_")}' for p in self.plan), mission=self.mission)

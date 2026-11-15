@@ -59,3 +59,43 @@ def test_gripper_angle_and_holding():
     assert ra.grip_command(.03) > ra.grip_command(.08)
     assert ra.grip_command(.001) <= ra.GRIP_MAX
     assert ra.holding(120, 100) and not ra.holding(120, 118)
+
+
+def test_learned_pick_runs_only_an_admitted_policy_and_checks_holding(monkeypatch):
+    """With an admitted checkpoint the swarm grasp is the policy through the robot runtime;
+    the result is the gripper stall, not the policy's word."""
+    import types
+    import numpy as np
+    import explorer3.rosmaster_arm as ra
+    from explorer3 import deploy_gate, policy_runtime
+
+    sent = []
+
+    class Core:
+        def __init__(self, checkpoint, device, instruction=None):
+            assert checkpoint == 'ck' and instruction == 'pick up the cookie'
+
+        def act(self, state, images, task):
+            assert set(images) == {'front'} and len(state) == 6
+            return [90., 120., 10., 30., 90., 125.]
+
+    class Client:
+        def get(self, path):
+            import cv2
+            ok, jpg = cv2.imencode('.jpg', np.zeros((480, 640, 3), np.uint8))
+            return types.SimpleNamespace(content=jpg.tobytes(), status_code=200)
+
+    arm = ra.ArmSkills.__new__(ra.ArmSkills)
+    arm.log, arm.stop_event, arm.profile, arm.client = (lambda m: None), ra.threading.Event(), 'rosmaster_pick_place', Client()
+    arm.op = types.SimpleNamespace(input=lambda *a: None, set_direct=lambda c: sent.append(c), owner=ra.OWNER, lease='x', error=None)
+    arm.rc = types.SimpleNamespace(ZERO={})
+    arm.look = lambda prompt: {'point': np.array([.21, 0., .02]), 'top_z': .04, 'width_m': .04}
+    arm.drive = lambda *a: None
+    arm.move = lambda pose, **k: [90., 130., 0., 25., 90., 100.]
+    arm.measured = lambda: [90., 130., 0., 25., 90., 100.]          # gripper stalled at 100 < 125
+    monkeypatch.setattr(policy_runtime, 'PolicyCore', Core)
+    monkeypatch.setattr(deploy_gate, 'latest', lambda job: {'checkpoint': 'ck', 'policy': 'smolvla', 'verdict': 'ready'})
+    result = arm.policy_pick('cookie', 'job1', seconds=.3)
+    assert result['ok'] and result['policy_job'] == 'job1' and sent and sent[0] == {'arm': [90., 120., 10., 30., 90., 125.]}
+    arm.measured = lambda: [90., 130., 0., 25., 90., 125.]          # closed fully: nothing in the hand
+    assert not arm.policy_pick('cookie', 'job1', seconds=.2)['ok']

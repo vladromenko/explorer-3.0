@@ -46,9 +46,16 @@ def test_help_learns_from_verified_cases_and_rejects_incompatible(agents, monkey
     assert '1 совместимых' in d2['why']
     assert agents.verify(d2['case'], 'success', 'success', 'success', 'держит') == 'candidate'
     # the recipient's skill changed (new code version): old cases are not used for it
-    old = agents.card('rosmaster', 'pick_floor')
-    agents.skills['rosmaster.fleet_pick_floor.v1'] = old.model_copy(update={'version': 'f' * 64})
+    real = fleet_agents.fleet_skills
+
+    def changed():
+        cards = real()
+        key = 'rosmaster.fleet_pick_floor.v1'
+        cards[key] = cards[key].model_copy(update={'version': 'f' * 64, 'kind': 'learned', 'policy_sha256': 'e' * 64})
+        return cards
+    monkeypatch.setattr(fleet_agents, 'fleet_skills', changed)
     agents.start('fetch', 'cookie', ['rosmaster', 'tank'])
+    assert 'обученная модель' in agents.plan[3]['text']
     d3 = agents.assist('rosmaster', 'pick_floor', 'cookie', 'pick_failed', ['rosmaster', 'tank'], ev)
     assert '0 совместимых' in d3['why'] and '2 отклонено как несовместимые' in d3['why']
 

@@ -96,6 +96,23 @@ def holding(command_grip, measured_grip):
     return measured_grip < command_grip - 6
 
 
+def learned_pick_job():
+    """The newest ROSMASTER floor-pick training whose «Допуск к роботу» passed for its current
+    weights, or None (then the geometric grasp is used)."""
+    try:
+        from . import catalog, deploy_gate
+        from .training_drafts import checkpoint_hash
+        for job in catalog.rows('jobs'):
+            if job['profile'] != 'rosmaster_pick_place' or job['status'] != 'completed' or not job['checkpoint']:
+                continue
+            report = deploy_gate.latest(job['id'])
+            if report and report['verdict'] == 'ready' and report['checkpoint_bundle_sha256'] == checkpoint_hash(job['checkpoint']):
+                return job['id']
+    except Exception:
+        return None
+    return None
+
+
 # ------------------------------------------------------------------ live skills
 class ArmSkills:
     """Pick/place on the real robot. Runs synchronously in the caller's thread; stop() aborts."""
@@ -223,7 +240,57 @@ class ArmSkills:
             sensors.close()
 
     def pick(self, prompt, attempts=3):
-        """Find `prompt` in front of the robot and grasp it. Returns a result dict."""
+        """Grasp `prompt`: with a learned policy that passed «Допуск к роботу» when there is one
+        (explorer3/deploy_gate.py), otherwise the geometric grasp. Returns a result dict."""
+        job = learned_pick_job()
+        if job is not None:
+            return self.policy_pick(prompt, job)
+        return self.geometric_pick(prompt, attempts)
+
+    def policy_pick(self, prompt, job, seconds=25.):
+        """The recording-block-3 setting, then the learned policy through the robot runtime:
+        the arm camera puts the object 5–10 cm ahead (as in the demonstrations), the policy runs
+        from the observation pose at the profile rate, the gripper stall decides «holding»."""
+        from . import deploy_gate
+        from .policy_runtime import PolicyCore
+        from .profiles import profile
+        report = deploy_gate.latest(job)
+        cfg = profile('rosmaster_pick_place')
+        obj = self.look(prompt)
+        if obj is None:
+            return {'ok': False, 'reason': 'предмет не виден камерой руки'}
+        forward, turn = base_correction(grasp_target(obj))
+        if abs(forward) > .01 or abs(turn) > .02:
+            self.log(f'захват моделью: ставлю предмет в зону показов, подъезжаю {forward:+.2f} м')
+            self.drive(forward, turn)
+        self.move(SEARCH_FAR)
+        core = PolicyCore(report['checkpoint'], 'cuda', instruction=f'pick up the {prompt}')
+        self.log(f'захват моделью {report["policy"].upper()} {job[:8]} (допуск пройден)')
+        import cv2
+        end = time.monotonic() + seconds
+        last = None
+        while time.monotonic() < end:
+            started = time.monotonic()
+            self._check()
+            self.op.input(OWNER, self.rc.ZERO)
+            frame = self.client.get('/frame.jpg')
+            rgb = cv2.cvtColor(cv2.imdecode(np.frombuffer(frame.content, np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+            state = self.measured()
+            action = core.act(state, {cfg['camera']: rgb}, cfg['task'])
+            self.op.set_direct({'arm': [float(v) for v in action]})      # the agent rate-limits every joint
+            last = action
+            time.sleep(max(0., 1 / cfg['fps'] - (time.monotonic() - started)))
+        measured = self.measured()
+        grip = int(last[5]) if last is not None else GRIP_CLOSE
+        if holding(grip, measured[5]) and measured[5] > GRIP_OPEN + 10:
+            return {'ok': True, 'grip': grip, 'policy_job': job}
+        carry = list(SEARCH_FAR)
+        carry[5] = GRIP_OPEN
+        self.move(carry)
+        return {'ok': False, 'reason': f'модель {job[:8]} не удержала предмет', 'policy_job': job}
+
+    def geometric_pick(self, prompt, attempts=3):
+        """Find `prompt` in front of the robot and grasp it (CubeBot recipe). Returns a result dict."""
         extra = 0
         for attempt in range(1, attempts + 1):
             self.log(f'захват: попытка {attempt}, ищу предмет камерой руки')
