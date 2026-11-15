@@ -13,7 +13,7 @@ import subprocess
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 
 HERE = Path(__file__).resolve().parent
 ROSMASTER = {'host': '192.168.0.177', 'user': 'vlad', 'key': str(Path.home() / '.ssh/rosmaster-collector')}
@@ -117,3 +117,41 @@ def do(name: str, action: str):
     if name not in SYSTEMS:
         raise HTTPException(404, 'Нет такой системы')
     return act(name, action)
+
+
+# ---------------------------------------------------------------- Mac desktop launcher
+MAC_LAUNCHER = r"""#!/bin/bash
+# Роботы: меню запуска Explorer 3, Wristlab и Куба (ROSMASTER). Работает без Claude.
+HB="${HOMEBRAIN:-192.168.0.168}"
+ROBOT="192.168.0.177"
+choice=$(osascript -e 'choose from list {"Explorer 3 · Рой", "Explorer 3 · главная", "Explorer 3 · сбор датасета", "Wristlab · SO-101", "Куб · ROSMASTER", "Пульт Homebrain"} with title "Роботы" with prompt "Что запустить?" default items {"Explorer 3 · Рой"}')
+start() { curl -s -m 60 -X POST "http://$HB:8000/api/$1/start" >/dev/null || osascript -e 'display alert "Homebrain не отвечает" message "Проверьте, что Homebrain включён и Mac в той же сети."'; }
+case "$choice" in
+  "Explorer 3 · Рой") start explorer; sleep 2; open "http://$HB:8030/swarm" ;;
+  "Explorer 3 · главная") start explorer; sleep 2; open "http://$HB:8030/" ;;
+  "Explorer 3 · сбор датасета") start explorer; sleep 2; open "http://$HB:8030/recording/collect" ;;
+  "Wristlab · SO-101") start wristlab; sleep 2; open "http://$HB:8020/" ;;
+  "Куб · ROSMASTER") start cube; sleep 3; open "http://$ROBOT:8090/" ;;
+  "Пульт Homebrain") open "http://$HB:8000/" ;;
+esac
+"""
+
+MAC_INSTALL = """#!/bin/bash
+# Installs the «Роботы» launcher on this Mac's Desktop.
+set -e
+dest="$HOME/Desktop/Роботы.command"
+curl -fsS "http://192.168.0.168:8000/mac/launcher.command" -o "$dest"
+chmod +x "$dest"
+xattr -d com.apple.quarantine "$dest" 2>/dev/null || true
+echo "Готово: на рабочем столе ярлык «Роботы». Дважды щёлкните его."
+"""
+
+
+@app.get('/mac/launcher.command', response_class=PlainTextResponse)
+def mac_launcher():
+    return MAC_LAUNCHER
+
+
+@app.get('/mac/install.sh', response_class=PlainTextResponse)
+def mac_install():
+    return MAC_INSTALL
