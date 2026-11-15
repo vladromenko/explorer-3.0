@@ -24,7 +24,8 @@ sys.path.insert(0, str(ROOT))
 def run(seed, condition):
     from explorer3.sim.aligned import RosmasterFloorPick, ScriptedFloorPick
     env = RosmasterFloorPick(vary_objects=True)
-    env.reset(seed=seed)
+    objs = sorted(RosmasterFloorPick.OBJECTS)
+    env.reset(seed=seed, options={'object': objs[seed % len(objs)]})
     half = env.object_half()
     if condition == 'privileged':
         k = None

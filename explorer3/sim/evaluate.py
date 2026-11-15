@@ -25,9 +25,11 @@ def evaluate(checkpoint,output,seeds,profile='so101_pick_place_sim',expected_mod
         client=ACTClient(checkpoint,output.with_suffix('.inference.log'),device=device)
         for seed in seeds:
             obs,_=env.reset(seed=seed);client.request('reset')
+            # per-episode task text (knowledge-gap profiles carry the object's measured size)
+            episode_cfg={**cfg,'task':getattr(env,'task_text',None) or cfg['task']}
             done=False
             while not done:
-                started=time.monotonic();action=client.action(obs,cfg);latencies.append(time.monotonic()-started)
+                started=time.monotonic();action=client.action(obs,episode_cfg);latencies.append(time.monotonic()-started)
                 obs,reward,terminated,truncated,info=env.step(action)
                 done=terminated or truncated
             trials.append({'seed':seed,'outcome':info['outcome'],'reason':info['termination_reason'],

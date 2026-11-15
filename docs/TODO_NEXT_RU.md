@@ -53,3 +53,12 @@
     успеха задачи (кривая), на виртуальной комнате и MuJoCo, затем 20 реальных прогонов.
 13. **MuJoCo в той же логике**: эпизод = ROSMASTER без знания пробует → провал/неуверенность → «SO-101» в
     симуляции даёт знание → повтор; обучение SmolVLA на данных с текстом знания (п.2) и без.
+
+## Состояние на конец сессии 16.11 (~03:30)
+- Сделано (п.2 частично): профили `rosmaster_floor_pick_knowledge_sim` / `_noknowledge_sim`, текст задачи на эпизод
+  («pick up the cookie, 6.9 x 7.1 cm, 1.3 cm high») доходит до датасета и до проверки в MuJoCo (`sim/evaluate.py`).
+  Для показов берутся только предметы, которые захват берёт сверху (`GRASPABLE`: cube, bottle, block, ball).
+- Не проверено: `MUJOCO_GL=egl .venv-sim/bin/python -m pytest tests/test_sim_aligned.py` (последний прогон оборвался).
+- Следующее: `.venv/bin/python scripts/sim_rehearsal.py --skills rosmaster_floor_pick_knowledge_sim,rosmaster_floor_pick_noknowledge_sim --policies smolvla`
+  (ночь), затем сравнить успех двух моделей.
+- `docs/results/knowledge_transfer_mujoco/` перезаписывается прогоном с исправленной проверкой удержания — проверить и закоммитить.

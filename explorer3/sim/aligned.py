@@ -172,8 +172,12 @@ class RosmasterFloorPick(RosmasterPickPlace):
     # (assumed sizes, not measurements of the user's objects); the 32 mm cube is the original task.
     OBJECTS = {'cube': (.016, .016, .016), 'cookie': (.035, .035, .006), 'sock': (.04, .025, .012),
                'bottle': (.02, .02, .045), 'block': (.03, .015, .015), 'ball': (.022, .022, .022)}
+    GRASPABLE = ('cube', 'bottle', 'block', 'ball')
 
-    def __init__(self, vary_objects=False, **kwargs):
+    def __init__(self, vary_objects=False, with_knowledge=False, **kwargs):
+        self.with_knowledge = with_knowledge
+        if vary_objects:
+            self.profile = 'rosmaster_floor_pick_' + ('knowledge' if with_knowledge else 'noknowledge') + '_sim'
         self.cfg = alignment('rosmaster_floor_pick')
         self.home_native = np.array(self.cfg['start_pose'], float)
         self.vary_objects = vary_objects
@@ -193,12 +197,20 @@ class RosmasterFloorPick(RosmasterPickPlace):
         g = self.model.geom('cube').id
         name = 'cube'
         if self.vary_objects:
-            name = (options or {}).get('object') or str(rng.choice(sorted(self.OBJECTS)))
+            # demonstrations/training sample the objects this gripper can take from above; flat ones
+            # (cookie 1.2 cm, sock) stay available by name for the experiments (options={'object': ...})
+            name = (options or {}).get('object') or str(rng.choice(self.GRASPABLE))
         half = np.array(self.OBJECTS[name])
         self.model.geom_size[g] = half
         self.model.geom_rbound[g] = float(np.linalg.norm(half))
         self.object_name = name
         self.episode_parameters['object'] = {'name': name, 'size_m': (2 * half).round(4).tolist()}
+        # task text: with the helper's knowledge (measured size, ±1.5 mm like the SO-101 station) or without
+        self.task_text = None
+        if self.vary_objects:
+            size = 2 * half + rng.normal(0, .0015, 3)
+            self.task_text = (f'pick up the {name}, {size[0] * 100:.1f} x {size[1] * 100:.1f} cm, {size[2] * 100:.1f} cm high'
+                              if self.with_knowledge else f'pick up the {name}')
         self.data.qpos[free:free + 3] = [rng.uniform(*c['object_x_m']), rng.uniform(*c['object_y_m']), half[2] + .002]
         yaw = rng.uniform(-np.pi, np.pi) if self.vary_objects else 0.
         self.data.qpos[free + 3:free + 7] = [np.cos(yaw / 2), 0, 0, np.sin(yaw / 2)]

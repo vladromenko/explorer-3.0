@@ -20,7 +20,7 @@ class SimCapture:
         self.finished=False
         self.rows=(self.root/'samples.jsonl').open('w')
         self.meta={'profile':env.profile,'camera':env.camera,'domain':'sim','seed':int(seed),'model':env.manifest,
-                   'episode_parameters':env.episode_parameters,
+                   'episode_parameters':env.episode_parameters,'task':getattr(env,'task_text',None),
                    'controller':{'name':'native_position_lag' if 'pick_place' in env.profile else 'planar_force_velocity_controller','lag_s':env.lag_s,'delay_frames':1},
                    'lineage':self.ident,'command_source':source,'session':self.ident,
                    'scene':f"{env.profile}-seed-{seed}-{env.manifest['xml_sha256']}",

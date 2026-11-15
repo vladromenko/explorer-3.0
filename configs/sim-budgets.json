@@ -247,5 +247,79 @@
     },
     "rehearsal_note": "Pipeline rehearsal before real demos: same dataset format, trainer, runtime (explorer3.policy_runtime) and evaluation path as the robots. Orin NX: ACT ~1 s/step, SmolVLA 1.56 s/step at batch 8.",
     "pretraining_note": "Pre-training for real fine-tuning (jobs.enqueue from_sim): weights start the real block-3/4 training."
+  },
+  "rosmaster_floor_pick_knowledge_sim": {
+    "demonstration_seeds": [
+      1,
+      51
+    ],
+    "split": "session_scene_group",
+    "act": {
+      "steps": 8000,
+      "batch_size": 8,
+      "device": "cuda",
+      "seed": 1000
+    },
+    "evaluation_seeds": [
+      10000,
+      10020
+    ],
+    "success_criterion": {
+      "minimum_success_fraction": 0.8,
+      "episodes": 20
+    },
+    "deadline_s": 25,
+    "interpretation": "Knowledge-gap root: varied modelled objects (aligned.py OBJECTS); Task mirrors the real recording block (explorer3/sim/aligned.py). Finite pilot budget, deadline is failure.",
+    "smolvla": {
+      "steps": 12000,
+      "batch_size": 8,
+      "device": "cuda",
+      "seed": 1000
+    },
+    "diffusion": {
+      "steps": 2000,
+      "batch_size": 2,
+      "device": "cuda",
+      "seed": 1000
+    },
+    "rehearsal_note": "Pipeline rehearsal before real demos: same dataset format, trainer, runtime (explorer3.policy_runtime) and evaluation path as the robots. Orin NX: ACT ~1 s/step, SmolVLA 1.56 s/step at batch 8.",
+    "pretraining_note": "Pre-training for real fine-tuning (jobs.enqueue from_sim): weights start the real block-3/4 training."
+  },
+  "rosmaster_floor_pick_noknowledge_sim": {
+    "demonstration_seeds": [
+      1,
+      51
+    ],
+    "split": "session_scene_group",
+    "act": {
+      "steps": 8000,
+      "batch_size": 8,
+      "device": "cuda",
+      "seed": 1000
+    },
+    "evaluation_seeds": [
+      10000,
+      10020
+    ],
+    "success_criterion": {
+      "minimum_success_fraction": 0.8,
+      "episodes": 20
+    },
+    "deadline_s": 25,
+    "interpretation": "Knowledge-gap root: varied modelled objects (aligned.py OBJECTS); Task mirrors the real recording block (explorer3/sim/aligned.py). Finite pilot budget, deadline is failure.",
+    "smolvla": {
+      "steps": 12000,
+      "batch_size": 8,
+      "device": "cuda",
+      "seed": 1000
+    },
+    "diffusion": {
+      "steps": 2000,
+      "batch_size": 2,
+      "device": "cuda",
+      "seed": 1000
+    },
+    "rehearsal_note": "Pipeline rehearsal before real demos: same dataset format, trainer, runtime (explorer3.policy_runtime) and evaluation path as the robots. Orin NX: ACT ~1 s/step, SmolVLA 1.56 s/step at batch 8.",
+    "pretraining_note": "Pre-training for real fine-tuning (jobs.enqueue from_sim): weights start the real block-3/4 training."
   }
 }

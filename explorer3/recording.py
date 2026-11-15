@@ -36,7 +36,7 @@ def source_snapshot():
 
 
 class EpisodeWriter:
-    def __init__(self, name: str, session: str, scene: str, category='demonstration', *, domain='real', training_label=None):
+    def __init__(self, name: str, session: str, scene: str, category='demonstration', *, domain='real', training_label=None, task=None):
         if domain=='real':
             from .data_safety import require_space
             require_space()
@@ -58,6 +58,7 @@ class EpisodeWriter:
             from .collection import instruction_for
             instruction=instruction_for(session)
             if instruction:cfg={**cfg,'task':instruction}
+        elif task:cfg={**cfg,'task':task}           # simulation: per-episode task text (e.g. object knowledge)
         self.cfg=cfg
         from . import collection
         self.collection_context=collection.context(name,session,scene) if domain!='sim' else None

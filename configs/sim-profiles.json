@@ -284,5 +284,135 @@
     "real_profile": "rosmaster_pick_place",
     "model_status": "manufacturer_geometry_uncalibrated",
     "task_variant": "rosmaster_floor_pick"
+  },
+  "rosmaster_floor_pick_knowledge_sim": {
+    "robot": "rosmaster",
+    "fps": 20,
+    "version": 3,
+    "task": "pick up the object (task text carries its measured size)",
+    "policy": "act",
+    "camera": "front",
+    "channels": [
+      "base_rotation",
+      "shoulder",
+      "elbow",
+      "wrist_pitch",
+      "wrist_roll",
+      "gripper"
+    ],
+    "units": [
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees"
+    ],
+    "schema_status": "simulation_aligned_to_recording_block_3",
+    "recording_status": "not_verified",
+    "training_status": "not_verified",
+    "physical_skill_status": "not_applicable",
+    "state_channels": [
+      "measured_base_rotation",
+      "measured_shoulder",
+      "measured_elbow",
+      "measured_wrist_pitch",
+      "measured_wrist_roll",
+      "measured_gripper"
+    ],
+    "state_provenance": "simulator observable state in the real profile channel order; not physical sensor data",
+    "camera_status": "orbbec_rgb_on_arm_480x640",
+    "image_shape": [
+      480,
+      640,
+      3
+    ],
+    "state_units": [
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees"
+    ],
+    "action_provenance": "submitted simulation control target; no hardware command or acknowledgement",
+    "base_rule": "base stays still (agent profile refuses drive input)",
+    "feature_scales": [
+      90.0,
+      90.0,
+      90.0,
+      90.0,
+      90.0,
+      90.0
+    ],
+    "domain": "sim",
+    "real_profile": "rosmaster_pick_place",
+    "model_status": "manufacturer_geometry_uncalibrated",
+    "task_variant": "rosmaster_floor_pick"
+  },
+  "rosmaster_floor_pick_noknowledge_sim": {
+    "robot": "rosmaster",
+    "fps": 20,
+    "version": 3,
+    "task": "pick up the object (task text names it only)",
+    "policy": "act",
+    "camera": "front",
+    "channels": [
+      "base_rotation",
+      "shoulder",
+      "elbow",
+      "wrist_pitch",
+      "wrist_roll",
+      "gripper"
+    ],
+    "units": [
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees"
+    ],
+    "schema_status": "simulation_aligned_to_recording_block_3",
+    "recording_status": "not_verified",
+    "training_status": "not_verified",
+    "physical_skill_status": "not_applicable",
+    "state_channels": [
+      "measured_base_rotation",
+      "measured_shoulder",
+      "measured_elbow",
+      "measured_wrist_pitch",
+      "measured_wrist_roll",
+      "measured_gripper"
+    ],
+    "state_provenance": "simulator observable state in the real profile channel order; not physical sensor data",
+    "camera_status": "orbbec_rgb_on_arm_480x640",
+    "image_shape": [
+      480,
+      640,
+      3
+    ],
+    "state_units": [
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees",
+      "native_servo_degrees"
+    ],
+    "action_provenance": "submitted simulation control target; no hardware command or acknowledgement",
+    "base_rule": "base stays still (agent profile refuses drive input)",
+    "feature_scales": [
+      90.0,
+      90.0,
+      90.0,
+      90.0,
+      90.0,
+      90.0
+    ],
+    "domain": "sim",
+    "real_profile": "rosmaster_pick_place",
+    "model_status": "manufacturer_geometry_uncalibrated",
+    "task_variant": "rosmaster_floor_pick"
   }
 }

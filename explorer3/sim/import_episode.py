@@ -30,7 +30,7 @@ def ingest(root,review=None):
     if (root/'imported.json').exists():
         return json.loads((root/'imported.json').read_text())
     writer=EpisodeWriter(meta['profile'],meta['session'],meta['scene'],
-                         category='correction' if meta.get('segment_role') in {'bounded_correction','fleet_correction','noise_demonstration'} else 'demonstration',domain='sim',training_label=meta.get('training_label'))
+                         category='correction' if meta.get('segment_role') in {'bounded_correction','fleet_correction','noise_demonstration'} else 'demonstration',domain='sim',training_label=meta.get('training_label'),task=meta.get('task'))
     for line in (root/'samples.jsonl').read_text().splitlines():
         sample=json.loads(line)
         filename=(root/sample.pop('image_path')).resolve()
