@@ -18,6 +18,11 @@ def isolated(monkeypatch, tmp_path):
     monkeypatch.setattr(world_memory, 'SNAPSHOTS', tmp_path / 'snap')
     monkeypatch.setattr(episodes, 'ROOT', tmp_path / 'episodes')
     monkeypatch.setattr(so101_handoff, 'CONFIG', tmp_path / 'handoff.json')
+    from explorer3 import catalog
+    from explorer3.cognitive import store
+    monkeypatch.setattr(catalog, 'DATA', tmp_path)
+    monkeypatch.setattr(store, 'DATA', tmp_path)
+    store.initialize()
     for p in world_memory.POSES.values():
         p.x = p.y = p.theta = None
 

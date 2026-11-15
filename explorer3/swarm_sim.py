@@ -46,6 +46,8 @@ class SimWorld:
         self.delivered = []
         self.collisions = 0
         self.last_seen = {}
+        self.relocate_after_seen = set()        # «a person moved it» once, 5 s after the first sighting
+        self.relocations = []
         self.lock = threading.Lock()
         self.links = {}
         self.stop_event = threading.Event()
@@ -108,6 +110,9 @@ class SimWorld:
                         seen = sim2d.visible(self.room, self.true[r], xy)
                         if seen is not None:
                             if time.time() - self.last_seen.get((r, name), 0) > 3:
+                                if name in self.relocate_after_seen and not any(n == name for n, _ in self.relocations):
+                                    threading.Timer(5., self.relocate, args=(name,)).start()
+                                    self.relocations.append((name, None))
                                 self.last_seen[(r, name)] = time.time()
                                 world_memory.record(r, 'симуляция', name, seen[0] + self.rng.normal(0, .03),
                                                     seen[1] + self.rng.normal(0, .02), score=.9)
@@ -123,6 +128,19 @@ class SimWorld:
                 self.move(r, v, w, DT)
             tick += 1
             self.stop_event.wait(max(0., DT - (time.monotonic() - started)))
+
+    def relocate(self, name):
+        """A person moved the object: a free place no robot sees right now."""
+        if name == self.carried or name not in self.objects:
+            return None
+        for _ in range(200):
+            p = sim2d.free_spot(self.room, self.rng, clearance=.3)
+            if all(sim2d.visible(self.room, pose, p) is None and np.linalg.norm(p - np.array(pose[:2])) > 1.5
+                   for pose in self.true.values()):
+                self.objects[name] = p
+                self.relocations = [(n, q) for n, q in self.relocations if n != name] + [(name, p.tolist())]
+                return p
+        return None
 
     def move(self, r, v, w, dt):
         from .fleet_map import BODY, wrap
@@ -169,18 +187,37 @@ class SimArm:
         self.world, self.log = world, log
         self.stopped = False
 
-    def pick(self, prompt):
+    def pick(self, prompt, attempts=3):
+        """As the real ArmSkills.pick: the arm camera must see it; the base corrects into the reach
+        window (0.16-0.26 m ahead), up to three attempts; then the gripper closes on it."""
+        from .rosmaster_arm import REACH_X, base_correction
         w = self.world
-        time.sleep(1.5)
         if prompt not in w.objects:
             return {'ok': False, 'reason': f'«{prompt}» нет в комнате'}
-        x, y, th = w.true['rosmaster']
-        d = float(np.linalg.norm(w.objects[prompt] - np.array([x, y])))
-        if d > .55:
-            return {'ok': False, 'reason': f'предмет в {d:.2f} м — рука не достаёт (до 0.55 м)'}
-        w.carried = prompt
-        self.log(f'Взял «{prompt}» (был в {d:.2f} м)')
-        return {'ok': True, 'grip': 40}
+        for attempt in range(attempts):
+            time.sleep(.8)                                   # recognition pass
+            pose = w.true['rosmaster']
+            if sim2d.visible(w.room, pose, w.objects[prompt], reach=1.2, fov_deg=35) is None:
+                return {'ok': False, 'reason': 'предмет не виден камерой руки'}
+            x, y, th = pose
+            dx, dy = w.objects[prompt] - np.array([x, y])
+            fx, fy = math.cos(th) * dx + math.sin(th) * dy, -math.sin(th) * dx + math.cos(th) * dy
+            reach = math.hypot(fx, fy)
+            if REACH_X[0] <= reach <= REACH_X[1] and abs(fy) <= .05:
+                time.sleep(1.)
+                w.carried = prompt
+                self.log(f'Взял «{prompt}» (был в {reach:.2f} м)')
+                return {'ok': True, 'grip': 40}
+            forward, turn = base_correction((fx, fy))
+            self.log(f'захват: подъезжаю {forward:+.2f} м, поворот {math.degrees(turn):+.0f}°')
+            self.turn(turn)
+            self.drive(forward, 0.)
+        return {'ok': False, 'reason': 'не удалось поставить предмет в зону захвата'}
+
+    def turn(self, angle):
+        for _ in range(int(abs(angle) / .4 / DT)):
+            self.world.move('rosmaster', 0., math.copysign(.4, angle), DT)
+            time.sleep(DT)
 
     def release(self):
         pass
@@ -213,8 +250,9 @@ class SimHandoff:
         for msg in ('Беру с площадки', 'Протягиваю вам'):
             self.log(msg)
             time.sleep(1.5)
-        self.log('Жду «Забрал» (или 8 с)')
-        self.taken.wait(8)
+        self.log('Жду «Забрал» (виртуальный человек забирает через 2 с)')
+        if not self.taken.wait(2):
+            self.taken.set()                     # the virtual person takes it
         self.world.objects.pop(self.prompt, None)
         self.world.delivered.append(self.prompt)
         return {'ok': True}

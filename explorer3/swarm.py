@@ -130,6 +130,14 @@ class Swarm:
         self.only = None
         self.skill = None                 # running arm / SO-101 skill (for STOP)
         self.handoff = None
+        from .fleet_agents import FleetAgents
+
+        def domain():
+            from . import swarm_sim
+            return 'sim' if swarm_sim.WORLD is not None else 'real'
+        self.agents = FleetAgents(self, domain)
+        if _on_sighting not in world_memory.LISTENERS:
+            world_memory.LISTENERS.append(_on_sighting)
 
     # ------------------------------------------------------------------ public API
     def command(self, text, robots=None):
@@ -140,6 +148,7 @@ class Swarm:
         if kind != 'explore' and not prompt:
             raise ValueError('Не понял, что искать')
         self.only = set(robots) if robots else None
+        self.agents.start(kind, prompt, self.mobile())      # plan of registered skills, or a clear refusal
         self.stop_event.clear()
         self.state = {'task': text, 'kind': kind, 'prompt': prompt, 'stage': 'start', 'message': 'Начинаю',
                       'log': [], 'active': True, 'robots': {}}
@@ -168,7 +177,7 @@ class Swarm:
                 robots[robot] = goal.status()['message']
             except Exception:
                 pass
-        return {**self.state, 'robots': robots}
+        return {**self.state, 'robots': robots, 'agents': self.agents.status()}
 
     # ------------------------------------------------------------------ helpers
     def say(self, stage, message):
@@ -216,10 +225,10 @@ class Swarm:
         from .drive import DriveTo
         return DriveTo(robot, pose, text=text)
 
-    def _team(self, **kw):
+    def _team(self, robots=None, **kw):
         """Start an explore task on every available mobile robot; returns {robot: goal}."""
         goals = {}
-        for robot in self.mobile():
+        for robot in robots or self.mobile():
             try:
                 goal = self._make_explore(robot, **kw)
                 self._start(robot, goal)
@@ -254,6 +263,7 @@ class Swarm:
             self.current = {}
             self.skill = self.handoff = None
             self.say(outcome, message)
+            self.agents.finish(outcome, message)
             self.state['active'] = False
             episode.extra.update(stages=stages, robots=self.mobile(), condition='team' if len(self.mobile()) > 1 else 'solo')
             episode.finish({'done': 'arrived', 'explored': 'explored'}.get(outcome, outcome), message)
@@ -270,7 +280,11 @@ class Swarm:
     def _explore(self, prompt, text, stages):
         self._stage(stages, 'explore', 'Роботы вместе осматривают комнату и записывают, что видят')
         goals = self._team(scout=True, kind='explore', text='осмотр комнаты (рой)')
+        for r in goals:
+            self.agents.step('explore', r, 'идёт')
         self._wait(list(goals.values()), 900)
+        for r, g in goals.items():
+            self.agents.step('explore', r, 'готово' if g.state == 'explored' else g.state)
         found = sorted({i['prompt'] for i in world_memory.known_objects(max_age_s=1800)})
         self._end_stage(stages, True, ', '.join(found))
         from .fleet_map import FLEET
@@ -281,7 +295,7 @@ class Swarm:
     def _known(self, prompt, max_age_s=3600):
         return world_memory.target_for(None, prompt, max_age_s)
 
-    def _search(self, prompt, stages):
+    def _search(self, prompt, stages, robots=None):
         """Team search until somebody has placed the object on the map. Returns the sighting."""
         started = time.time()
         try:
@@ -289,7 +303,7 @@ class Swarm:
             FLEET.forget_seen()                  # the object may have moved: the cameras look again
         except Exception:
             pass
-        self._stage(stages, 'search', f'Ищем «{prompt}» вдвоём')
+        self._stage(stages, 'search', f'Ищем «{prompt}» ' + ('вдвоём' if len(robots or self.mobile()) > 1 else f'({NAMES[(robots or self.mobile())[0]]})'))
 
         def found():
             item = world_memory.target_for(None, prompt)
@@ -297,10 +311,14 @@ class Swarm:
                 return f'{NAMES.get(item["robot"], item["robot"])} нашёл «{prompt}»'
             return None
 
-        goals = self._team(scout=True, look_for=prompt, stop_when=found, kind='explore', text=f'поиск {prompt} (рой)')
+        goals = self._team(robots, scout=True, look_for=prompt, stop_when=found, kind='explore', text=f'поиск {prompt} (рой)')
+        for r in goals:
+            self.agents.step('search', r, 'идёт')
         self._wait(list(goals.values()), 900)
         item = world_memory.target_for(None, prompt)
         ok = item is not None and item['at'] >= started
+        for r in goals:
+            self.agents.step('search', r, ('нашёл' if ok and item['robot'] == r else 'готово') if ok else 'не нашёл')
         self._end_stage(stages, ok, item['robot'] if ok else '')
         return item if ok else None
 
@@ -334,71 +352,147 @@ class Swarm:
         if missing:
             raise RuntimeError('Сначала один раз покажите места передачи: ' + '; '.join(missing))
         cfg = so101_handoff.load()
+        if 'rosmaster' not in self.links:
+            raise RuntimeError('Принести может только ROSMASTER: он не подключён')
         # 1. where is it
         item = self._known(prompt, max_age_s=24 * 3600)
         if item is None or not item.get('room_xy'):
             item = self._search(prompt, stages)
             if item is None:
                 return 'not_found', f'«{prompt}» не найден: принести нечего'
-        # 2. ROSMASTER drives to it
-        self._stage(stages, 'approach', f'ROSMASTER едет к «{prompt}»')
+        else:
+            self.agents.step('search', 'rosmaster', 'из памяти')
+            self.agents.step('search', 'tank', 'не нужен')
+        evidence = [e for e in [self.agents.sighting(item)] if e]
         if 'tank' in self.links:
             self.links['tank'].release()               # Tank's part (search) is done
-        if 'rosmaster' not in self.links:
-            raise RuntimeError('Принести может только ROSMASTER: он не подключён')
-        goal = self._make_goto('rosmaster', 'к ' + prompt)
-        self._start('rosmaster', goal)
-        self._wait([goal], 300)
-        self._end_stage(stages, goal.state == 'arrived', goal.message)
-        if goal.state != 'arrived':
-            return 'failed', 'ROSMASTER не доехал: ' + goal.message
-        # 3. pick it up
-        self._stage(stages, 'pick', f'ROSMASTER берёт «{prompt}»')
-        arm = self.arm_factory(self.say) if self.arm_factory else None
-        if arm is None:
-            from .rosmaster_arm import ArmSkills
-            arm = ArmSkills(log=lambda m: self.say('pick', m))
-        self.skill = arm
+        arm = None
+        pending = []                                   # (case, helper outcome) waiting for the recipient's result
+        picked = None
         try:
-            picked = arm.pick(prompt)
-            self._end_stage(stages, picked['ok'], picked.get('reason', ''))
-            if not picked['ok']:
-                return 'failed', 'ROSMASTER не взял: ' + picked['reason']
+            for attempt in range(1 + 2):
+                # 2. ROSMASTER drives to it
+                self._stage(stages, 'approach', f'ROSMASTER едет к «{prompt}»' + (f' (попытка {attempt + 1})' if attempt else ''))
+                self.agents.step('approach', 'rosmaster', 'идёт')
+                goal = self._make_goto('rosmaster', 'к ' + prompt)
+                self._start('rosmaster', goal)
+                self._wait([goal], 300)
+                arrived = goal.state == 'arrived'
+                self._end_stage(stages, arrived, goal.message)
+                self.agents.step('approach', 'rosmaster', 'готово' if arrived else 'не доехал', goal.message)
+                failure = None if arrived else ('object_not_reached', 'approach', 'ROSMASTER не доехал: ' + goal.message)
+                if arrived:
+                    # 3. pick it up
+                    self._stage(stages, 'pick', f'ROSMASTER берёт «{prompt}»')
+                    self.agents.step('pick_floor', 'rosmaster', 'идёт')
+                    if arm is None:
+                        arm = self.arm_factory(self.say) if self.arm_factory else None
+                        if arm is None:
+                            from .rosmaster_arm import ArmSkills
+                            arm = ArmSkills(log=lambda m: self.say('pick', m))
+                    self.skill = arm
+                    picked = arm.pick(prompt)
+                    self._end_stage(stages, picked['ok'], picked.get('reason', ''))
+                    self.agents.step('pick_floor', 'rosmaster', 'держит' if picked['ok'] else 'не взял', picked.get('reason', ''))
+                    if not picked['ok']:
+                        failure = ('pick_failed', 'pick_floor', 'ROSMASTER не взял: ' + picked['reason'])
+                # recipient's continuation after each earlier help, measured by this attempt
+                pending[:] = [e if len(e) > 2 else (e[0], e[1], 'success' if failure is None else 'failure',
+                                                     failure[2] if failure else 'ROSMASTER держит предмет') for e in pending]
+                if failure is None:
+                    break
+                reason, skill, message = failure
+                decision = self.agents.assist('rosmaster', skill, prompt, reason, self.mobile(), evidence)
+                if decision['option'] == 'human':
+                    self._settle(pending, 'failure')
+                    return 'failed', message + ' · нужен человек'
+                before = time.time()
+                if decision['option'] == 'helper_observe':
+                    donor = decision['donor']
+                    self._stage(stages, 'help', f'{NAMES[donor]} помогает: ищет «{prompt}» заново')
+                    old = item.get('room_xy')
+                    found = self._search(prompt, stages, robots=[donor])
+                    helper = 'success' if found is not None and found['at'] >= before else 'failure'
+                    if found is not None:
+                        item = found
+                        evidence = [e for e in [self.agents.sighting(found)] if e] or evidence
+                        if old:
+                            self.agents.conflict(prompt, old, found['room_xy'])
+                    if donor == 'tank' and 'tank' in self.links:
+                        self.links['tank'].release()
+                    if decision['case']:
+                        pending.append((decision['case'], helper))
+                    if helper == 'failure':
+                        self._settle(pending, 'failure')
+                        return 'failed', message + f' · {NAMES[donor]} тоже не нашёл «{prompt}»'
+                elif decision['case']:
+                    pending.append((decision['case'], 'success'))      # retry: the recipient is its own helper
+            else:
+                self._settle(pending, 'failure')
+                return 'failed', message
             arm.release()
             # 4. to the hand-over spot
             self._stage(stages, 'deliver', 'ROSMASTER везёт к SO-101')
+            self.agents.step('deliver', 'rosmaster', 'идёт')
             drive = self._make_drive('rosmaster', cfg['rosmaster_spot'], 'к месту передачи')
             self._start('rosmaster', drive)
             self._wait([drive], 240)
             self._end_stage(stages, drive.state == 'arrived', drive.message)
+            self.agents.step('deliver', 'rosmaster', 'готово' if drive.state == 'arrived' else 'не доехал')
             if drive.state != 'arrived':
+                self._settle(pending, 'failure')
                 return 'failed', 'ROSMASTER не доехал до места передачи: ' + drive.message
             # 5. put it on the pad, back off
             self._stage(stages, 'place', 'ROSMASTER кладёт на площадку передачи')
             arm.place(cfg['rosmaster_place'], picked['grip'])
             arm.drive(-.15, 0.)
             self._end_stage(stages, True)
+            self.agents.step('place', 'rosmaster', 'готово')
         finally:
-            arm.close()
+            if arm is not None:
+                arm.close()
             self.skill = None
         # 6. SO-101 hands it over
         self._stage(stages, 'handoff', 'SO-101 берёт с площадки и протягивает вам')
+        self.agents.step('handover', 'so101', 'идёт')
         handoff = self.so101_factory(prompt, lambda m: self.say('handoff', m)) if self.so101_factory else \
             so101_handoff.Handoff(prompt, log=lambda m: self.say('handoff', m))
         self.handoff = self.skill = handoff
         result = handoff.run()
         self._end_stage(stages, result['ok'], result.get('reason', ''))
+        taken = handoff.taken.is_set() if hasattr(handoff, 'taken') else False
+        self.agents.step('handover', 'so101', ('забрали' if taken else 'протянул') if result['ok'] else 'не смог')
+        # the person's «Забрал» is the measurement of the whole task; without it the outcome is unknown
+        self._settle(pending, 'success' if result['ok'] and taken else 'failure' if not result['ok'] else 'unknown')
         if not result['ok']:
             return 'failed', result['reason']
         return 'done', f'«{prompt}» доставлено: ROSMASTER привёз, SO-101 передал'
 
+    def _settle(self, pending, task):
+        """OutcomeVerifier: helper / recipient / task outcomes of every help in this mission."""
+        for entry in pending:
+            case, helper = entry[0], entry[1]
+            recipient = entry[2] if len(entry) > 2 else 'unknown'
+            measurement = entry[3] if len(entry) > 3 else 'получатель не продолжил'
+            self.agents.verify(case, helper, recipient, task, measurement)
+        pending.clear()
+
 
 SWARM = None
+
+
+def _on_sighting(item):
+    """Every sighting goes to the SceneObserver of the swarm that is running now (real or virtual)."""
+    team = SWARM
+    if team is not None and team.state.get('active'):
+        team.agents.sighting(item)
 
 
 def install(control, session):
     """Create the app-wide swarm with real robots (called once by explorer3.app)."""
     global SWARM
     from .rosmaster_goto import runner
+    from .cognitive import store
+    store.initialize()                       # research memory tables (idempotent)
     SWARM = Swarm(tank=TankLink(control, session), ros=RosLink(runner))
     return SWARM

@@ -266,6 +266,15 @@ def install(app, ui, control, notify_error, css=''):
                 sim_on = ui.button('Симуляция без роботов', icon='science', on_click=lambda: sim('enter')).props('flat no-caps')
                 sim_new = ui.button('Новая комната', icon='casino', on_click=lambda: sim('new')).props('flat no-caps')
                 sim_off = ui.button('К настоящим роботам', icon='precision_manufacturing', on_click=lambda: sim('leave')).props('flat no-caps')
+
+                def relocate():
+                    w = swarm_sim.WORLD
+                    if w is None:
+                        return
+                    names = [n for n in w.objects if n != w.carried]
+                    moved = w.relocate(names[int(time.time()) % len(names)]) if names else None
+                    ui.notify('Человек переложил предмет: роботы об этом не знают' if moved is not None else 'Некуда переложить')
+                sim_move = ui.button('Переложить предмет', icon='pan_tool', on_click=relocate).props('flat no-caps')
         with ui.row().style('width:100%;gap:12px;align-items:flex-start;flex-wrap:nowrap;padding:0 6px'):
             with ui.element('div').classes('sw-card').style('flex:3;min-width:0'):
                 with ui.row().style('justify-content:space-between;width:100%;align-items:center'):
@@ -295,13 +304,26 @@ def install(app, ui, control, notify_error, css=''):
             task_line = ui.label('Рой ждёт команду').style('color:#e6edf3')
             stages_row = ui.row().style('gap:6px;flex-wrap:wrap;margin:6px 0')
             log_box = ui.html('').classes('sw-muted')
+        with ui.element('div').classes('sw-card').style('margin:0 6px 12px;width:calc(100% - 12px)'):
+            with ui.row().style('justify-content:space-between;width:100%;align-items:center'):
+                ui.label('Агенты').style('font-weight:700;font-size:17px;color:#e6edf3')
+                ui.label('шесть ролей из AGENTIC_ADDENDUM: решают по правилам и общей памяти помощи; моторами управляют только проверенные исполнители').classes('sw-muted')
+            agents_grid = ui.element('div').style('display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px;width:100%')
+            ui.label('План задачи').style('font-weight:650;color:#e6edf3;margin-top:8px')
+            plan_box = ui.column().style('gap:3px;width:100%')
+        with ui.element('div').classes('sw-card').style('margin:0 6px 12px;width:calc(100% - 12px)'):
+            with ui.row().style('justify-content:space-between;width:100%;align-items:center'):
+                ui.label('Память помощи').style('font-weight:700;font-size:17px;color:#e6edf3')
+                ui.label('кандидат → подтверждён (2 проверенных успеха) или опровергнут (проверенная неудача); используется только для совместимой версии навыка получателя').classes('sw-muted')
+            memory_box = ui.column().style('gap:3px;width:100%')
         with ui.element('div').classes('sw-card').style('margin:0 6px 24px;width:calc(100% - 12px)'):
             ui.label('Что роботы нашли').style('font-weight:700;font-size:17px;color:#e6edf3')
             found_row = ui.row().style('gap:10px;flex-wrap:wrap')
 
-        stage_names = {'search': 'поиск', 'explore': 'осмотр', 'approach': 'подъезд', 'pick': 'захват', 'deliver': 'доставка',
+        stage_names = {'help': 'помощь', 'search': 'поиск', 'explore': 'осмотр', 'approach': 'подъезд', 'pick': 'захват', 'deliver': 'доставка',
                        'place': 'на площадку', 'handoff': 'SO-101 передаёт', 'goto': 'подъезд'}
         last_found = [None]
+        last_agents, last_memory = [None], [None]
 
         async def refresh():
             import asyncio
@@ -320,6 +342,7 @@ def install(app, ui, control, notify_error, css=''):
             sim_on.set_visibility(not simulated)
             sim_new.set_visibility(simulated)
             sim_off.set_visibility(simulated)
+            sim_move.set_visibility(simulated)
             status = team().status()
             for robot, (badge, cam, line1, line2) in cards.items():
                 if robot == 'so101':
@@ -355,6 +378,45 @@ def install(app, ui, control, notify_error, css=''):
                     current = stage == status.get('stage') and status.get('active')
                     ui.label(('▶ ' if current else '✓ ') + stage_names[stage]).classes('sw-stage').style('border-color:#2fb39f' if current else '')
             log_box.set_content('<br>'.join(f"{time.strftime('%H:%M:%S', time.localtime(at))} · {msg}" for at, _, msg in status.get('log', [])[-6:]))
+            ag = status.get('agents') or {}
+            key_ag = str([(r['state'], r['last']) for r in ag.get('roles', [])]) + str(ag.get('plan'))
+            if key_ag != last_agents[0]:
+                last_agents[0] = key_ag
+                agents_grid.clear()
+                with agents_grid:
+                    for r in ag.get('roles', []):
+                        with ui.element('div').classes('sw-stage').style('display:flex;flex-direction:column;gap:3px'):
+                            with ui.row().style('justify-content:space-between;width:100%;align-items:center'):
+                                ui.label(r['title']).style('color:#e6edf3;font-weight:650')
+                                ui.label(r['state']).classes('sw-chip')
+                            ui.label(r['last'] or 'ещё не действовал').classes('sw-muted')
+                plan_box.clear()
+                with plan_box:
+                    if not ag.get('plan'):
+                        ui.label('Плана нет: дайте команду.').classes('sw-muted')
+                    for step in ag.get('plan', []):
+                        done = step['status'] in ('готово', 'нашёл', 'держит', 'забрали', 'из памяти', 'не нужен')
+                        bad = step['status'] in ('не доехал', 'не взял', 'не нашёл', 'не смог')
+                        ui.label(f"{'✓' if done else '✗' if bad else '•'} {NAMES.get(step['robot'], step['robot'])} · {step['text']} — {step['status']}"
+                                 + (f" ({step['note'][:80]})" if step.get('note') else '') + f" · проверка: {step['verify']}").style(
+                            'color:' + ('#7fe0bd' if done else '#ffb38a' if bad else '#c9d4e0') + ';font-size:13px')
+            try:
+                from .cognitive import store as _store
+                cases = [c for c in _store.cases() if c['id'].startswith('fleet-case:')][:8]
+            except Exception:
+                cases = []
+            key_mem = str([(c['id'], c['status']) for c in cases])
+            if key_mem != last_memory[0]:
+                last_memory[0] = key_mem
+                memory_box.clear()
+                with memory_box:
+                    if not cases:
+                        ui.label('Пока нет случаев помощи. Они появляются, когда один робот помогает другому.').classes('sw-muted')
+                    for c in cases:
+                        status_ru = {'candidate': 'кандидат', 'supported_in_scope': 'подтверждён', 'contradicted': 'опровергнут', 'stale': 'устарел'}[c['status']]
+                        ui.label(f"{NAMES.get(c['donor'], c['donor'])} → {NAMES.get(c['recipient'], c['recipient'])} · {c['assistance_type']} · "
+                                 f"причина: {c['reason']} · {status_ru} · помощник {c['helper_outcome']}, получатель {c['recipient_outcome']}, задача {c['task_outcome']}"
+                                 f" · {'симуляция' if c['domain'] == 'sim' else 'реальность'}").style('font-size:13px;color:#c9d4e0')
             items = world_memory.known_objects(max_age_s=24 * 3600)
             key = tuple((i['prompt'], i['at']) for i in items[:12])
             if key != last_found[0]:

@@ -17,6 +17,7 @@ from .paths import DATA, ROOT
 
 LOCK = threading.Lock()
 MEMORY = DATA / 'world' / 'memory.json'
+LISTENERS = []                     # called with every new sighting
 SNAPSHOTS = DATA / 'world' / 'snapshots'
 
 
@@ -169,6 +170,11 @@ def record(robot, text, prompt, distance, bearing, rgb=None, box=None, score=Non
         items = _load()
         items.append(item)
         _save(items)
+    for listener in list(LISTENERS):          # e.g. the swarm's SceneObserver (evidence records)
+        try:
+            listener(item)
+        except Exception:
+            pass
     return item
 
 
