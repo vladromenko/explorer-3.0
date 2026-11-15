@@ -69,6 +69,7 @@ class Hardware:
         self.link=LinkState(ROOT)
         self.fault=None
         self.recovery_enabled=False;self.last_recovery=0.
+        self.recovery_needed=False;self.recovery_thread=None
         self.udev=UdevMonitor(self.usb_removed)
         self.neutral_written=None
         self.mode='manual';self.task_profile=''
@@ -113,6 +114,19 @@ class Hardware:
             try:
                 self.link.lost(self.fault);self.link.pending=False;self.link.save()   # history only, never a gate
             except OSError:pass
+            # Independent of that history flag: as soon as the board is back on USB (it re-enumerates
+            # after a stall/brown-out, possibly as another ttyACM), write neutral three times. The
+            # board otherwise keeps its last velocity (15.11.2026: Tank kept circling after EIO).
+            self.recovery_needed=True
+            if self.recovery_thread is None or not self.recovery_thread.is_alive():
+                self.recovery_thread=threading.Thread(target=self._auto_recover,daemon=True,name='tank-link-recovery')
+                self.recovery_thread.start()
+
+    def _auto_recover(self):
+        end=time.monotonic()+120
+        while self.recovery_needed and time.monotonic()<end:
+            if controller_present() and self.recover_link():return
+            time.sleep(.2)
 
     def usb_removed(self):
         with self.lock:
@@ -120,7 +134,7 @@ class Hardware:
                 self.latch_fault('USB моторной платы отключён')
 
     def recover_link(self):
-        if not self.fault or not self.link.pending:return False
+        if not self.fault or not (self.link.pending or self.recovery_needed):return False
         if not controller_present():return False
         if not self.lifecycle.acquire(blocking=False):return False
         driver=None
@@ -137,7 +151,9 @@ class Hardware:
             driver.close();driver=None
             with self.lock:
                 self.link.neutral_restored(3)
+                self.recovery_needed=False
                 self.neutral_written=True;self.last_action=[0.,0.];self.requested_action=[0.,0.]
+                self.reason=(self.fault or '')+'; плата снова на связи, записан ноль ×3'
                 self.ramp.reset();self.recovery_enabled=False
             return True
         except Exception as exc:

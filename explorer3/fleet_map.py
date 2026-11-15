@@ -278,6 +278,7 @@ class FleetMap:
         self.grid = Grid()
         self.lock = threading.Lock()
         self.track = {}      # robot -> {'pose', 'quality', 'at', 'odom', 'state', 'message'}
+        self.heard = {}      # robot -> last scan time (not cleared by reset)
         self.last_key = {}
         self.subs = {}       # robot -> own map while it has not found itself in the shared one
         self.contrib = {}    # robot -> scans it added to the shared map
@@ -316,6 +317,11 @@ class FleetMap:
         fine = thin(pts, .04, 360)
         with self.lock:
             s = self.track.get(robot) or {}
+            self.heard[robot] = time.time()                 # kept across map resets
+            if self.grid.empty() and robot != PREFERRED_ORIGIN and time.time() - self.heard.get(PREFERRED_ORIGIN, 0) < 10:
+                # ROSMASTER (wheel odometry, the main robot) starts a new map when it is on line;
+                # the others build their own and stitch in, as usual
+                return self._submap(robot, pts, fine, odom)
             if self.grid.empty():
                 pose = (0., 0., 0.)                       # the first robot that scans defines the room frame
                 self.grid.add(transform(pts, pose), pose)
@@ -417,7 +423,11 @@ class FleetMap:
                 _, pose = sub['grid'].refine(fine, prior, rounds=(first, (.06, .015, math.radians(3), math.radians(.75)),
                                                                   (.02, .005, math.radians(.75), math.radians(.25))))
                 if sub['grid'].inliers(fine, pose) < .45:
+                    # the scan does not match the robot's own map: keep the last pose for the next
+                    # attempt, but do not hand it out for driving (Tank has no encoders — a frozen
+                    # estimate made it steer the same way forever and circle, 15.11.2026)
                     pose = prior
+                    sub['weak_at'] = time.time()
         last = sub['keys'][-1][0] if sub['keys'] else None
         if last is None or math.dist(last[:2], pose[:2]) > .2 or abs(wrap(last[2] - pose[2])) > .2:
             sub['grid'].add(transform(pts, pose), pose)
@@ -461,7 +471,7 @@ class FleetMap:
             if s.get('pose') is not None and s.get('state') in ('mapping', 'tracking'):
                 return 'main', self.grid, s['pose'], s['at']
             sub = self.subs.get(robot)
-            if sub is not None and sub['pose'] is not None:
+            if sub is not None and sub['pose'] is not None and time.time() - sub.get('weak_at', 0) > 1.:
                 return f'sub:{id(sub["grid"])}', sub['grid'], sub['pose'], sub['at']
             return None
 
@@ -551,6 +561,12 @@ class FleetMap:
             self.subs.clear()
             self.contrib.clear()
         (MAP_DIR / 'map.npz').unlink(missing_ok=True)
+        try:                                        # remembered object positions belong to the old frame
+            world_memory.forget()
+            for p in world_memory.POSES.values():
+                p.__init__(p.robot)
+        except Exception:
+            pass
 
 
 # Camera in the base frame (x, y, yaw) for the «seen floor» layer; the ROSMASTER arm camera looks
@@ -578,6 +594,7 @@ def compose(p, d):
 
 
 STALE_S = 1.5
+PREFERRED_ORIGIN = 'rosmaster'
 
 
 def fresh_marker(packet):

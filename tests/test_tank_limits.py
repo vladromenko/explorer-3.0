@@ -70,3 +70,37 @@ def test_sensor_packets_preserve_received_imu_and_scan_history():
 
 
 
+
+
+def test_lost_motor_link_writes_neutral_as_soon_as_the_board_is_back(monkeypatch, tmp_path):
+    """15.11.2026: a stall reset the board's USB (re-enumerated as ttyACM1); the agent kept a dead
+    port and the board kept its last velocity. Now neutral x3 is written automatically when the board
+    reappears, without any new motion lease."""
+    import threading, time
+    import agents.tank.agent as tank
+    from agents.tank.motor_link import LinkState
+    writes = []
+
+    class Driver:
+        def start(self): pass
+        def stop(self): writes.append('neutral')
+        def close(self): pass
+    present = {'v': False}
+    monkeypatch.setattr(tank, 'controller_present', lambda: present['v'])
+    monkeypatch.setattr(tank, 'NativeDriver', Driver)
+    hw = tank.Hardware.__new__(tank.Hardware)
+    hw.lock, hw.lifecycle = threading.RLock(), threading.Lock()
+    hw.link = LinkState(tmp_path)
+    hw.board, hw.fault, hw.armed, hw.lease = None, None, True, 'x'
+    hw.recovery_needed, hw.recovery_thread, hw.recovery_enabled = False, None, False
+    hw.ramp = tank.Ramp(tank.load()) if hasattr(tank, 'load') else type('R', (), {'reset': lambda self: None})()
+    hw.latch_fault('write failed: EIO')
+    assert hw.armed is False and hw.lease is None
+    time.sleep(.5)
+    assert writes == []                              # board absent: nothing to write yet
+    present['v'] = True
+    for _ in range(50):
+        if writes:
+            break
+        time.sleep(.1)
+    assert writes == ['neutral'] * 3 and hw.recovery_needed is False and hw.armed is False
