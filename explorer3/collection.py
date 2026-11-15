@@ -10,8 +10,8 @@ from . import catalog
 from .paths import DATA
 
 TASKS={
- 'so101_pick_place':('SO-101 · кубик в коробку',('so101_pick_place',)),
- 'rosmaster_pick_place':('ROSMASTER · кубик в коробку',('rosmaster_pick_place','rosmaster_pick_place_rgbd_lidar')),
+ 'so101_pick_place':('SO-101 · передача человеку (блок 4)',('so101_pick_place',)),
+ 'rosmaster_pick_place':('ROSMASTER · взять с пола (блок 3)',('rosmaster_pick_place','rosmaster_pick_place_rgbd_lidar')),
  'tank_dock':('Tank · подъезд к цели',('tank_dock_rgbd_lidar','tank_dock')),
  'rosmaster_dock':('ROSMASTER · подъезд к цели',('rosmaster_dock_rgbd_lidar','rosmaster_dock')),
 }

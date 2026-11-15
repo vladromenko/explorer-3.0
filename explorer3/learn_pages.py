@@ -71,11 +71,11 @@ PRESETS = [('check', 'Проверка', 50, 'проходит ли весь т�
            ('standard', 'Стандарт', 30000, 'рабочий навык'), ('full', 'Полное', 100000, 'максимум качества')]
 STATUS = {'queued': ('В очереди', 'info'), 'running': ('Идёт', 'busy'), 'completed': ('Готово', 'ok'),
           'failed': ('Ошибка', 'bad'), 'cancelled': ('Отменено', ''), 'interrupted': ('Прервано', 'bad')}
-NAMES = {'so101_pick_place': 'SO-101 · кубик в коробку', 'tank_dock': 'Tank · подъезд по камере',
+NAMES = {'so101_pick_place': 'SO-101 · передача человеку (блок 4)', 'tank_dock': 'Tank · подъезд по камере',
          'tank_dock_rgbd_lidar': 'Tank · подъезд с глубиной и лидаром', 'rosmaster_dock': 'ROSMASTER · подъезд к цели',
-         'rosmaster_pick_place': 'ROSMASTER · кубик в коробку',
+         'rosmaster_pick_place': 'ROSMASTER · взять с пола (блок 3)',
          'rosmaster_dock_rgbd_lidar': 'ROSMASTER · подъезд с глубиной и лидарами',
-         'rosmaster_pick_place_rgbd_lidar': 'ROSMASTER · кубик в коробку с глубиной и лидарами',
+         'rosmaster_pick_place_rgbd_lidar': 'ROSMASTER · взять с пола, с глубиной и лидарами',
          'so101_pick_place_sim': 'SO-101 · кубик в коробку (симуляция)', 'tank_dock_sim': 'Tank · подъезд (симуляция)',
          'rosmaster_dock_sim': 'ROSMASTER · подъезд (симуляция)', 'rosmaster_pick_place_sim': 'ROSMASTER · кубик (симуляция)',
          'so101_handover_sim': 'SO-101 · передача человеку (симуляция = блок 4)', 'rosmaster_floor_pick_sim': 'ROSMASTER · взять с пола (симуляция = блок 3)'}
@@ -92,7 +92,7 @@ def chart_axes(y_type='value', **y):
 
 
 SIM_TASKS = [('tank', 'Tank · подъезд к цели', 'dock'), ('rosmaster', 'ROSMASTER · подъезд к цели', 'dock'),
-             ('so101', 'SO-101 · кубик в коробку', 'arm')]
+             ('so101', 'SO-101 · передача человеку (блок 4)', 'arm')]
 
 
 # ---------------------------------------------------------------- data helpers

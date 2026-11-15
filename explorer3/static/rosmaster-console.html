@@ -72,7 +72,7 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
     <div class="row" style="margin-top:6px"><button onclick="send({action:'leader_off'})">Отключить Leader</button></div>
    </details></div>
   <div class="card"><h2>Запись показа</h2>
-   <div class="row"><select id="rprof"><option value="rosmaster_pick_place">Кубик → коробка (рука)</option><option value="rosmaster_dock">Подъезд к цели (база)</option><option value="rosmaster_pick_place_rgbd_lidar">Рука + глубина и лидары</option><option value="rosmaster_dock_rgbd_lidar">База + глубина и лидары</option></select>
+   <div class="row"><select id="rprof"><option value="rosmaster_pick_place">Взять с пола (рука) · блок 3</option><option value="rosmaster_dock">Подъезд к цели (база)</option><option value="rosmaster_pick_place_rgbd_lidar">Рука + глубина и лидары</option><option value="rosmaster_dock_rgbd_lidar">База + глубина и лидары</option></select>
     <input id="rscene" value="scene-01" size="8" title="Расстановка: меняйте при новой расстановке предметов"></div>
    <div class="row" style="margin-top:8px"><label for="rcollection">Сессия сбора</label><input id="rcollection" value="session-01" maxlength="80" title="Одна сессия для серии показов; новая независимая серия — новое имя"></div>
    <div class="help">Задача записи определяет управление: рука или шасси. Для независимой серии меняйте и сессию, и расстановку; не переименовывайте одинаковую сцену ради разделения данных. <a href="/datasets/guide" target="_blank">Как собрать датасет</a></div>
