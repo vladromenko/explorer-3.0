@@ -1,0 +1,359 @@
+"""«Рой без роботов»: the real swarm code (shared map, frontier split, camera-coverage search,
+«принеси» with its stages and episode) in a virtual room, from the same /swarm page.
+
+What is simulated: the room (explorer3.sim2d), the robots' motion and wheel odometry (ROSMASTER
+3 % noise, Tank none), the lidars (ray casting, same mounts), the cameras (an object within 2.5 m
+and ±35° in line of sight is «seen», as SAM 3 would report it), ROSMASTER's arm (takes the object
+when it stands within 0.55 m of it) and SO-101 (hands it over after a pause).
+What is real: everything else — FleetMap, Explore, DriveTo, navigation, Swarm, world memory,
+episodes. Real robot data are not touched: the map file, the object memory, the episodes and the
+hand-over config are swapped for simulation copies while the mode is on and restored after.
+"""
+import math
+import shutil
+import threading
+import time
+
+import numpy as np
+
+from . import sim2d
+from .paths import DATA
+
+SIM = DATA / 'simlab' / 'swarm'
+OBJECTS = ['cookie', 'sock', 'cube', 'bottle', 'cup', 'ball']
+DT = .1
+WORLD = None                       # the running SimWorld, or None (real robots)
+
+
+class SimWorld:
+    def __init__(self, seed=None, robots=('rosmaster', 'tank')):
+        from . import fleet_map as fm
+        self.seed = int(time.time()) % 100000 if seed is None else seed
+        self.rng = np.random.default_rng(self.seed)
+        self.room = sim2d.make_room(self.rng)
+        starts = []
+        for _ in robots:
+            starts.append(sim2d.free_spot(self.room, self.rng, avoid=starts))
+        self.true = {r: (float(p[0]), float(p[1]), float(self.rng.uniform(-math.pi, math.pi))) for r, p in zip(robots, starts)}
+        self.odom = dict(self.true)
+        self.cmd = {r: (0., 0.) for r in robots}
+        self.objects = {}
+        for name in OBJECTS:
+            self.objects[name] = sim2d.free_spot(self.room, self.rng, clearance=.3, avoid=starts)
+        # SO-101's table with the hand-over pad: next to a wall, reachable
+        self.pad = sim2d.free_spot(self.room, self.rng, clearance=.45, avoid=starts)
+        self.carried = None
+        self.delivered = []
+        self.collisions = 0
+        self.last_seen = {}
+        self.lock = threading.Lock()
+        self.links = {}
+        self.stop_event = threading.Event()
+        self.thread = None
+        self.mounts = {r: fm.MOUNTS[r] for r in robots}
+        # map frame = the first scanning robot's start (FleetMap convention): ROSMASTER scans first
+        self.first = robots[0]
+
+    # ------------------------------------------------------------------ frames
+    def to_map(self, x, y, th=0.):
+        from .fleet_map import inverse, compose
+        return compose(inverse(self.true0[self.first]), (x, y, th))
+
+    def handover_config(self):
+        """Hand-over spot 0.35 m in front of the pad, facing it; SO-101 poses are placeholders."""
+        start = self.true0[self.first]
+        a = math.atan2(start[1] - self.pad[1], start[0] - self.pad[0])
+        spot = (self.pad[0] + .35 * math.cos(a), self.pad[1] + .35 * math.sin(a), a + math.pi)
+        for k in range(24):                              # keep the spot off the walls
+            if sim2d.wall_distance(self.room, np.array(spot[:2])) > .3:
+                break
+            a += math.pi / 12
+            spot = (self.pad[0] + .35 * math.cos(a), self.pad[1] + .35 * math.sin(a), a + math.pi)
+        from .so101_handoff import POSES
+        return {'rosmaster_spot': list(self.to_map(*spot)), 'rosmaster_place': [90, 120, 0, 0, 90, 30],
+                'so101': {p: [0.] * 6 for p in POSES}, 'simulation': True}
+
+    # ------------------------------------------------------------------ physics loop
+    def start(self):
+        self.true0 = dict(self.true)
+        self.thread = threading.Thread(target=self._run, daemon=True, name='swarm-sim')
+        self.thread.start()
+
+    def stop(self):
+        self.stop_event.set()
+        if self.thread is not None:
+            self.thread.join(timeout=3)
+
+    def _run(self):
+        from .fleet_map import FLEET
+        from . import world_memory
+        tick = 0
+        while not self.stop_event.is_set():
+            started = time.monotonic()
+            robots = list(self.true)
+            if tick % 4 == 0:                            # lidars at 2.5 Hz, as the real localizer
+                for r in robots:
+                    try:
+                        FLEET.update(r, sim2d.lidar_packet(self.room, self.mounts[r], self.true[r], self.rng),
+                                     self.odom[r] if r.startswith('rosmaster') else None)
+                    except Exception:
+                        pass
+            if tick % 5 == 0:                            # cameras at 2 Hz
+                for r in robots:
+                    if not world_memory.POSES[r].known():
+                        continue
+                    for name, xy in list(self.objects.items()):
+                        if name == self.carried:
+                            continue
+                        seen = sim2d.visible(self.room, self.true[r], xy)
+                        if seen is not None:
+                            if time.time() - self.last_seen.get((r, name), 0) > 3:
+                                self.last_seen[(r, name)] = time.time()
+                                world_memory.record(r, 'симуляция', name, seen[0] + self.rng.normal(0, .03),
+                                                    seen[1] + self.rng.normal(0, .02), score=.9)
+            for r in robots:
+                link = self.links.get(r)
+                goal = link.current if link is not None else None
+                v, w = (0., 0.)
+                if goal is not None and goal.active:
+                    try:
+                        v, w = goal.command(None)[:2]
+                    except Exception as exc:
+                        goal.cancel(f'Ошибка: {exc}')
+                self.move(r, v, w, DT)
+            tick += 1
+            self.stop_event.wait(max(0., DT - (time.monotonic() - started)))
+
+    def move(self, r, v, w, dt):
+        from .fleet_map import BODY, wrap
+        with self.lock:
+            x, y, th = self.true[r]
+            nx, ny, nth = x + v * dt * math.cos(th), y + v * dt * math.sin(th), wrap(th + w * dt)
+            if sim2d.wall_distance(self.room, np.array([nx, ny])) < BODY[r][3] - .01:
+                self.collisions += 1
+                nx, ny = x, y
+            self.true[r] = (nx, ny, nth)
+            ox, oy, oth = self.odom[r]
+            ov, ow = v * (1 + self.rng.normal(0, .03)), w * (1 + self.rng.normal(0, .02))
+            self.odom[r] = (ox + ov * dt * math.cos(oth), oy + ov * dt * math.sin(oth), wrap(oth + ow * dt))
+            if self.carried and r == 'rosmaster':
+                self.objects[self.carried] = np.array([nx + .2 * math.cos(nth), ny + .2 * math.sin(nth)])
+
+
+class SimLink:
+    """Same interface as swarm.TankLink / RosLink: the world's loop drives the goal."""
+    def __init__(self, world, robot):
+        self.world, self.robot = world, robot
+        self.current = None
+        world.links[robot] = self
+
+    def start(self, goal):
+        if self.current is not None and self.current.active:
+            self.current.cancel('Новое задание')
+        self.current = goal
+
+    def goal(self):
+        return self.current
+
+    def cancel(self, reason):
+        if self.current is not None and self.current.active:
+            self.current.cancel(reason)
+
+    def release(self):
+        pass
+
+
+class SimArm:
+    """ROSMASTER's arm in the virtual room."""
+    def __init__(self, world, log):
+        self.world, self.log = world, log
+        self.stopped = False
+
+    def pick(self, prompt):
+        w = self.world
+        time.sleep(1.5)
+        if prompt not in w.objects:
+            return {'ok': False, 'reason': f'«{prompt}» нет в комнате'}
+        x, y, th = w.true['rosmaster']
+        d = float(np.linalg.norm(w.objects[prompt] - np.array([x, y])))
+        if d > .55:
+            return {'ok': False, 'reason': f'предмет в {d:.2f} м — рука не достаёт (до 0.55 м)'}
+        w.carried = prompt
+        self.log(f'Взял «{prompt}» (был в {d:.2f} м)')
+        return {'ok': True, 'grip': 40}
+
+    def release(self):
+        pass
+
+    def place(self, pose, grip):
+        time.sleep(1.)
+        w = self.world
+        w.objects[w.carried] = np.array(w.pad, float)
+        w.carried = None
+
+    def drive(self, dx, w_):
+        for _ in range(int(abs(dx) / .1 / DT)):
+            self.world.move('rosmaster', math.copysign(.1, dx), 0., DT)
+            time.sleep(DT)
+
+    def stop(self):
+        self.stopped = True
+
+    def close(self):
+        pass
+
+
+class SimHandoff:
+    def __init__(self, world, prompt, log):
+        self.world, self.prompt, self.log = world, prompt, log
+        self.taken = threading.Event()
+        self.stopped = False
+
+    def run(self):
+        for msg in ('Беру с площадки', 'Протягиваю вам'):
+            self.log(msg)
+            time.sleep(1.5)
+        self.log('Жду «Забрал» (или 8 с)')
+        self.taken.wait(8)
+        self.world.objects.pop(self.prompt, None)
+        self.world.delivered.append(self.prompt)
+        return {'ok': True}
+
+    def stop(self):
+        self.stopped = True
+        self.taken.set()
+
+
+def approach(world, robot, text):
+    """GoTo for the virtual room: drive to 0.3 m before the remembered object, facing it."""
+    from .drive import DriveTo
+    from .goto import to_prompt
+    from .explore import pose_now
+    from . import world_memory
+    prompt = to_prompt(text)
+    item = world_memory.target_for(robot, prompt, 24 * 3600)
+    if item is None:
+        raise RuntimeError(f'«{prompt}» ещё не видели')
+    from . import navigation
+    from .fleet_map import FLEET
+    ox, oy = item['room_xy']
+    pose = pose_now(robot, (0., 0.)) or (0., 0., 0.)
+    # the free side of the object: 0.3 m from it, not inside furniture/wall inflation, nearest to us
+    blocked, free, _ = navigation.layers(FLEET.grid, robot)
+    best = None
+    for k in range(16):
+        a = math.atan2(oy - pose[1], ox - pose[0]) + (k + 1) // 2 * (1 if k % 2 else -1) * math.pi / 8
+        sx, sy = ox - .3 * math.cos(a), oy - .3 * math.sin(a)
+        c = navigation._cell((sx, sy))
+        if 0 <= c[0] < blocked.shape[1] and 0 <= c[1] < blocked.shape[0] and free[c[1], c[0]] and not blocked[c[1], c[0]]:
+            best = (sx, sy, a)
+            break
+    if best is None:
+        a = math.atan2(oy - pose[1], ox - pose[0])
+        best = (ox - .3 * math.cos(a), oy - .3 * math.sin(a), a)
+    goal = DriveTo(robot, best, text=f'к «{prompt}»', tol=.15, heading_tol=.25)
+    goal.prompt = prompt
+    return goal
+
+
+# ---------------------------------------------------------------------- enter / leave
+_saved = {}
+
+
+def enter(seed=None):
+    """Switch the swarm page to the virtual room. Returns the simulated Swarm."""
+    global WORLD
+    from . import swarm, fleet_map, world_memory, episodes, so101_handoff, explore
+    if WORLD is not None:
+        return swarm.SWARM
+    real = swarm.SWARM
+    if real is not None and real.state.get('active'):
+        raise RuntimeError('Рой выполняет задание на настоящих роботах')
+    was_running = fleet_map.LOCALIZER.running()
+    fleet_map.LOCALIZER.stop()                    # wait: a reader mid-request must not feed the virtual map
+    for t in fleet_map.LOCALIZER.threads:
+        t.join(timeout=15)
+    if fleet_map.LOCALIZER.running():
+        fleet_map.LOCALIZER.done.clear()
+        raise RuntimeError('Лидарные потоки не остановились, попробуйте ещё раз')
+    if was_running:
+        fleet_map.FLEET.save()
+    SIM.mkdir(parents=True, exist_ok=True)
+    real_map = fleet_map.MAP_DIR / 'map.npz'
+    if real_map.exists():
+        shutil.copy2(real_map, SIM / 'real-map.npz')
+    _saved.update(localizer=was_running, swarm=real, memory=world_memory.MEMORY, episodes=episodes.ROOT, handoff=so101_handoff.CONFIG,
+                  poses={r: p.as_dict() for r, p in world_memory.POSES.items()})
+    world_memory.MEMORY = SIM / 'memory.json'
+    world_memory.forget()
+    episodes.ROOT = SIM / 'episodes'
+    so101_handoff.CONFIG = SIM / 'handoff.json'
+    with fleet_map.FLEET.lock:
+        fleet_map.FLEET.grid = fleet_map.Grid()
+        fleet_map.FLEET.track.clear()
+        fleet_map.FLEET.last_key.clear()
+        fleet_map.FLEET.subs.clear()
+        fleet_map.FLEET.contrib.clear()
+    for p in world_memory.POSES.values():
+        p.__init__(p.robot)
+    explore.ACTIVE.clear()
+    world = SimWorld(seed)
+    world.start()
+    so101_handoff.save(world.handover_config())
+
+    def explore_factory(robot, **kw):
+        kw['scout'] = False                       # the virtual cameras report sightings themselves
+        return explore.Explore(robot, **kw)
+
+    swarm.SWARM = swarm.Swarm(tank=SimLink(world, 'tank'), ros=SimLink(world, 'rosmaster'),
+                              arm_factory=lambda say: SimArm(world, lambda m: say('pick', m)),
+                              so101_factory=lambda prompt, log: SimHandoff(world, prompt, log),
+                              explore_factory=explore_factory,
+                              goto_factory=lambda robot, text: approach(world, robot, text))
+    WORLD = world
+    return swarm.SWARM
+
+
+def leave():
+    """Back to the real robots: the real map, memory, episodes and hand-over config return."""
+    global WORLD
+    from . import swarm, fleet_map, world_memory, episodes, so101_handoff, explore
+    if WORLD is None:
+        return
+    swarm.SWARM.stop('Выход из симуляции')
+    t = swarm.SWARM.thread
+    if t is not None:
+        t.join(timeout=5)
+    WORLD.stop()
+    WORLD = None
+    swarm.SWARM = _saved['swarm']
+    world_memory.MEMORY = _saved['memory']
+    episodes.ROOT = _saved['episodes']
+    so101_handoff.CONFIG = _saved['handoff']
+    explore.ACTIVE.clear()
+    with fleet_map.FLEET.lock:
+        fleet_map.FLEET.grid = fleet_map.Grid()
+        fleet_map.FLEET.track.clear()
+        fleet_map.FLEET.last_key.clear()
+        fleet_map.FLEET.subs.clear()
+        fleet_map.FLEET.contrib.clear()
+    for p in world_memory.POSES.values():
+        p.__init__(p.robot)
+    backup = SIM / 'real-map.npz'
+    if backup.exists():
+        fleet_map.MAP_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(backup, fleet_map.MAP_DIR / 'map.npz')
+        fleet_map.FLEET.load()
+    if _saved.get('localizer'):
+        fleet_map.LOCALIZER.start()
+
+
+def truth_overlay():
+    """Walls and objects of the virtual room in the map frame (for the page), or None."""
+    w = WORLD
+    if w is None:
+        return None
+    segs = [(w.to_map(*a)[:2], w.to_map(*b)[:2]) for a, b in w.room['segs']]
+    objs = {n: w.to_map(*xy)[:2] for n, xy in list(w.objects.items())}
+    return {'walls': segs, 'objects': objs, 'pad': w.to_map(*w.pad)[:2], 'carried': w.carried,
+            'delivered': list(w.delivered), 'collisions': w.collisions, 'seed': w.seed}

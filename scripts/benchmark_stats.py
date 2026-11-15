@@ -46,11 +46,18 @@ def load(folder):
     return [r for r in rows if 'skipped' not in r]
 
 
+def t_cov(r, q):
+    return next((t for t, c in r['curve'] if c >= q), None)
+
+
 def time_of(r):
-    """Finish time; an unfinished run counts with its whole duration (censored)."""
+    """Finish time; an unfinished run counts with its whole duration (censored).
+    Exploration: time to 95% of the reachable room — about 60% is seen by the first scan, so
+    lower thresholds measure the start position more than the exploration."""
     if r['task'] == 'find':
         return (r['found_t'], True) if r.get('found_t') is not None else (r['seconds'], False)
-    return (r['t80'], True) if r.get('t80') is not None else (r['seconds'], False)
+    t = t_cov(r, .95)
+    return (t, True) if t is not None else (r['seconds'], False)
 
 
 def stats(rows):
@@ -64,8 +71,9 @@ def stats(rows):
             out[f'{task}/{cond}'] = {
                 'runs': len(sel), 'finished': len(done), 'finished_ci95': wilson(len(done), len(sel)),
                 'median_s': round(float(np.median(done)), 2) if done else None, 'median_s_ci95': boot_median(done),
-                'time': 't80 (80% of the room)' if task == 'explore' else 'object found',
-                'collisions': int(sum(r.get('collisions', 0) for r in sel))}
+                'time': 't95 (95% of the reachable room)' if task == 'explore' else 'object found',
+                'collisions': int(sum(r.get('collisions', 0) for r in sel)),
+                'final_coverage_mean': round(float(np.mean([r['final_coverage'] for r in sel])), 3)}
         solo = {(r['room']): r for r in rows if r['task'] == task and r['condition'] == 'solo'}
         for cond in conds:
             if cond == 'solo':

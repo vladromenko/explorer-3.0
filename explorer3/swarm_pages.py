@@ -62,6 +62,15 @@ def render_map(px_per_m=90):
         return ((x / RES + SIZE // 2 - x0) * scale, H - (y / RES + SIZE // 2 - y0) * scale)
 
     small, big = _font(13), _font(15)
+    from . import swarm_sim
+    truth = swarm_sim.truth_overlay()
+    if truth is not None:                     # the virtual room as it really is (dim): what the map has not seen yet
+        for a, b in truth['walls']:
+            d.line([P(*a), P(*b)], fill=(120, 70, 70), width=1)
+        for name, (x, y) in truth['objects'].items():
+            if name != truth['carried']:
+                px, py = P(x, y)
+                d.ellipse([px - 3, py - 3, px + 3, py + 3], outline=(150, 110, 110), width=1)
     # SO-101 station at the hand-over spot
     spot = so101_handoff.load().get('rosmaster_spot')
     if spot:
@@ -136,6 +145,12 @@ def camera_jpeg(robot):
 
 def readiness(control):
     """[(name, ok, note)] — what has to work before the fleet starts; cached 5 s."""
+    from . import swarm_sim
+    truth = swarm_sim.truth_overlay()
+    if truth is not None:
+        return [('Симуляция', True, f"виртуальная комната №{truth['seed']}, настоящие роботы не двигаются"),
+                ('Столкновения', truth['collisions'] == 0, str(truth['collisions'])),
+                ('Доставлено', True, ', '.join(truth['delivered']) or 'пока ничего')]
     if time.monotonic() - _ready_cache[0] < 5:
         return _ready_cache[1]
     from .fleet_map import FLEET, LOCALIZER
@@ -191,7 +206,9 @@ def install(app, ui, control, notify_error, css=''):
     def page():
         from . import swarm as _swarm, world_memory, so101_handoff
         from .fleet_map import FLEET
-        team = _swarm.SWARM
+        def team():                                # the real fleet, or the virtual room while it is on
+            return _swarm.SWARM
+        from . import swarm_sim
         ui.add_css(css + '''
         body{background:#0d1117}
         .sw-card{background:#141b24;border:1px solid #232f3e;border-radius:16px;padding:14px}
@@ -212,7 +229,9 @@ def install(app, ui, control, notify_error, css=''):
                 ui.link('Сбор датасета', '/recording/collect').style('color:#63e0b8')
                 ui.link('Обучение', '/learn').style('color:#63e0b8')
                 ui.button('STOP · все роботы', icon='stop', color='negative',
-                          on_click=lambda: (team.stop('STOP со страницы роя'), control.stop('STOP со страницы роя'))).props('unelevated size=lg')
+                          on_click=lambda: (team().stop('STOP со страницы роя'), control.stop('STOP со страницы роя'))).props('unelevated size=lg')
+        sim_banner = ui.label('СИМУЛЯЦИЯ: виртуальная комната, настоящие роботы не двигаются. Тусклые линии — настоящие стены, кружки — где предметы на самом деле.').style(
+            'margin:0 6px 8px;padding:8px 12px;border-radius:10px;background:#3a2410;color:#ffcf8a;border:1px solid #7a4a1a;font-weight:600')
         ready_row = ui.row().style('gap:6px;flex-wrap:wrap;padding:0 6px 8px')
         with ui.element('div').classes('sw-card').style('margin:0 6px 12px'):
             with ui.row().style('width:100%;gap:8px;align-items:center;flex-wrap:wrap'):
@@ -224,14 +243,29 @@ def install(app, ui, control, notify_error, css=''):
                         v = (value or text.value or '').strip()
                         if not v:
                             raise ValueError('Напишите команду')
-                        team.command(v, {'Оба робота': None, 'Только ROSMASTER': ['rosmaster'], 'Только Tank': ['tank']}[who.value])
+                        team().command(v, {'Оба робота': None, 'Только ROSMASTER': ['rosmaster'], 'Только Tank': ['tank']}[who.value])
                         ui.notify('Рой: ' + v)
                     except Exception as exc:
                         notify_error(exc)
                 ui.button('Выполнить', icon='hub', on_click=lambda: go()).props('unelevated')
                 for label in ('осмотрите комнату', 'найдите носок', 'принеси печенье'):
                     ui.button(label, on_click=lambda l=label: go(l)).props('flat dense no-caps')
-                ui.button('Забрал', icon='back_hand', on_click=lambda: team.taken()).props('flat')
+                ui.button('Забрал', icon='back_hand', on_click=lambda: team().taken()).props('flat')
+
+                def sim(action):
+                    try:
+                        if action in ('leave', 'new'):
+                            swarm_sim.leave()
+                        if action in ('enter', 'new'):
+                            swarm_sim.enter()
+                        ui.notify({'enter': 'Симуляция: виртуальная комната', 'new': 'Новая виртуальная комната',
+                                   'leave': 'Снова настоящие роботы'}[action])
+                        _ready_cache[0] = 0.
+                    except Exception as exc:
+                        notify_error(exc)
+                sim_on = ui.button('Симуляция без роботов', icon='science', on_click=lambda: sim('enter')).props('flat no-caps')
+                sim_new = ui.button('Новая комната', icon='casino', on_click=lambda: sim('new')).props('flat no-caps')
+                sim_off = ui.button('К настоящим роботам', icon='precision_manufacturing', on_click=lambda: sim('leave')).props('flat no-caps')
         with ui.row().style('width:100%;gap:12px;align-items:flex-start;flex-wrap:nowrap;padding:0 6px'):
             with ui.element('div').classes('sw-card').style('flex:3;min-width:0'):
                 with ui.row().style('justify-content:space-between;width:100%;align-items:center'):
@@ -281,25 +315,33 @@ def install(app, ui, control, notify_error, css=''):
             with ready_row:
                 for name, ok, note in checks:
                     ui.label(f'{name}: {note}').classes('sw-chip ' + ('sw-ok' if ok else 'sw-bad'))
-            status = team.status()
+            simulated = swarm_sim.WORLD is not None
+            sim_banner.set_visibility(simulated)
+            sim_on.set_visibility(not simulated)
+            sim_new.set_visibility(simulated)
+            sim_off.set_visibility(simulated)
+            status = team().status()
             for robot, (badge, cam, line1, line2) in cards.items():
                 if robot == 'so101':
                     live = control.robot == 'so101' and control.owner is not None
                     cam.set_source('/api/live/wrist.mjpg' if live else '')
                     cam.set_visibility(live)
-                    h = team.handoff
+                    h = team().handoff
                     badge.set_text('передаёт' if h is not None else ('на ведущей руке' if live else 'ждёт'))
                     line1.set_text('Станция передачи: ' + ('готова' if not so101_handoff.missing() else 'позы не показаны'))
                     line2.set_text('Камера запястья видна, когда SO-101 включён в Explorer')
                     continue
-                cam.set_source(f'/api/swarm/camera/{robot}.jpg?t={t:.1f}')
-                cam.set_visibility(True)
+                cam.set_visibility(not simulated)
+                if not simulated:
+                    cam.set_source(f'/api/swarm/camera/{robot}.jpg?t={t:.1f}')
                 s = st['robots'].get(robot) or {}
                 badge.set_text(STATES.get(s.get('state'), 'нет данных'))
                 pose = s.get('pose')
                 line1.set_text((status.get('robots') or {}).get(robot) or s.get('message', ''))
                 line2.set_text(f"({pose[0]:.2f}; {pose[1]:.2f}) м, курс {math.degrees(pose[2]):.0f}°" if pose else 'положение неизвестно')
-                if robot == 'tank' and not _cam_cache.get('tank', (0, None))[1]:
+                if simulated:
+                    line2.set_text(line2.text + ' · виртуальный')
+                elif robot == 'tank' and not _cam_cache.get('tank', (0, None))[1]:
                     cam.set_visibility(False)
                     line2.set_text(line2.text + ' · камера Tank включается, когда Tank в задании роя')
             task_line.set_text((f"«{status['task']}» · {status.get('message', '')}") if status.get('task') else 'Рой ждёт команду')

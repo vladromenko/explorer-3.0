@@ -259,7 +259,7 @@ def index(request:Request):
                         ui.button('Полная панель',on_click=lambda:ui.navigate.to('/rosmaster/control')).props('flat')
     with ui.card().classes('robot').style('width:100%;margin-bottom:14px'):
         from . import swarm as _swarm, so101_handoff as _handoff
-        team=_swarm.SWARM
+        team=lambda:_swarm.SWARM          # real fleet, or the virtual room while it is on
         with ui.row().style('width:100%;justify-content:space-between;align-items:center'):
             ui.label('Рой: одна команда — роботы работают вместе').style('font-size:17px;font-weight:700')
             swarm_badge=ui.label('').classes('muted')
@@ -270,14 +270,14 @@ def index(request:Request):
                 try:
                     value=(text or swarm_text.value or '').strip()
                     if not value:raise ValueError('Напишите команду')
-                    kind,prompt=team.command(value,{'Оба робота':None,'Только ROSMASTER':['rosmaster'],'Только Tank':['tank']}[swarm_who.value])
+                    kind,prompt=team().command(value,{'Оба робота':None,'Только ROSMASTER':['rosmaster'],'Только Tank':['tank']}[swarm_who.value])
                     ui.notify({'explore':'Рой осматривает комнату','find':f'Рой ищет: {prompt}','fetch':f'Рой несёт: {prompt}','goto':f'Еду к: {prompt}'}[kind])
                 except Exception as exc:notify_error(exc)
             swarm_who=ui.select(['Оба робота','Только ROSMASTER','Только Tank'],value='Оба робота').props('dense outlined').style('min-width:170px')
             ui.button('Выполнить',icon='hub',on_click=lambda:swarm_go()).props('unelevated')
             ui.button('Осмотрите комнату',icon='travel_explore',on_click=lambda:swarm_go('осмотрите комнату')).props('flat')
-            ui.button('Забрал',icon='back_hand',on_click=lambda:team.taken()).props('flat')
-            ui.button('STOP рой',icon='stop',color='negative',on_click=lambda:team.stop('STOP роя оператором')).props('unelevated')
+            ui.button('Забрал',icon='back_hand',on_click=lambda:team().taken()).props('flat')
+            ui.button('STOP рой',icon='stop',color='negative',on_click=lambda:team().stop('STOP роя оператором')).props('unelevated')
         swarm_state=ui.html('').classes('muted')
         with ui.expansion('Места передачи (настраиваются один раз)',icon='handshake').style('width:100%'):
             ui.label('1) Поставьте ROSMASTER у SO-101 так, чтобы его рука доставала до площадки, и нажмите «место передачи». 2) Рукой ROSMASTER (полная панель) опустите захват над площадкой и нажмите «положить». 3) Включите SO-101 с ведущей рукой и по очереди покажите позы. Площадка — любое место, куда дотягиваются обе руки (коробка, подставка).').classes('muted').style('font-size:12.5px')
@@ -311,7 +311,7 @@ def index(request:Request):
                     ui.button('SO-101: '+_handoff.NAMES[_name],on_click=teach_so101(_name)).props('flat dense')
             handoff_state=ui.label('').classes('muted')
         def swarm_refresh():
-            st=team.status()
+            st=team().status()
             names={'tank':'Tank','rosmaster':'ROSMASTER'}
             lines=[]
             if st.get('task'):

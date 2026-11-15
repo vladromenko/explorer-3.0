@@ -212,6 +212,31 @@ class Grid:
         far = self.field[cy, cx] < math.exp(-(clear ** 2) / (2 * SIGMA ** 2))
         return float((far & (self.free[cy, cx] >= 2)).sum() / max(1, len(pts)))
 
+    def passthrough(self, pts, pose, margin=.2, max_rays=150):
+        """Share of beams that would pass through a known wall before reaching their end point:
+        a pose that makes the robot «see through» walls is wrong. It catches what conflicts()
+        cannot: a wrong match whose far points fall into the unknown outside the map."""
+        if len(pts) > max_rays:
+            pts = pts[np.linspace(0, len(pts) - 1, max_rays).astype(int)]
+        r = np.hypot(pts[:, 0], pts[:, 1])
+        wall = math.exp(-(.04 ** 2) / (2 * SIGMA ** 2))
+        bad = 0
+        steps = np.arange(.15, 12, RES)
+        for (px, py), rr in zip(pts, r):
+            n = int(np.searchsorted(steps, rr - margin))
+            if n <= 0:
+                continue
+            f = steps[:n] / rr
+            c = self.cells(transform(np.stack([px * f, py * f], 1), pose))
+            ok = (c >= 0).all(1) & (c < SIZE).all(1)
+            if (self.field[c[ok, 1], c[ok, 0]] > wall).any():
+                bad += 1
+        return bad / max(1, len(pts))
+
+    def consistency(self, pts, pose):
+        """Evidence against a pose: scan walls in known free floor + beams through known walls."""
+        return self.conflicts(pts, pose) + self.passthrough(pts, pose)
+
     def locate_global(self, pts):
         """Where in the whole map could this scan have been taken? -> (quality, pose, ambiguous)."""
         ys, xs = np.nonzero(self.hits)
@@ -236,7 +261,7 @@ class Grid:
             inl = self.inliers(pts, pose)
             # Points in known empty floor count against the pose (twice): it rejects «the partition
             # looks like the left wall» kind of matches that a plain overlap score accepts.
-            results.append((inl - 2 * self.conflicts(pts, pose), q, pose))
+            results.append((inl - 2 * self.consistency(pts, pose), q, pose))
         results.sort(key=lambda r: -r[0])
         best = results[0]
         # Ambiguous when another, clearly different pose explains the scan almost as well
@@ -329,6 +354,12 @@ class FleetMap:
                             s['global_note'] = ' (похоже, узнал место: проверяю ещё раз)'
                     else:
                         s['candidate'] = None
+                if found and not self._submap_fits(robot, pose):
+                    # Two agreeing fixes, but the robot's own map does not fit the shared one: the
+                    # own map drifted (no encoders, a fast turn). Join without stitching it in —
+                    # losing those scans is better than painting a misplaced room into the map.
+                    self.subs.pop(robot, None)
+                    s['merged_note'] = 'своя карта не совпала с общей и отброшена'
                 if not found:
                     return self._submap(robot, pts, fine, odom)
                 merged = self._merge_submap(robot, pose)
@@ -390,6 +421,17 @@ class FleetMap:
         return self._set(robot, state='submap', pose=None, sub_pose=pose, odom=odom, scan=fine, quality=None,
                          message=f'Строит свою карту ({len(sub["keys"])} сканов), пока не узнает общие стены'
                                  + s.get('global_note', ''))
+
+    def _submap_fits(self, robot, main_pose, limit=.12):
+        """Before stitching: every scan of the robot's own map, placed by the proposed transform,
+        must agree with the shared map (a whole room seen from several places is much stronger
+        evidence than one scan — symmetric rooms fool one scan, not the whole submap)."""
+        sub = self.subs.get(robot)
+        if not sub or sub['pose'] is None or not sub['keys']:
+            return True
+        T = compose(main_pose, inverse(sub['pose']))
+        bad = [self.grid.consistency(thin(pts, .1, 120), compose(T, key_pose)) for key_pose, pts in sub['keys'][-12:]]
+        return float(np.mean(bad)) < limit
 
     def _merge_submap(self, robot, main_pose):
         """The robot was found in the shared map: move its own map into it. Caller holds the lock."""

@@ -155,22 +155,25 @@ def guard(points, robot, v, w, stop_m=.18):
     return 0., (w if abs(w) > .2 else turn), f'препятствие впереди в {gap:.2f} м'
 
 
-def frontiers(grid, robot, pose, min_size_m=.3, banned=(), visual=False):
+def frontiers(grid, robot, pose, min_size_m=.3, banned=(), visual=False, look_m=.8):
     """Reachable places where known free space meets unknown space, best first.
     visual=True (object search): also floor the cameras have not looked at yet counts as unknown,
     so the search goes on until the cameras — not only the lidars — have covered the room.
-    Returns [(x, y, size_m, path_m)]."""
+    Returns [(x, y, size_m, path_m, look_x, look_y)]: the place to drive to and the middle of the
+    boundary piece to turn the camera to (they differ when the piece is in a gap too narrow to enter)."""
     blocked, free, unknown = layers(grid, robot)
     free_all = free
     n = blocked.shape[0]
     un = unknown.astype(np.uint8)
     near_unknown = cv2.dilate(un, np.ones((3, 3), np.uint8)).astype(bool)
-    edge = free & near_unknown & ~blocked
+    # Boundary cells inside the inflation band count too: a pocket between furniture and a wall
+    # that the robot cannot drive into can still be looked into by the lidar from its mouth.
+    edge = free & near_unknown
     if visual:
         # Object search: every reachable piece of floor the cameras have not looked at is a goal
         # too (not only where the lidar map ends); driving there points the camera at it.
         seen = grid.seen.reshape(n, STEP, n, STEP).any(axis=(1, 3))
-        edge = edge | (free & ~seen & ~blocked)
+        edge = edge | (free & ~seen)               # narrow gaps too: looked into from the nearest reachable spot
     count, labels, stats, cents = cv2.connectedComponentsWithStats(edge.astype(np.uint8), connectivity=8)
     if count <= 1:
         return []
@@ -191,6 +194,7 @@ def frontiers(grid, robot, pose, min_size_m=.3, banned=(), visual=False):
                 queue.append((nx, ny))
     # A long boundary is cut into ~1 m pieces so that two robots can take different parts of it.
     tile = max(1, int(round(1.0 / PRES)))
+    look = int(round(look_m / PRES))
     pieces = []
     for i in range(1, count):
         if stats[i, cv2.CC_STAT_AREA] * PRES < min_size_m:
@@ -204,15 +208,53 @@ def frontiers(grid, robot, pose, min_size_m=.3, banned=(), visual=False):
     for xs, ys in pieces:
         size = len(xs) * PRES
         d = dist[ys, xs]
-        if not np.isfinite(d).any():
-            continue
-        # The cell of the cluster closest to its centre among reachable ones.
-        ok = np.isfinite(d)
-        cx, cy = xs.mean(), ys.mean()
-        j = int(np.argmin(np.where(ok, (xs - cx) ** 2 + (ys - cy) ** 2, np.inf)))
-        x, y = _xy((int(xs[j]), int(ys[j])))
+        if np.isfinite(d).any():
+            # The cell of the cluster closest to its centre among reachable ones.
+            ok = np.isfinite(d)
+            cx, cy = xs.mean(), ys.mean()
+            j = int(np.argmin(np.where(ok, (xs - cx) ** 2 + (ys - cy) ** 2, np.inf)))
+            x, y = _xy((int(xs[j]), int(ys[j])))
+            path_m = float(d[j]) * PRES
+        else:
+            # Not drivable into (inflation band): the nearest reachable cell within look_m of it.
+            x0, x1, y0, y1 = max(0, xs.min() - look), min(n, xs.max() + look + 1), max(0, ys.min() - look), min(n, ys.max() + look + 1)
+            mask = np.ones((y1 - y0, x1 - x0), np.uint8)
+            mask[ys - y0, xs - x0] = 0
+            near = cv2.distanceTransform(mask, cv2.DIST_L2, 3)
+            sub = dist[y0:y1, x0:x1]
+            cand = np.isfinite(sub) & (near <= look)
+            if not cand.any():
+                continue
+            score = np.where(cand, near * 3 + sub, np.inf)
+            jy, jx = np.unravel_index(int(np.argmin(score)), score.shape)
+            x, y = _xy((int(jx + x0), int(jy + y0)))
+            path_m = float(sub[jy, jx]) * PRES
         if any(math.hypot(x - bx, y - by) < .4 for bx, by in banned):
             continue
-        out.append((x, y, size, float(d[j]) * PRES))
+        lx, ly = _xy((int(round(xs.mean())), int(round(ys.mean()))))
+        out.append((x, y, size, path_m, lx, ly))
     # Close and large first: a big opening nearby is worth more than a crack far away.
     return sorted(out, key=lambda f: f[3] - 1.5 * min(f[2], 2.))
+
+
+def choose(fronts, peers, spread_m=1.5):
+    """Coordinated choice of a frontier (Burgard et al. 2005; Voronoi split as in MMPF/RACER):
+    fronts — frontiers() output, best first; peers — [(peer_xy, peer_target_xy or None)].
+    A frontier near a peer's target loses value (the peer's lidar will map it anyway), and one the
+    peer is clearly closer to is left to the peer. Returns the chosen (x, y, size, path_m) or None."""
+    if not fronts:
+        return None
+    best, score = None, math.inf
+    for f in fronts:
+        x, y, size, path = f[:4]
+        s = path - 1.5 * min(size, 2.)
+        for at, target in peers:
+            if target is not None:
+                d = math.hypot(x - target[0], y - target[1])
+                if d < spread_m:
+                    s += 3. * (1 - d / spread_m)
+            if at is not None and math.hypot(x - at[0], y - at[1]) < .7 * path:
+                s += 1.5
+        if s < score:
+            best, score = f, s
+    return best

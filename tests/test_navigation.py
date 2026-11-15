@@ -147,8 +147,10 @@ def test_tank_own_map_is_stitched_into_the_shared_one(fleet):
     for pose in [(0., 0., 0.), (-1., -.5, 0.), (-1., .8, 0.)]:
         fleet.update('rosmaster', packet('rosmaster', pose), pose)
     right_before = fleet.grid.known_free()[int(-1.0 / fm.RES) + fm.SIZE // 2, int(1.0 / fm.RES) + fm.SIZE // 2]
-    route = [(1.0, -1.0, 1.57), (1.0, -.7, 1.57), (1.0, -.3, 1.57), (1.0, .1, 1.57), (1.0, .5, 1.8), (.9, .9, 2.2),
-             (.6, 1.1, 2.6), (.2, 1.2, 3.0), (-.2, 1.0, 3.1)]
+    coarse = [(1.0, -1.0, 1.57), (1.0, -.7, 1.57), (1.0, -.3, 1.57), (1.0, .1, 1.57), (1.0, .5, 1.8), (.9, .9, 2.2),
+              (.6, 1.1, 2.6), (.2, 1.2, 3.0), (-.2, 1.0, 3.1)]
+    # ~0.13 m / 0.13 rad between scans (Tank at 0.15 m/s, 2.5 scans/s moves 0.06 m per scan)
+    route = [tuple(a[k] + (b[k] - a[k]) * i / 3 for k in range(3)) for a, b in zip(coarse, coarse[1:]) for i in range(3)] + [coarse[-1]]
     states = []
     for true in route:
         s = fleet.update('tank', packet('tank', true))
@@ -174,3 +176,27 @@ def test_two_robots_split_the_frontiers(fleet):
     assert a.target is not None and b.target is not None
     assert math.dist(a.target, b.target) > .5                 # different parts of the boundary
     a.cancel(); b.cancel()
+
+
+def test_drifted_own_map_is_dropped_not_stitched(fleet):
+    """Tank's own map drifted (coarse jumps, no encoders): it joins the shared map, but its
+    misplaced own map is not painted into it."""
+    for pose in [(0., 0., 0.), (-1., -.5, 0.), (-1., .8, 0.)]:
+        fleet.update('rosmaster', packet('rosmaster', pose), pose)
+    route = [(1.0, -1.0, 1.57), (1.0, -.7, 1.57), (1.0, -.3, 1.57), (1.0, .1, 1.57), (1.0, .5, 1.8), (.9, .9, 2.2),
+             (.6, 1.1, 2.6), (.2, 1.2, 3.0), (-.2, 1.0, 3.1)]
+    for true in route:
+        s = fleet.update('tank', packet('tank', true))
+        fleet.track['tank']['global_at'] = 0.
+    assert s['state'] == 'tracking' and math.dist(s['pose'][:2], route[-1][:2]) < .1
+    assert 'tank' not in fleet.subs
+
+
+def test_choose_leaves_peer_side_to_the_peer():
+    fronts = [(1., 0., 1., 1.0), (-2., 0., 1., 2.0)]          # (x, y, size, path) best first
+    assert navigation.choose(fronts, [])[:2] == (1., 0.)
+    # the peer already heads near the close frontier: take the other side of the room
+    assert navigation.choose(fronts, [((3., 0.), (1.2, 0.))])[:2] == (-2., 0.)
+    # the peer stands right at the close frontier (clearly closer than me): leave it
+    assert navigation.choose(fronts, [((1.1, 0.), None)])[:2] == (-2., 0.)
+    assert navigation.choose([], []) is None

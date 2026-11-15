@@ -53,52 +53,7 @@ class Clock:
         return int(self.t * 1e9)
 
 
-def make_room(rng):
-    w, h = rng.uniform(4.5, 7.5), rng.uniform(3.5, 6.)
-    segs = [((0, 0), (w, 0)), ((w, 0), (w, h)), ((w, h), (0, h)), ((0, h), (0, 0))]
-    # internal wall with a 0.9 m doorway (two rooms)
-    x = rng.uniform(.4, .6) * w
-    door = rng.uniform(.8, h - 1.7)
-    segs += [((x, 0), (x, door)), ((x, door + .9), (x, h))]
-    boxes = []
-    for _ in range(rng.integers(3, 7)):
-        bw, bh = rng.uniform(.3, 1.2), rng.uniform(.3, .9)
-        for _try in range(20):
-            bx, by = rng.uniform(.2, w - bw - .2), rng.uniform(.2, h - bh - .2)
-            if abs(bx + bw / 2 - x) < bw / 2 + .5 or any(bx < c + d + .6 and c < bx + bw + .6 and by < e + f + .6 and e < by + bh + .6
-                                                        for c, e, d, f in boxes):
-                continue
-            boxes.append((bx, by, bw, bh))
-            segs += [((bx, by), (bx + bw, by)), ((bx + bw, by), (bx + bw, by + bh)),
-                     ((bx + bw, by + bh), (bx, by + bh)), ((bx, by + bh), (bx, by))]
-            break
-    return {'w': w, 'h': h, 'segs': np.array(segs, float), 'wall_x': x, 'door': door, 'boxes': boxes}
-
-
-def wall_distance(room, xy):
-    a, b = room['segs'][:, 0], room['segs'][:, 1]
-    ab = b - a
-    t = np.clip(((xy - a) * ab).sum(1) / (ab * ab).sum(1), 0, 1)
-    return float(np.linalg.norm(a + t[:, None] * ab - xy, axis=1).min())
-
-
-def raycast(room, origin, angles):
-    d = np.stack([np.cos(angles), np.sin(angles)], 1)[:, None, :]
-    p, e = room['segs'][None, :, 0], room['segs'][None, :, 1] - room['segs'][None, :, 0]
-    den = d[..., 0] * -e[..., 1] + d[..., 1] * e[..., 0]
-    q = p - np.asarray(origin)
-    with np.errstate(divide='ignore', invalid='ignore'):
-        r = (q[..., 0] * -e[..., 1] + q[..., 1] * e[..., 0]) / den
-        u = (d[..., 0] * q[..., 1] - d[..., 1] * q[..., 0]) / den
-    return np.where((abs(den) > 1e-9) & (r > .05) & (u >= 0) & (u <= 1), r, np.inf).min(1)
-
-
-def free_spot(room, rng, clearance=.45, avoid=()):
-    for _ in range(500):
-        p = np.array([rng.uniform(.4, room['w'] - .4), rng.uniform(.4, room['h'] - .4)])
-        if wall_distance(room, p) > clearance and all(np.linalg.norm(p - a) > 1.2 for a in avoid):
-            return p
-    raise RuntimeError('no free spot')
+from explorer3.sim2d import make_room, wall_distance, raycast, free_spot  # noqa: E402  (shared with the swarm simulation)
 
 
 def reachable_area(room, start, res=.05, clearance=.2):
@@ -236,9 +191,10 @@ def run(args):
             break
     t90 = next((t for t, c in curve if c >= .9), None)
     t80 = next((t for t, c in curve if c >= .8), None)
+    t95 = next((t for t, c in curve if c >= .95), None)
     states = {r: fleet.track.get(r, {}).get('state') for r in robots}
     return {'room': room_seed, 'condition': condition, 'task': task, 'robots': robots, 'area_m2': round(float(total), 1),
-            'seconds': round(clock.t - t0, 1), 't90': t90, 't80': t80, 'final_coverage': curve[-1][1] if curve else 0,
+            'seconds': round(clock.t - t0, 1), 't90': t90, 't80': t80, 't95': t95, 'final_coverage': curve[-1][1] if curve else 0,
             'found_by': found['by'], 'found_t': found['t'], 'collisions': collisions,
             'contrib': dict(fleet.contrib), 'final_states': states,
             'outcomes': {r: tasks[r].state for r in robots}, 'curve': curve}

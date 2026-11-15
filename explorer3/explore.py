@@ -53,6 +53,9 @@ class Explore:
         self.frame = None
         self.planned_at = 0.
         self.banned = []
+        self.look_until = None
+        self.look = None                 # where the camera should look on arrival
+        self.visited = []                # reached targets (never retried, unlike banned ones)
         self.progress = (None, time.monotonic())
         self.lost_since = None
         self.targets_done = 0
@@ -93,8 +96,9 @@ class Explore:
     def _peer_targets(self):
         out = []
         for robot, other in list(ACTIVE.items()):
-            if robot != self.robot and other.active and other.target is not None and other.frame == 'main':
-                out.append(other.target)
+            if robot != self.robot and other.active and other.frame == 'main':
+                at = pose_now(robot, other.last_cmd)
+                out.append((None if at is None else at[:2], other.target))
         return out
 
     def _command(self):
@@ -115,11 +119,11 @@ class Explore:
         frame, grid, pose = got
         if frame != self.frame:                          # own map stitched into the shared one, etc.
             self.frame, self.target, self.path = frame, None, None
-            self.banned = []
+            self.banned, self.visited = [], []
         where = 'общей карте' if frame == 'main' else 'своей карте (общие стены пока не видны)'
         if self.target is None or now - self.planned_at > 2.:
             self.planned_at = now
-            fronts = navigation.frontiers(grid, self.robot, pose, banned=self.banned, visual=self.visual and frame == 'main')
+            fronts = navigation.frontiers(grid, self.robot, pose, banned=self.banned + self.visited, visual=self.visual and frame == 'main')
             if self.target is not None and not any(math.hypot(f[0] - self.target[0], f[1] - self.target[1]) < .4 for f in fronts):
                 self.targets_done += 1                     # the place got mapped meanwhile (maybe by the other robot)
                 self.target = None
@@ -131,8 +135,9 @@ class Explore:
                     self.finish('explored', f'Обследовано: {self.targets_done} участков, на карте {FLEET.grid.scans} сканов')
                     return [0., 0.]
                 peers = self._peer_targets() if frame == 'main' else []
-                free = [f for f in fronts if all(math.hypot(f[0] - px, f[1] - py) > .6 for px, py in peers)]
-                self.target = (free or fronts)[0][:2]
+                chosen = navigation.choose(fronts, peers)
+                self.target = chosen[:2]
+                self.look = chosen[4:6] if len(chosen) > 4 else None
                 self.progress = (pose, now)
             path = navigation.plan(grid, self.robot, pose[:2], self.target, allow_unknown=False)
             if path is None:
@@ -154,9 +159,26 @@ class Explore:
             return [0., 0.]
         v, w, remaining = navigation.follow(pose, self.path, self.v_max, self.w_max)
         if remaining < .25:
+            if self.visual and self.look is not None and math.dist(self.look, pose[:2]) > .25:
+                # the unseen floor is beside the stop (a narrow gap): turn the camera to it first
+                err = navigation.wrap(math.atan2(self.look[1] - pose[1], self.look[0] - pose[0]) - pose[2])
+                if abs(err) > .3:
+                    self.state, self.message = 'look', f'Поворачиваю камеру к непросмотренному месту: {math.degrees(err):+.0f}°'
+                    return [0., max(-self.w_max, min(self.w_max, 1.5 * err))]
+                # hold still long enough for one recognition pass (SAM 3: ~2.5 s for the list)
+                self.look_until = self.look_until or now + (2.8 if self.scout is not None else .6)
+                if now < self.look_until:
+                    self.state, self.message = 'look', 'Смотрю в непросмотренное место'
+                    return [0., 0.]
+            self.look_until = None
             self.targets_done += 1
+            # Arrived: if this boundary is still there it cannot be seen from the reachable side
+            # (a pocket behind furniture) — do not come back to it.
+            self.visited.append(self.target)
             if self.visual and frame == 'main':
                 grid.mark_seen(self.target, .25)         # arrived: only the floor under the robot (the camera looks ahead)
+                if self.look is not None:
+                    grid.mark_seen(self.look, .15)       # looked at it: a gap seen from outside is done
             self.target = None
             return [0., 0.]
         v, w, why = navigation.guard(FLEET.scan(self.robot), self.robot, v, w)
