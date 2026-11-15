@@ -254,9 +254,12 @@ class ArmSkills:
         finally:
             sensors.close()
 
-    def pick(self, prompt, attempts=3):
+    def pick(self, prompt, attempts=3, knowledge=None):
         """Grasp `prompt`: with a learned policy that passed «Допуск к роботу» when there is one
-        (explorer3/deploy_gate.py), otherwise the geometric grasp. Returns a result dict."""
+        (explorer3/deploy_gate.py), otherwise the geometric grasp. `knowledge`: robot-independent
+        object knowledge from the shared store (e.g. measured by the SO-101 station): its width and
+        grasp height replace the single-view estimates. Returns a result dict."""
+        self.knowledge = (knowledge or {}).get('params') or {}
         job = learned_pick_job()
         if job is not None:
             return self.policy_pick(prompt, job)
@@ -318,6 +321,9 @@ class ArmSkills:
                 return {'ok': False, 'reason': 'предмет не виден камерой руки'}
             predicted = None
             target = grasp_target(obj)
+            k = getattr(self, 'knowledge', {})
+            if k.get('grasp_height_m'):
+                target = np.array([target[0], target[1], float(k['grasp_height_m'])])
             plan, why = plan_grasp(target, self.measured())
             if plan is None:
                 forward, turn = base_correction(target)
@@ -337,7 +343,8 @@ class ArmSkills:
                 self.move(grasp, timeout=6., tol=4.)
             else:
                 grasp = servoed
-            grip = min(GRIP_MAX, grip_command(obj['width_m']) + extra)
+            width = float(getattr(self, 'knowledge', {}).get('width_m') or obj['width_m'])
+            grip = min(GRIP_MAX, grip_command(width) + extra)
             closing = list(grasp)
             for value in range(GRIP_OPEN, grip + 1, 5):          # close in steps, like CubeBot
                 closing[5] = value

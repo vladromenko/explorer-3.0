@@ -136,7 +136,7 @@ class AssistanceCase(Contract):
     reason:str=Field(max_length=600)
     before_evidence_ids:list[Identifier]=Field(min_length=1)
     compatibility:CompatibilityRecord
-    assistance_type:Literal['observation','recovery','human','wait']
+    assistance_type:Literal['observation','recovery','human','wait','knowledge']
     expected_effect:str=Field(max_length=600)
     actions_provenance:Literal['human','policy','scripted','geometric','observation','safety']
     actual_effect:dict

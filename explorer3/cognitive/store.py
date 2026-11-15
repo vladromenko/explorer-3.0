@@ -189,7 +189,7 @@ def retrieve(task,effect,skill,goal,domain,*,comparison='M3',limit=5,snapshot=No
         current=json.loads(row['body']);case=frozen[current['id']] if frozen is not None else current
         if case['task']==task and case['effect']==effect and case['domain']==domain:
             problems=compatibility(case,skill,goal,domain,context)
-            hard=case['assistance_type'] not in ('observation','recovery','human','wait')
+            hard=case['assistance_type'] not in ('observation','recovery','human','wait','knowledge')
             if hard or (comparison=='M3' and problems):
                 rejected.append({'id':case['id'],'reasons':problems or ['Unsupported assistance']})
             elif len(accepted)<limit:

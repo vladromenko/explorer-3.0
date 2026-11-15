@@ -348,7 +348,7 @@ def install(app, ui, control, notify_error, css=''):
             ui.label('Что роботы нашли').style('font-weight:700;font-size:17px;color:#e6edf3')
             found_row = ui.row().style('gap:10px;flex-wrap:wrap')
 
-        stage_names = {'help': 'помощь', 'search': 'поиск', 'explore': 'осмотр', 'approach': 'подъезд', 'pick': 'захват', 'deliver': 'доставка',
+        stage_names = {'learn': 'SO-101 изучает', 'help': 'помощь', 'search': 'поиск', 'explore': 'осмотр', 'approach': 'подъезд', 'pick': 'захват', 'deliver': 'доставка',
                        'place': 'на площадку', 'handoff': 'SO-101 передаёт', 'goto': 'подъезд'}
         last_found = [None]
         last_agents, last_memory, last_trials = [None], [None], [None]

@@ -18,6 +18,8 @@ def isolated(monkeypatch, tmp_path):
     monkeypatch.setattr(world_memory, 'SNAPSHOTS', tmp_path / 'snap')
     monkeypatch.setattr(episodes, 'ROOT', tmp_path / 'episodes')
     monkeypatch.setattr(so101_handoff, 'CONFIG', tmp_path / 'handoff.json')
+    from explorer3 import knowledge
+    monkeypatch.setattr(knowledge, 'STORE', tmp_path / 'knowledge.json')
     from explorer3 import catalog
     from explorer3.cognitive import store
     monkeypatch.setattr(catalog, 'DATA', tmp_path)
@@ -86,7 +88,7 @@ class Arm:
     def __init__(self, log):
         self.calls = []
 
-    def pick(self, prompt):
+    def pick(self, prompt, knowledge=None):
         self.calls.append(('pick', prompt))
         return {'ok': True, 'grip': 90}
 
@@ -159,7 +161,10 @@ def test_fetch_known_object_runs_every_stage():
     assert arms[0].calls[0] == ('pick', 'cookie') and ('place', (90, 60, 40, 30, 90, 90), 90) in arms[0].calls
     assert ('drive', -.15) in arms[0].calls                               # backs off before SO-101 moves
     ep = episodes.load()[0]
-    assert ep['kind'] == 'fetch' and ep['success'] and [x['stage'] for x in ep['stages']] == ['approach', 'pick', 'deliver', 'place', 'handoff']
+    # ROSMASTER had no grasp knowledge for the cookie: it asked the SO-101 station first ('learn');
+    # the station is not running in the test, so it went on with its own estimate
+    assert ep['kind'] == 'fetch' and ep['success'] and [x['stage'] for x in ep['stages']] == ['learn', 'approach', 'pick', 'deliver', 'place', 'handoff']
+    assert ep['stages'][0]['ok'] is False
 
 
 def test_fetch_unknown_object_team_search_stops_both():

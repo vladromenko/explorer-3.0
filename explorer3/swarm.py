@@ -122,7 +122,7 @@ class RosLink:
 
 class Swarm:
     def __init__(self, tank=None, ros=None, arm_factory=None, so101_factory=None, explore_factory=None,
-                 goto_factory=None, drive_factory=None):
+                 goto_factory=None, drive_factory=None, station_factory=None):
         self.links = {}
         if ros is not None:
             self.links['rosmaster'] = ros
@@ -133,6 +133,7 @@ class Swarm:
         self.explore_factory = explore_factory
         self.goto_factory = goto_factory
         self.drive_factory = drive_factory
+        self.station_factory = station_factory
         self.thread = None
         self.stop_event = threading.Event()
         self.state = {'task': None, 'stage': None, 'message': 'Рой ждёт команду', 'log': [], 'active': False}
@@ -394,8 +395,32 @@ class Swarm:
         cfg = so101_handoff.load()
         if 'rosmaster' not in self.links:
             raise RuntimeError('Принести может только ROSMASTER: он не подключён')
+        # 0. what does ROSMASTER not know? (knowledge gaps -> who can fill them)
+        from . import knowledge
+        domain = self.agents.domain()
+        gaps = knowledge.assess('rosmaster', prompt, domain)
+        self.agents.gaps(gaps, self.mobile())
+        grasp_knowledge = gaps['how']
+        knowledge_case = None
+        allowed = getattr(self, 'helpers', None)          # experiment conditions: which helpers may be called
+        learning = None
+        if 'how' in gaps['gaps'] and (allowed is None or 'so101' in allowed):
+            # the SO-101 station studies the object on its table WHILE the mobile robots search
+            self.say('learn', f'ROSMASTER не знает, как брать «{prompt}»: SO-101 пробует и измеряет (параллельно с поиском)')
+            station = self.station_factory(lambda m: self.say('learn', m)) if self.station_factory else None
+            if station is None:
+                from .so101_station import SO101Station
+                station = SO101Station(log=lambda m: self.say('learn', m))
+            learning = {'started': time.time()}
+            def learn():
+                try:
+                    learning['result'] = station.practice(prompt)
+                except Exception as exc:
+                    learning['result'] = {'ok': False, 'reason': f'{type(exc).__name__}: {exc}'}
+            learning['thread'] = threading.Thread(target=learn, daemon=True, name='so101-station')
+            learning['thread'].start()
         # 1. where is it
-        item = self._known(prompt, max_age_s=24 * 3600)
+        item = self._known(prompt, max_age_s=knowledge.WHERE_MAX_AGE_S) if 'where' not in gaps['gaps'] else None
         if item is None or not item.get('room_xy'):
             item = self._search(prompt, stages)
             if item is None:
@@ -403,6 +428,16 @@ class Swarm:
         else:
             self.agents.step('search', 'rosmaster', 'из памяти')
             self.agents.step('search', 'tank', 'не нужен')
+        if learning is not None:
+            learning['thread'].join(timeout=180)
+            got = learning.get('result') or {'ok': False, 'reason': 'стенд SO-101 не ответил за 3 мин'}
+            stages.append({'stage': 'learn', 'started': round(learning['started'], 2),
+                           'seconds': round(time.time() - learning['started'], 1), 'ok': got['ok'], 'note': got.get('reason', '')})
+            if got['ok']:
+                grasp_knowledge = got['knowledge']
+                knowledge_case = self.agents.knowledge_help('so101', 'rosmaster', prompt, grasp_knowledge)
+            else:
+                self.say('learn', 'Без знания о предмете: ' + got['reason'] + ' — беру по своей оценке')
         evidence = [e for e in [self.agents.sighting(item)] if e]
         if 'tank' in self.links:
             self.links['tank'].release()               # Tank's part (search) is done
@@ -431,7 +466,9 @@ class Swarm:
                             from .rosmaster_arm import ArmSkills
                             arm = ArmSkills(log=lambda m: self.say('pick', m))
                     self.skill = arm
-                    picked = arm.pick(prompt)
+                    picked = arm.pick(prompt, knowledge=grasp_knowledge)
+                    if grasp_knowledge:
+                        knowledge.record_use(grasp_knowledge['id'], 'rosmaster', picked['ok'], picked.get('reason', ''))
                     self._end_stage(stages, picked['ok'], picked.get('reason', ''))
                     self.agents.step('pick_floor', 'rosmaster', 'держит' if picked['ok'] else 'не взял', picked.get('reason', ''))
                     if not picked['ok']:
@@ -503,7 +540,11 @@ class Swarm:
         taken = handoff.taken.is_set() if hasattr(handoff, 'taken') else False
         self.agents.step('handover', 'so101', ('забрали' if taken else 'протянул') if result['ok'] else 'не смог')
         # the person's «Забрал» is the measurement of the whole task; without it the outcome is unknown
-        self._settle(pending, 'success' if result['ok'] and taken else 'failure' if not result['ok'] else 'unknown')
+        task_outcome = 'success' if result['ok'] and taken else 'failure' if not result['ok'] else 'unknown'
+        if knowledge_case:
+            pending.append((knowledge_case, 'success', 'success' if picked and picked['ok'] else 'failure',
+                            'ROSMASTER взял по знанию SO-101' if picked and picked['ok'] else 'не взял и со знанием'))
+        self._settle(pending, task_outcome)
         if not result['ok']:
             return 'failed', result['reason']
         return 'done', f'«{prompt}» доставлено: ROSMASTER привёз, SO-101 передал'

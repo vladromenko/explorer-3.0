@@ -295,6 +295,34 @@ class FleetAgents:
         return {'option': {'observation': 'helper_observe', 'recovery': 'retry', 'human': 'human'}[option],
                 'donor': donor, 'why': why, 'case': case}
 
+    def gaps(self, assessed, available):
+        """MissionCoordinator: the recipient's knowledge gaps before acting and who can fill each."""
+        from .knowledge import helpers_for
+        c = self.role('MissionCoordinator')
+        if not assessed['gaps']:
+            c.note('знает', 'ROSMASTER знает и где предмет, и как его брать (' + assessed['skill'] + ')')
+            return
+        parts = [f'{g}: {assessed["reasons"][g]} → помощь: {", ".join(helpers_for(g, available + ["so101"]))}' for g in assessed['gaps']]
+        c.note('пробелы', 'Чего не знает ROSMASTER — ' + '; '.join(parts))
+
+    def knowledge_help(self, donor, recipient, prompt, item):
+        """A knowledge transfer (donor measured/practised the object) as a help case; outcome later."""
+        self.role('AssistanceBroker').note('knowledge', f'{donor} передаёт {recipient} знание о «{prompt}»: {item["params"]}')
+        if self.frozen:
+            return None
+        payload = {'object': prompt, 'params': item['params'], 'source': item['source']}
+        now = time.time()
+        ident = f'fleet-knowledge:{item["id"]}'
+        try:
+            store.put_evidence({'id': ident, 'domain': self.domain(), 'robot': donor if donor in ('so101', 'rosmaster', 'tank') else 'so101',
+                                'source': 'so101_station', 'sample_id': ident, 'frame_id': 'so101_table',
+                                'received_timestamp_ns': int(now * 1e9), 'clock_domain': 'homebrain_wall', 'created_at': now,
+                                'expires_at': now + EVIDENCE_TTL_S, 'status': 'observed', 'content_sha256': store.digest(payload),
+                                'payload': payload})
+        except Exception:
+            return None
+        return self._candidate(recipient, donor, 'pick_floor', prompt, 'grasp_knowledge_missing', 'knowledge', [ident])
+
     # ------------------------------------------------------------------ MemoryCurator / OutcomeVerifier
     def _candidate(self, recipient, donor, skill, prompt, reason, kind, evidence_ids):
         if self.frozen:
@@ -309,7 +337,7 @@ class FleetAgents:
                  'donor_episode': f'{self.mission}:{donor}', 'recipient_episode': f'{self.mission}:{recipient}', 'reason': reason,
                  'before_evidence_ids': evidence_ids[:4], 'compatibility': compat, 'assistance_type': kind,
                  'expected_effect': f'свежее положение «{prompt}», затем {recipient} выполняет {skill}',
-                 'actions_provenance': 'observation' if kind == 'observation' else 'scripted', 'actual_effect': {'object': prompt}}
+                 'actions_provenance': 'observation' if kind in ('observation', 'knowledge') else 'scripted', 'actual_effect': {'object': prompt}}
         try:
             store.add_case(value)
         except Exception as exc:

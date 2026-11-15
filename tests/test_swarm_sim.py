@@ -30,6 +30,8 @@ def real(monkeypatch, tmp_path):
     monkeypatch.setattr(episodes, 'ROOT', tmp_path / 'episodes')
     monkeypatch.setattr(so101_handoff, 'CONFIG', tmp_path / 'handoff.json')
     monkeypatch.setattr(swarm_sim, 'SIM', tmp_path / 'sim')
+    from explorer3 import knowledge
+    monkeypatch.setattr(knowledge, 'STORE', tmp_path / 'knowledge.json')
     from explorer3 import catalog
     from explorer3.cognitive import store
     monkeypatch.setattr(catalog, 'DATA', tmp_path)
@@ -102,3 +104,20 @@ def test_search_trial_is_journaled_and_confirmed_by_the_operator(real, monkeypat
     assert rows[0]['seconds'] <= 200
     research_log.confirm(rows[0]['trial_id'], 'верно', 0)
     assert research_log.rows()[0]['confirmed'] == 'верно' and 'A3' in research_log.to_csv()
+
+
+def test_knowledge_gap_calls_the_so101_station_and_the_recipient_uses_it(real):
+    """ROSMASTER does not know how to grasp the cookie -> the SO-101 station measures it -> the
+    recipient grasps with that knowledge; the help case is verified by the recipient's result."""
+    from explorer3 import knowledge
+    team = swarm_sim.enter(seed=3)
+    team.command('принеси печенье')
+    end = time.monotonic() + 300
+    while team.thread.is_alive() and time.monotonic() < end:
+        time.sleep(.5)
+    st = team.status()
+    assert st['stage'] == 'done', st['message']
+    k = knowledge.best('cookie', 'sim')
+    assert k and k['source'] == 'so101_station' and k['uses'] and k['uses'][-1]['success']
+    roles = {r['role']: r for r in st['agents']['roles']}
+    assert roles['OutcomeVerifier']['state'] == 'проверено'

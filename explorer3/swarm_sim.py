@@ -46,6 +46,10 @@ class SimWorld:
         self.delivered = []
         self.collisions = 0
         self.last_seen = {}
+        # object sizes (m). MODELLED ASSUMPTION of the 2D swarm simulation, to be measured on the real
+        # robots: a single-view estimate of the size is off by ~±40 %, and the grasp needs the width
+        # within ±1.5 cm — so wide/flat objects need knowledge from the SO-101 station.
+        self.sizes = {'cookie': .075, 'sock': .085, 'cube': .04, 'bottle': .07, 'cup': .085, 'ball': .065}
         self.relocate_after_seen = set()        # «a person moved it» once, 5 s after the first sighting
         self.vanish_after_seen = set()          # «a person took it away»: help cannot succeed
         self.vanished = set()
@@ -192,7 +196,7 @@ class SimArm:
         self.world, self.log = world, log
         self.stopped = False
 
-    def pick(self, prompt, attempts=3):
+    def pick(self, prompt, attempts=3, knowledge=None):
         """As the real ArmSkills.pick: the arm camera must see it; the base corrects into the reach
         window (0.16-0.26 m ahead), up to three attempts; then the gripper closes on it."""
         from .rosmaster_arm import REACH_X, base_correction
@@ -210,6 +214,12 @@ class SimArm:
             reach = math.hypot(fx, fy)
             if REACH_X[0] <= reach <= REACH_X[1] and abs(fy) <= .05:
                 time.sleep(1.)
+                size = w.sizes.get(prompt, .04)
+                known = ((knowledge or {}).get('params') or {}).get('width_m')
+                guess = known if known else .04 * (1 + w.rng.uniform(-.4, .4))      # single view, no knowledge
+                if abs(guess - size) > .015:
+                    self.log(f'захват промахнулся: ширину «{prompt}» оценил в {guess * 100:.1f} см, на деле {size * 100:.1f} см')
+                    return {'ok': False, 'reason': 'неверная оценка ширины предмета'}
                 w.carried = prompt
                 self.log(f'Взял «{prompt}» (был в {reach:.2f} м)')
                 return {'ok': True, 'grip': 40}
@@ -329,6 +339,10 @@ def enter(seed=None):
                   poses={r: p.as_dict() for r, p in world_memory.POSES.items()})
     world_memory.MEMORY = SIM / 'memory.json'
     world_memory.forget()
+    from . import knowledge as _knowledge
+    _saved['knowledge'] = _knowledge.STORE
+    _knowledge.STORE = SIM / 'object_knowledge.json'
+    _knowledge.STORE.unlink(missing_ok=True)
     episodes.ROOT = SIM / 'episodes'
     so101_handoff.CONFIG = SIM / 'handoff.json'
     with fleet_map.FLEET.lock:
@@ -348,7 +362,9 @@ def enter(seed=None):
         kw['scout'] = False                       # the virtual cameras report sightings themselves
         return explore.Explore(robot, **kw)
 
+    from .so101_station import SimSO101Station
     swarm.SWARM = swarm.Swarm(tank=SimLink(world, 'tank'), ros=SimLink(world, 'rosmaster'),
+                              station_factory=lambda log: SimSO101Station(world, log),
                               arm_factory=lambda say: SimArm(world, lambda m: say('pick', m)),
                               so101_factory=lambda prompt, log: SimHandoff(world, prompt, log),
                               explore_factory=explore_factory,
@@ -371,6 +387,8 @@ def leave():
     WORLD = None
     swarm.SWARM = _saved['swarm']
     world_memory.MEMORY = _saved['memory']
+    from . import knowledge as _knowledge
+    _knowledge.STORE = _saved.get('knowledge', _knowledge.STORE)
     episodes.ROOT = _saved['episodes']
     so101_handoff.CONFIG = _saved['handoff']
     explore.ACTIVE.clear()
