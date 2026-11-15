@@ -18,6 +18,9 @@ from leased_core import LeasedCore
 from control_adapter import NativeControls, ManualCartesianModel
 
 
+
+MEASURED_LIDAR_MOUNTS={'scan0':(-.11617,.09156,math.radians(-2.)),'scan1':(.10766,-.09078,math.radians(178.))}
+
 class NativeIO(BaseIO):
     REALTIME=True
 
@@ -275,8 +278,11 @@ class Runtime:
                             parts=[]
                             for name,(scan,stamp) in self.scans.items():
                                 if now-stamp<.5:
-                                    parts.append(scan_to_base(scan['ranges'],0,2*math.pi/666,.02,12,
-                                        self.cfg['odometry']['lidar_mounts'][name]))
+                                    # Measured 2026-11-14 (both lidars agreeing + depth slice): both MS200
+                                    # sweep CLOCKWISE, laser0 yaw -2 deg, laser1 yaw 178 deg. The CubeBot
+                                    # values (CCW, yaw 0) put the wall behind the robot in front of it.
+                                    x,y,yaw=MEASURED_LIDAR_MOUNTS[name]
+                                    parts.append(scan_to_base(scan['ranges'],0,-2*math.pi/666,.02,12,[x,y,yaw]))
                             self.io.scan=build_scan(parts,self.cfg['odometry']['lidar_self_mask']) if parts else None
                             self.io.control_step(dt)
                 elif self.lease is not None:
