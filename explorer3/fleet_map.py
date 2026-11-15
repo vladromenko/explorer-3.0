@@ -234,8 +234,10 @@ class Grid:
         return bad / max(1, len(pts))
 
     def consistency(self, pts, pose):
-        """Evidence against a pose: scan walls in known free floor + beams through known walls."""
-        return self.conflicts(pts, pose) + self.passthrough(pts, pose)
+        """Evidence against a pose: scan walls in known free floor + beams through known walls.
+        Pass-through is weighted by half: in a real cluttered room beams graze chair legs and edges
+        (25–40 % even for the right pose, measured 15.11.2026), in simulation it is near zero."""
+        return self.conflicts(pts, pose) + .5 * self.passthrough(pts, pose)
 
     def locate_global(self, pts):
         """Where in the whole map could this scan have been taken? -> (quality, pose, ambiguous)."""
@@ -438,7 +440,7 @@ class FleetMap:
                          message=f'Строит свою карту ({len(sub["keys"])} сканов), пока не узнает общие стены'
                                  + s.get('global_note', ''))
 
-    def _submap_fits(self, robot, main_pose, limit=.12):
+    def _submap_fits(self, robot, main_pose, limit=.25):
         """Before stitching: every scan of the robot's own map, placed by the proposed transform,
         must agree with the shared map (a whole room seen from several places is much stronger
         evidence than one scan — symmetric rooms fool one scan, not the whole submap)."""

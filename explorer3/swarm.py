@@ -316,8 +316,10 @@ class Swarm:
         self._stage(stages, 'search', f'Ищем «{prompt}» ' + ('вдвоём' if len(robots or self.mobile()) > 1 else f'({NAMES[(robots or self.mobile())[0]]})'))
 
         def found():
-            item = world_memory.target_for(None, prompt)
-            if item is not None and item['at'] >= started:
+            # any fresh sighting counts — also from a robot that does not know its place on the map
+            # yet (then the object has no room position, the camera still saw it)
+            item = latest_sighting(prompt, started)
+            if item is not None:
                 return f'{NAMES.get(item["robot"], item["robot"])} нашёл «{prompt}»'
             return None
 
@@ -326,6 +328,8 @@ class Swarm:
             self.agents.step('search', r, 'идёт')
         self._wait(list(goals.values()), 900)
         item = world_memory.target_for(None, prompt)
+        if item is None or item['at'] < started:
+            item = latest_sighting(prompt, started)
         ok = item is not None and item['at'] >= started
         for r in goals:
             self.agents.step('search', r, ('нашёл' if ok and item['robot'] == r else 'готово') if ok else 'не нашёл')
@@ -336,6 +340,9 @@ class Swarm:
         item = self._search(prompt, stages)
         if item is None:
             return 'not_found', f'«{prompt}» не найден ни одним роботом'
+        if not item.get('room_xy'):
+            return 'done', (f'{NAMES.get(item["robot"], item["robot"])} видит «{prompt}» в {item["distance"]:.1f} м '
+                            f'(место на общей карте пока неизвестно)')
         x, y = item['room_xy']
         return 'done', f'{NAMES.get(item["robot"], item["robot"])} нашёл «{prompt}» в точке ({x:.1f}; {y:.1f}) м'
 
@@ -489,6 +496,12 @@ class Swarm:
 
 
 SWARM = None
+
+
+def latest_sighting(prompt, since):
+    """Newest sighting of `prompt` recorded after `since` (with or without a room position)."""
+    items = [i for i in world_memory._load() if i['prompt'] == prompt and i['at'] >= since]
+    return max(items, key=lambda i: i['at']) if items else None
 
 
 def _on_sighting(item):

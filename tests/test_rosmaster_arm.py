@@ -49,7 +49,7 @@ def test_reach_window_and_base_correction():
     plan, why = ra.plan_grasp(np.array([.40, 0., .025]), SERVO)
     assert plan is None and 'досягаемости' in why
     forward, turn = ra.base_correction(np.array([.40, 0., .025]))
-    assert forward == pytest.approx(.40 - sum(ra.REACH_X) / 2) and turn == 0.
+    assert forward == pytest.approx(.40 - (ra.REACH_X[1] - .02)) and turn == 0.   # far edge: the camera still sees it
     forward, turn = ra.base_correction(np.array([.20, .10, .025]))
     assert turn > .3
 
