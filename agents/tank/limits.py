@@ -109,3 +109,51 @@ def guard(value, v, w, *, battery=None, front=None, rear=None, autonomous=False,
         if distance is not None and distance < limit:
             return (0., w), 'Препятствие впереди' if v > 0 else 'Препятствие сзади'
     return (v, w), None
+
+
+def depth_obstacle(points, *, half_width=.13, min_height=.02, max_height=.30, max_range=1.0, min_points=12, rng=None):
+    """Nearest obstacle ahead from the depth camera's metric cloud (optical frame: x right,
+    y down, z forward). The floor plane is fitted on every cloud (RANSAC), so the camera tilt does
+    not need to be known: points 2–30 cm above the floor inside the robot's width are obstacles.
+    Low things the 2D lidar misses (chair legs and wheels, bags) are what this is for.
+    Returns (forward distance in m or None, floor_found)."""
+    import numpy as np
+    pts = np.asarray(points, dtype=float).reshape(-1, 3)
+    pts = pts[np.isfinite(pts).all(1) & (pts[:, 2] > .05) & (pts[:, 2] < 3.)]
+    if len(pts) < 50:
+        return None, False
+    rng = rng or np.random.default_rng(0)
+    best, best_n = None, 0
+    near = pts[pts[:, 2] < 2.]
+    lower = near[near[:, 1] >= np.percentile(near[:, 1], 50)] if len(near) > 30 else pts  # floor: lower half of the view
+    for _ in range(120):
+        a, b, c = lower[rng.choice(len(lower), 3, replace=False)]
+        n = np.cross(b - a, c - a)
+        norm = np.linalg.norm(n)
+        if norm < 1e-9:
+            continue
+        n = n / norm
+        if n[1] < 0:
+            n = -n
+        if n[1] < math.cos(math.radians(50)):                       # must look like a floor (y down)
+            continue
+        inliers = int((np.abs((pts - a) @ n) < .012).sum())
+        if inliers > best_n:
+            best, best_n = (a, n), inliers
+    if best is None or best_n < max(60, .05 * len(pts)):
+        # no floor in view: whatever is inside the robot's corridor this close is above the floor
+        sel = (np.abs(pts[:, 0]) < half_width) & (pts[:, 2] < max_range)
+        if sel.sum() < min_points:
+            return None, False
+        return float(np.sort(pts[sel, 2])[min_points - 1]), False
+    a, n = best
+    height = -((pts - a) @ n)                                        # above the floor (y is down)
+    # forward / lateral in the floor plane
+    fwd = np.array([0., 0., 1.]) - n * n[2]
+    fwd /= np.linalg.norm(fwd)
+    side = np.cross(n, fwd)
+    f, s = pts @ fwd, pts @ side
+    sel = (height > min_height) & (height < max_height) & (np.abs(s) < half_width) & (f > 0) & (f < max_range)
+    if sel.sum() < min_points:
+        return None, True
+    return float(np.sort(f[sel])[min_points - 1]), True

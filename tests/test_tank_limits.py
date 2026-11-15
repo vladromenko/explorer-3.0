@@ -121,3 +121,24 @@ def test_autonomous_sessions_always_stop_before_obstacles():
 def json_copy(v):
     import json
     return json.loads(json.dumps(v))
+
+
+def test_depth_guard_sees_low_obstacle_on_a_tilted_floor():
+    import math
+    import numpy as np
+    from agents.tank.limits import depth_obstacle
+    rng = np.random.default_rng(3)
+    pitch = math.radians(12)                     # camera tilted down, unknown to the guard
+    xs, fs = np.meshgrid(np.linspace(-.6, .6, 40), np.linspace(.25, 2.5, 70))
+    floor = np.c_[xs.ravel(), np.zeros(xs.size), fs.ravel()]           # (side, height, forward) in the floor frame
+    leg = np.c_[rng.uniform(-.02, .02, 120), rng.uniform(.01, .08, 120), np.full(120, .40)]   # chair wheel/leg
+    wall = np.c_[rng.uniform(-.6, .6, 400), rng.uniform(.0, 1., 400), np.full(400, 2.5)]
+    def to_camera(p, h=.14):
+        side, up, fwd = p[:, 0], p[:, 1] - h, p[:, 2]
+        y = -up * math.cos(pitch) + fwd * math.sin(pitch)
+        z = up * math.sin(pitch) + fwd * math.cos(pitch)
+        return np.c_[side, y, z]
+    d, floor_found = depth_obstacle(to_camera(np.r_[floor, wall]))
+    assert floor_found and d is None
+    d, floor_found = depth_obstacle(to_camera(np.r_[floor, wall, leg]))
+    assert floor_found and abs(d - .40) < .05

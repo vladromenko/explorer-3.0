@@ -191,11 +191,15 @@ def test_fetch_unknown_object_team_search_stops_both():
     assert [x['stage'] for x in episodes.load()[0]['stages']][0] == 'search'
 
 
-def test_fetch_requires_taught_handover():
-    s, _, _ = make([])
+def test_fetch_without_taught_handover_ends_with_rosmaster_holding():
+    world_memory.POSES['tank'].fix(0., 0., 0.)
+    world_memory.record('tank', 'к печенью', 'cookie', 1.0, 0.)
+    arms = []
+    s, _, _ = make(arms)
     s.command('принеси печенье')
     wait(s)
-    assert s.state['stage'] == 'error' and 'покажите места передачи' in s.state['message']
+    assert s.state['stage'] == 'done' and 'держит' in s.state['message'], s.state
+    assert not any(c[0] == 'place' for c in arms[0].calls)
 
 
 def test_stop_cancels_everybody():

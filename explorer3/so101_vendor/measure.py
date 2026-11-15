@@ -66,7 +66,11 @@ def measure(prompt, image=None, device='cuda'):
     if image is None:
         image = out / 'overview.jpg'
         capture(image)
-    rep = analyze(image, out, 'sam3', prompt, device=device)
+    # SAM 3 is sensitive to wording: the source project used phrases like «small colored cube»
+    for text in (prompt, f'small {prompt}', f'small colored {prompt}', f'a {prompt} on the table'):
+        rep = analyze(image, out, 'sam3', text, device=device)
+        if rep['scores']:
+            break
     if not rep['scores']:
         return {'ok': False, 'reason': f'SAM 3 не нашёл «{prompt}» на столе SO-101', 'dir': str(out)}
     masks = np.load(rep['masks'])['masks']
@@ -80,6 +84,16 @@ def measure(prompt, image=None, device='cuda'):
     except ValueError as exc:
         return {'ok': False, 'reason': f'силуэт не годится для измерения: {exc}', 'dir': str(out)}
     model = 'cuboid'
+    sides = (box['width_m'] + box['length_m']) / 2
+    if (box.get('height_sigma_m') or 0) > .25 * box['height_m'] or box['height_m'] > 2.5 * box['length_m']:
+        # seen from (almost) straight above: the side faces are hidden, the height is not observable.
+        # Assume a cube-like height (= mean side) and refit the footprint with it fixed, twice.
+        h = sides
+        for _ in range(2):
+            box = fit_upright_cuboid(masks[i], calib, height_m=h)
+            h = (box['width_m'] + box['length_m']) / 2
+        box['height_measured'] = False
+        model = 'cuboid, height assumed'
     try:                                  # the source project's validated cube fit, when it explains the silhouette
         _, ev = fit_upright_cube([(masks[i], calib)])
         if abs(ev['size_m'] - box['width_m']) < .004:
@@ -93,6 +107,7 @@ def measure(prompt, image=None, device='cuda'):
         return {'ok': False, 'reason': f'нереальный размер {w:.3f} м', 'dir': str(out)}
     result = {'ok': True, 'model': model, 'width_m': round(w, 4), 'length_m': round(box['length_m'], 4),
               'height_m': round(box['height_m'], 4), 'height_sigma_m': box.get('height_sigma_m'),
+              'height_measured': bool(box.get('height_measured', True)),
               'center_m': box['center_m'], 'yaw_rad': box['yaw_rad'], 'silhouette_rmse_px': round(box['silhouette_rmse_px'], 2),
               'score': float(rep['scores'][i]), 'image': str(image), 'overlay': rep['overlay'], 'dir': str(out),
               'calibration': str(CALIBRATION)}

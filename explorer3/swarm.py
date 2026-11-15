@@ -391,8 +391,8 @@ class Swarm:
     def _fetch(self, prompt, text, stages):
         from . import so101_handoff
         missing = so101_handoff.missing()
-        if missing:
-            raise RuntimeError('Сначала один раз покажите места передачи: ' + '; '.join(missing))
+        if missing:      # no taught hand-over: the mission ends with ROSMASTER holding the object
+            self.say('locate', 'Места передачи SO-101 не показаны: ROSMASTER найдёт, возьмёт и будет держать предмет')
         cfg = so101_handoff.load()
         if 'rosmaster' not in self.links:
             raise RuntimeError('Принести может только ROSMASTER: он не подключён')
@@ -458,7 +458,9 @@ class Swarm:
         picked = None
         try:
             for attempt in range(1 + 2):
-                # 2. ROSMASTER drives to it
+                # 2. ROSMASTER drives to it (the arm hands the chassis back first)
+                if arm is not None:
+                    arm.release()
                 self._stage(stages, 'approach', f'ROSMASTER едет к «{prompt}»' + (f' (попытка {attempt + 1})' if attempt else ''))
                 self.agents.step('approach', 'rosmaster', 'идёт')
                 goal = self._make_goto('rosmaster', 'к ' + prompt)
@@ -519,6 +521,12 @@ class Swarm:
             else:
                 self._settle(pending, 'failure')
                 return 'failed', message
+            if missing:
+                self.agents.step('deliver', 'rosmaster', 'не нужен: передача не настроена')
+                if knowledge_case:
+                    pending.append((knowledge_case, 'success', 'success', 'ROSMASTER взял по знанию SO-101'))
+                self._settle(pending, 'success')
+                return 'done', f'ROSMASTER взял «{prompt}» и держит его (передача SO-101 не настроена)'
             arm.release()
             # 4. to the hand-over spot
             self._stage(stages, 'deliver', 'ROSMASTER везёт к SO-101')

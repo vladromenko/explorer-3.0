@@ -148,7 +148,17 @@ class ArmSkills:
         if not self.rc.request('/health', timeout=4).get('hardware_open'):
             self.rc.request('/acquire', {}, 45)          # take the serial port from the native bridge
         self.op.input(OWNER, self.rc.ZERO)
-        self.op.enable(OWNER, profile, 'joint' if profile == 'rosmaster_pick_place' else 'cartesian', True, source='policy')
+        # right after a drive the chassis still rolls: the agent refuses the arm until odometry is still
+        end = time.monotonic() + 10.
+        while True:
+            try:
+                self.op.enable(OWNER, profile, 'joint' if profile == 'rosmaster_pick_place' else 'cartesian', True, source='policy')
+                break
+            except Exception as exc:              # the agent's refusal arrives as RuntimeError over HTTP
+                if 'неподвижно' not in str(exc) or time.monotonic() > end:
+                    raise
+                self.op.input(OWNER, self.rc.ZERO)
+                time.sleep(.3)
         self.profile = profile
         if getattr(self, 'beat', None) is None or not self.beat.is_alive():
             # sign of life for the session watchdog while SAM 3 loads/recognizes (no motion implied)
@@ -494,8 +504,13 @@ class ArmSkills:
                 step = T[:3, :3] @ np.array([0., 0., h - nxt])
                 tcp_now = np.asarray(ARM.tcp_position(servo))
                 pitch_now = math.degrees(ARM.approach_pitch_down(servo))
-                sol, _ = ARM.ik(tcp_now + step, pitch_now, servo, stay_weight=.0004)
+                sol = None
+                for p in (pitch_now, pitch_now - 10, pitch_now + 10, pitch_now - 20, pitch_now + 20):
+                    sol, _ = ARM.ik(tcp_now + step, p, servo, stay_weight=.0004)
+                    if sol is not None:
+                        break
                 if sol is None:
+                    self.log(f'наведение: нет решения для спуска к h={nxt:.2f}')
                     return None
                 new = [float(v) for v in list(sol)[:4]] + [servo[4], GRIP_OPEN]
                 if not ARM.collision_free(new, .005):

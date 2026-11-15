@@ -202,6 +202,37 @@ def install(app, ui, control, notify_error, css=''):
         data = camera_jpeg(robot)
         return Response(data, media_type='image/jpeg', headers={'Cache-Control': 'no-store'}) if data else Response(status_code=204)
 
+    # Local automation (scripts on Homebrain only): the same actions as the buttons on /swarm.
+    from fastapi import Request
+
+    def _local(request):
+        return request.client is not None and request.client.host in ('127.0.0.1', '::1')
+
+    @app.post('/api/swarm/command')
+    def swarm_command(request: Request, text: str, robots: str = ''):
+        from . import swarm
+        if not _local(request):
+            return Response(status_code=403)
+        try:
+            kind, prompt = swarm.SWARM.command(text, [r for r in robots.split(',') if r] or None)
+        except Exception as exc:
+            return {'ok': False, 'error': str(exc)}
+        return {'ok': True, 'kind': kind, 'prompt': prompt}
+
+    @app.post('/api/swarm/stop')
+    def swarm_stop(request: Request):
+        from . import swarm
+        swarm.SWARM.stop('STOP (скрипт)')        # stopping is allowed from anywhere
+        return {'ok': True}
+
+    @app.get('/api/swarm/status')
+    def swarm_status(request: Request):
+        from . import swarm
+        if not _local(request):
+            return Response(status_code=403)
+        st = swarm.SWARM.status()
+        return {k: st.get(k) for k in ('task', 'stage', 'message', 'active', 'robots')} | {'log': st.get('log', [])[-25:]}
+
     @app.get('/research/search_trials.csv')
     def search_trials_csv():
         from . import research_log

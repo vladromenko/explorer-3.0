@@ -26,12 +26,12 @@ from pydantic import BaseModel
 
 if __package__:
     from .native_client import NativeDriver
-    from .limits import load as load_limits, Ramp, guard as sensor_guard, sector_distance, tilt_degrees
+    from .limits import load as load_limits, Ramp, guard as sensor_guard, sector_distance, tilt_degrees, depth_obstacle
     from .motor_link import LinkState,UdevMonitor,controller_present
     from .motion_permission import require_motion_permission, limited_command, bench_authorized
 else:
     from native_client import NativeDriver
-    from limits import load as load_limits, Ramp, guard as sensor_guard, sector_distance, tilt_degrees
+    from limits import load as load_limits, Ramp, guard as sensor_guard, sector_distance, tilt_degrees, depth_obstacle
     from motor_link import LinkState,UdevMonitor,controller_present
     from motion_permission import require_motion_permission, limited_command, bench_authorized
 
@@ -47,6 +47,7 @@ class Hardware:
         self.limits=load_limits(ROOT)
         self.ramp=Ramp(self.limits)
         self.scan_front=None;self.scan_rear=None;self.scan_time=None
+        self.depth_front=None;self.depth_time=None;self.depth_floor=False
         self.minimum_battery=None;self.minimum_load_battery=None;self.initial_battery=None
         self.guard_reason=None;self.requested_action=[0.,0.]
         self.limit_events=0;self.last_serial_write=None
@@ -90,7 +91,7 @@ class Hardware:
         with self.lock:
             return {'robot':'tank','software':self.software,'armed':self.armed,'hardware_open':self.board is not None,
                     'sensor_errors':getattr(self,'sensor_errors',{}),'lidar':{'running':lidar_alive(),'error':LIDAR_STATE['error'],'restarts':LIDAR_STATE['restarts']},
-                    'motion_paused':self.motion_paused,'mode':self.mode,'task_profile':self.task_profile,
+                    'motion_paused':self.motion_paused,'depth_guard':{'front_m':self.depth_front,'floor':self.depth_floor,'age_s':None if self.depth_time is None else round((time.monotonic_ns()-self.depth_time)/1e9,2)},'mode':self.mode,'task_profile':self.task_profile,
                     'reason':self.reason,'action':self.last_action,'motor_acknowledged':False,
                     'fault':self.fault,'neutral_written':self.neutral_written,
                     'motor_link':self.link.status(),'usb_monitor_error':self.udev.error,
@@ -234,7 +235,7 @@ class Hardware:
         import rclpy
         from rclpy.node import Node
         from rclpy.qos import QoSProfile,ReliabilityPolicy
-        from sensor_msgs.msg import Image, LaserScan
+        from sensor_msgs.msg import Image, LaserScan, PointCloud2
         rclpy.init()
         self.node=Node('explorer3_tank_camera_receiver',namespace='/explorer3/tank')
         self.ros_stop.clear()
@@ -268,6 +269,23 @@ class Hardware:
                 self.scan_time=time.monotonic_ns()
         self.scan_subscription=self.node.create_subscription(LaserScan,'/explorer3/tank/scan_raw',scan,
             QoSProfile(depth=1,reliability=ReliabilityPolicy.BEST_EFFORT))
+        # Depth camera: low obstacles below the lidar plane (chair legs and wheels, bags) — the
+        # floor is fitted in every cloud, so the camera tilt need not be known (limits.depth_obstacle)
+        def cloud(msg):
+            try:
+                fields={f.name:f for f in msg.fields}
+                dtype=np.dtype({'names':['x','y','z'],'formats':[('>' if msg.is_bigendian else '<')+'f4']*3,
+                                'offsets':[fields[k].offset for k in ('x','y','z')],'itemsize':msg.point_step})
+                pts=np.frombuffer(bytes(msg.data),dtype=dtype)[::23]
+                pts=np.stack([pts['x'],pts['y'],pts['z']],axis=1).astype(float)
+                distance,floor=depth_obstacle(pts)
+                with self.lock:
+                    self.depth_front,self.depth_floor,self.depth_time=distance,floor,time.monotonic_ns()
+            except Exception as exc:
+                self.sensor_errors['depth_guard']=f'{type(exc).__name__}: {exc}'[:200]
+        for topic in ('/explorer3/tank/camera/points2','/explorer3/tank/camera/depth0/points','/ascamera/camera_publisher/depth0/points'):
+            setattr(self,'cloud_subscription_'+topic.split('/')[-1]+str(len(topic)),
+                    self.node.create_subscription(PointCloud2,topic,cloud,QoSProfile(depth=1,reliability=ReliabilityPolicy.BEST_EFFORT)))
         # After a power cycle the factory MentorPi node may own the lidar (same CCW 0..360 sweep)
         self.factory_scan_subscription=self.node.create_subscription(LaserScan,'/scan_raw',scan,
             QoSProfile(depth=1,reliability=ReliabilityPolicy.BEST_EFFORT))
@@ -317,6 +335,7 @@ class Hardware:
             if self.cancel_start.is_set():raise RuntimeError('STOP during native startup')
             (ROOT/'hardware-active.json').write_text(json.dumps({'boot_id':Path('/proc/sys/kernel/random/boot_id').read_text().strip()}))
             self.scan_time=None;self.scan_front=None;self.scan_rear=None
+            self.depth_front=None;self.depth_time=None;self.depth_floor=False
             self.sensor_errors={}
             # Camera and lidar are optional for driving: a failure is reported, not fatal.
             try:self.start_camera()
@@ -352,7 +371,11 @@ class Hardware:
         if autonomous and v!=0. and (self.scan_time is None or age(self.scan_time)>.5):
             # autonomy without a fresh lidar: no translation (turning in place stays allowed)
             return (0.,w),'Нет свежего лидара: автономная езда вперёд/назад запрещена'
-        return sensor_guard(self.limits,v,w,battery=self.battery,front=self.scan_front,rear=self.scan_rear,
+        front=self.scan_front
+        if autonomous and v>0. and self.depth_time is not None and age(self.depth_time)<1.:
+            if self.depth_front is not None:
+                front=self.depth_front if front is None else min(front,self.depth_front)
+        return sensor_guard(self.limits,v,w,battery=self.battery,front=front,rear=self.scan_rear,
                             autonomous=autonomous)
 
     def command(self,lease,sequence,v,w):
