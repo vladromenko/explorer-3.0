@@ -1,0 +1,138 @@
+{
+ "explore/solo": {
+  "runs": 30,
+  "finished": 29,
+  "finished_ci95": [
+   0.833,
+   0.994
+  ],
+  "median_s": 62.2,
+  "median_s_ci95": [
+   42.2,
+   74.2
+  ],
+  "time": "t95 (95% of the reachable room)",
+  "collisions": 0,
+  "final_coverage_mean": 0.994
+ },
+ "explore/team": {
+  "runs": 30,
+  "finished": 30,
+  "finished_ci95": [
+   0.886,
+   1.0
+  ],
+  "median_s": 30.2,
+  "median_s_ci95": [
+   26.2,
+   37.2
+  ],
+  "time": "t95 (95% of the reachable room)",
+  "collisions": 0,
+  "final_coverage_mean": 0.997
+ },
+ "explore/team3": {
+  "runs": 30,
+  "finished": 30,
+  "finished_ci95": [
+   0.886,
+   1.0
+  ],
+  "median_s": 30.2,
+  "median_s_ci95": [
+   26.2,
+   35.2
+  ],
+  "time": "t95 (95% of the reachable room)",
+  "collisions": 0,
+  "final_coverage_mean": 0.997
+ },
+ "speedup_explore/team": {
+  "pairs": 30,
+  "median_speedup": 1.67,
+  "median_speedup_ci95": [
+   1.38,
+   1.9
+  ],
+  "team_faster_in": 23,
+  "wilcoxon_p": 3.1e-05
+ },
+ "speedup_explore/team3": {
+  "pairs": 30,
+  "median_speedup": 1.75,
+  "median_speedup_ci95": [
+   1.44,
+   2.16
+  ],
+  "team_faster_in": 25,
+  "wilcoxon_p": 2.9e-05
+ },
+ "find/solo": {
+  "runs": 30,
+  "finished": 29,
+  "finished_ci95": [
+   0.833,
+   0.994
+  ],
+  "median_s": 65.5,
+  "median_s_ci95": [
+   39.0,
+   75.75
+  ],
+  "time": "object found",
+  "collisions": 0,
+  "final_coverage_mean": 0.876
+ },
+ "find/team": {
+  "runs": 30,
+  "finished": 29,
+  "finished_ci95": [
+   0.833,
+   0.994
+  ],
+  "median_s": 22.0,
+  "median_s_ci95": [
+   16.75,
+   42.0
+  ],
+  "time": "object found",
+  "collisions": 0,
+  "final_coverage_mean": 0.781
+ },
+ "find/team3": {
+  "runs": 30,
+  "finished": 30,
+  "finished_ci95": [
+   0.886,
+   1.0
+  ],
+  "median_s": 15.12,
+  "median_s_ci95": [
+   6.38,
+   29.12
+  ],
+  "time": "object found",
+  "collisions": 0,
+  "final_coverage_mean": 0.744
+ },
+ "speedup_find/team": {
+  "pairs": 30,
+  "median_speedup": 1.64,
+  "median_speedup_ci95": [
+   1.15,
+   2.89
+  ],
+  "team_faster_in": 21,
+  "wilcoxon_p": 0.00019
+ },
+ "speedup_find/team3": {
+  "pairs": 30,
+  "median_speedup": 3.86,
+  "median_speedup_ci95": [
+   1.72,
+   5.84
+  ],
+  "team_faster_in": 26,
+  "wilcoxon_p": 1.1e-05
+ }
+}

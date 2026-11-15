@@ -1,0 +1,51 @@
+{
+ "explore/solo": {
+  "runs": 30,
+  "reached_90pct": 30,
+  "median_t90_s": 45.2,
+  "reached_80pct": 30,
+  "median_t80_s": 28.200000000000003,
+  "mean_final_coverage": 0.994,
+  "collisions_per_run": 0
+ },
+ "explore/team": {
+  "runs": 30,
+  "reached_90pct": 30,
+  "median_t90_s": 26.2,
+  "reached_80pct": 30,
+  "median_t80_s": 16.2,
+  "mean_final_coverage": 0.997,
+  "collisions_per_run": 0
+ },
+ "explore/team3": {
+  "runs": 30,
+  "reached_90pct": 30,
+  "median_t90_s": 27.2,
+  "reached_80pct": 30,
+  "median_t80_s": 18.2,
+  "mean_final_coverage": 0.997,
+  "collisions_per_run": 0
+ },
+ "find/solo": {
+  "runs": 30,
+  "found": 29,
+  "median_find_s": 65.5,
+  "mean_find_s": 71.4
+ },
+ "find/team": {
+  "runs": 30,
+  "found": 29,
+  "median_find_s": 22.0,
+  "mean_find_s": 32.8
+ },
+ "find/team3": {
+  "runs": 30,
+  "found": 30,
+  "median_find_s": 15.125,
+  "mean_find_s": 24.7
+ },
+ "speedup_explore/team": 1.25,
+ "speedup_find/team": 1.63,
+ "speedup_explore/team3": 1.1,
+ "speedup_find/team3": 2.53
+}
