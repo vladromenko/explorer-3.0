@@ -123,6 +123,13 @@ def run_job(path: Path):
         from .act_support import prepare
         prepare(cfg['source_job'],work)
         return
+    if cfg.get('kind') == 'sim_align':
+        result = subprocess.run([str(ROOT/'.venv-sim/bin/python'), str(ROOT/'scripts/sim_align.py'), '--apply'],
+                                cwd=ROOT, env={**offline_environment(), 'MUJOCO_GL': 'egl'}, capture_output=True, text=True, timeout=600)
+        (work/'result.json').write_text(result.stdout or json.dumps({'error': result.stderr[-2000:]}))
+        if result.returncode:
+            raise RuntimeError('Подстройка сцены не выполнена: ' + result.stderr[-300:])
+        return
     if cfg.get('kind') == 'deploy_gate':
         from .deploy_gate import run
         run(cfg['source_job'], work)

@@ -104,3 +104,20 @@ def test_lost_motor_link_writes_neutral_as_soon_as_the_board_is_back(monkeypatch
             break
         time.sleep(.1)
     assert writes == ['neutral'] * 3 and hw.recovery_needed is False and hw.armed is False
+
+
+def test_autonomous_sessions_always_stop_before_obstacles():
+    """Manual driving keeps the optional stop off; swarm/policy sessions stop 0.25 m from the lidar
+    (0.17 m to the nose + margin) — the chair hit of 15.11.2026 happened with the stop off."""
+    from agents.tank.limits import DEFAULTS, guard
+    value = json_copy(DEFAULTS)
+    assert guard(value, .2, 0., front=.22)[1] is None                       # manual: off by default
+    cmd, why = guard(value, .2, .3, front=.22, autonomous=True)
+    assert cmd == (0., .3) and why
+    assert guard(value, .2, 0., front=.4, autonomous=True)[1] is None
+    assert guard(value, -.1, 0., front=.1, rear=.5, autonomous=True)[1] is None   # backing away is allowed
+
+
+def json_copy(v):
+    import json
+    return json.loads(json.dumps(v))

@@ -270,6 +270,10 @@ class Jobs:
         return self._insert(source['profile'],'act',{'kind':'support_calibration','source_job':job_id,
             'profile':source['profile'],'device':'cpu'})
 
+    def sim_align(self):
+        """Fit the MuJoCo scenes of blocks 3/4 to the recorded real demonstrations (scripts/sim_align.py)."""
+        return self._insert('sim_alignment','sim_align',{'kind':'sim_align','device':'cpu'})
+
     def deploy_gate(self, job_id):
         """«Допуск к роботу» for a completed training (explorer3/deploy_gate.py); queues the MuJoCo
         check on the mirrored task first when it has not run."""

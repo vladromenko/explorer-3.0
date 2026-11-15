@@ -268,6 +268,9 @@ class Hardware:
                 self.scan_time=time.monotonic_ns()
         self.scan_subscription=self.node.create_subscription(LaserScan,'/explorer3/tank/scan_raw',scan,
             QoSProfile(depth=1,reliability=ReliabilityPolicy.BEST_EFFORT))
+        # After a power cycle the factory MentorPi node may own the lidar (same CCW 0..360 sweep)
+        self.factory_scan_subscription=self.node.create_subscription(LaserScan,'/scan_raw',scan,
+            QoSProfile(depth=1,reliability=ReliabilityPolicy.BEST_EFFORT))
         def spin():
             while not self.ros_stop.is_set():
                 rclpy.spin_once(self.node,timeout_sec=.1)
@@ -345,7 +348,12 @@ class Hardware:
         age=lambda stamp:float('inf') if stamp is None else max(0.,(now-stamp)/1e9)
         # Factory SDK returns acceleration in g and gyro in degrees/s.
         acceleration=[x*9.80665 for x in self.imu[:3]] if self.imu and len(self.imu)>=6 else None
-        return sensor_guard(self.limits,v,w,battery=self.battery,front=self.scan_front,rear=self.scan_rear)
+        autonomous=self.mode!='manual'
+        if autonomous and v!=0. and (self.scan_time is None or age(self.scan_time)>.5):
+            # autonomy without a fresh lidar: no translation (turning in place stays allowed)
+            return (0.,w),'Нет свежего лидара: автономная езда вперёд/назад запрещена'
+        return sensor_guard(self.limits,v,w,battery=self.battery,front=self.scan_front,rear=self.scan_rear,
+                            autonomous=autonomous)
 
     def command(self,lease,sequence,v,w):
         with self.lock:

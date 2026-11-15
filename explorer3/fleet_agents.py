@@ -107,9 +107,14 @@ class Role:
 
 
 class FleetAgents:
-    def __init__(self, swarm, domain=lambda: 'real'):
+    COMPARISONS = ('M0', 'M2', 'M3')    # no memory / memory without recipient check / with it (RESEARCH_PROTOCOL AG2)
+
+    def __init__(self, swarm, domain=lambda: 'real', comparison='M3'):
         self.swarm = swarm
         self.domain = domain
+        if comparison not in self.COMPARISONS:
+            raise ValueError('Unknown comparison')
+        self.comparison = comparison
         self.roles = {name: Role(name) for name in ROLES}
         self.plan = []
         self.mission = None
@@ -130,7 +135,7 @@ class FleetAgents:
         return self.skills[ident]
 
     def status(self):
-        return {'roles': [r.status() for r in self.roles.values()], 'plan': list(self.plan),
+        return {'roles': [r.status() for r in self.roles.values()], 'plan': list(self.plan), 'comparison': self.comparison,
                 'mission': self.mission, 'helps': self.helps, 'domain': self.domain()}
 
     # ------------------------------------------------------------------ MissionCoordinator
@@ -232,7 +237,7 @@ class FleetAgents:
         found = {'accepted': [], 'rejected': []}
         if evidence_ids:
             try:
-                found = store.retrieve('fleet_' + skill, reason, card, 'named_object', self.domain(), comparison='M3')
+                found = store.retrieve('fleet_' + skill, reason, card, 'named_object', self.domain(), comparison=self.comparison)
             except Exception as exc:
                 b.note('ошибка', f'память недоступна: {exc}')
         stats = collections.defaultdict(lambda: [0, 0])

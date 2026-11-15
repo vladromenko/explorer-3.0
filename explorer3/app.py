@@ -691,13 +691,22 @@ def index(request:Request):
                 ui.label('ACT: upstream LeRobot 0.6.1. Smoke: 50 шагов; это проверка тракта, не навык.').classes('muted')
                 async def enqueue_policy(policy,smoke):
                     try:
-                        ident=await asyncio.to_thread(jobs.enqueue,task.value,policy,smoke)
+                        cotrain=1. if (cotrain_box.value and not smoke) else None
+                        ident=await asyncio.to_thread(jobs.enqueue,task.value,policy,smoke,None,cotrain)
                         ui.notify('Задание '+ident[:8]+' поставлено в очередь; состав данных зафиксирован')
                     except Exception as exc:notify_error(exc)
                 async def act_smoke():await enqueue_policy('act',True)
                 async def act_full():await enqueue_policy('act',False)
                 async def smol_smoke():await enqueue_policy('smolvla',True)
                 async def smol_full():await enqueue_policy('smolvla',False)
+                with ui.row().style('align-items:center'):
+                    cotrain_box=ui.checkbox('Добавить показы MuJoCo (совместное обучение: только в обучающую часть, не больше настоящих)',value=False)
+                    async def align_sim():
+                        try:
+                            ident=await asyncio.to_thread(jobs.sim_align)
+                            ui.notify('Подстройка сцены MuJoCo под ваши показы: задание '+ident[:8])
+                        except Exception as exc:notify_error(exc)
+                    ui.button('Подстроить MuJoCo под мои показы',icon='tune',on_click=align_sim).props('flat')
                 with ui.row():
                     ui.button('ACT · smoke 50 шагов',on_click=act_smoke)
                     ui.button('ACT · основное обучение',on_click=act_full)

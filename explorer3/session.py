@@ -30,7 +30,10 @@ class Session:
         self.study=None
         self.last_episode_id=None
 
+    autonomous=False      # the swarm drives (owner 'swarm'): Tank's own obstacle stop applies
+
     def start(self, owner: str, name: str, scene: str, record=True, collection_id=None, category="demonstration"):
+        self.autonomous=owner=='swarm'
         if record:
             from .data_safety import require_space
             require_space()
@@ -122,7 +125,7 @@ class Session:
                 invoke('enter')
                 if self.control.expired():raise InterruptedError('STOP during Tank handoff')
             source=(HardwareSource(teleoperate=not bool(provider)) if name=='so101_pick_place'
-                    else TankSource(self.control,mode=self.trial_plan['kind'] if self.trial_plan else 'manual',
+                    else TankSource(self.control,mode=self.trial_plan['kind'] if self.trial_plan else ('policy' if self.autonomous else 'manual'),
                                     environment=bool(profile(name).get('environment_channels'))))
             provenance=source.start(explicit_user_start=True,stop=self.control.expired)
             source.begin_episode()

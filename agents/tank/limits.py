@@ -19,6 +19,7 @@ DEFAULTS = {
     'command_ttl_s': .5,
     'obstacle_stop': False,          # optional: stop when the lidar sees something closer than lidar_stop_m
     'lidar_stop_m': .15,
+    'autonomous_stop_m': .25,        # swarm/policy sessions always stop: 0.17 m lidar->nose + 0.08 m
     'sector_half_angle_deg': 30.,
     'battery_warning_v': 7.0,        # warning only
     'battery_stop_v': 6.2,           # deep-discharge protection (factory: recharge below 6.4 V)
@@ -93,15 +94,18 @@ def tilt_degrees(acceleration):
     return math.degrees(math.atan2(math.hypot(x, y), z))
 
 
-def guard(value, v, w, *, battery=None, front=None, rear=None, **_):
+def guard(value, v, w, *, battery=None, front=None, rear=None, autonomous=False, **_):
     """Returns (command, reason). Blocks only on deep discharge or, if enabled, a close obstacle
     in the direction of travel. Missing sensors never block driving."""
     if v == 0. and w == 0.:
         return (0., 0.), None
     if battery is not None and math.isfinite(battery) and 0 < battery < value['battery_stop_v']:
         return (0., 0.), f"Батарея {battery:.2f} В: зарядите Tank"
-    if value['obstacle_stop'] and v != 0.:
+    # Manual driving: optional (off by default, the operator sees the robot). Autonomous sessions
+    # (swarm, trained policies): always, at a distance measured from the lidar to beyond the nose.
+    if (value['obstacle_stop'] or autonomous) and v != 0.:
         distance = front if v > 0 else rear
-        if distance is not None and distance < value['lidar_stop_m']:
+        limit = max(value['lidar_stop_m'], value['autonomous_stop_m']) if autonomous else value['lidar_stop_m']
+        if distance is not None and distance < limit:
             return (0., w), 'Препятствие впереди' if v > 0 else 'Препятствие сзади'
     return (v, w), None
