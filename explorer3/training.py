@@ -232,6 +232,10 @@ def run_job(path: Path):
             command = ([sys.executable, '-m', 'lerobot.scripts.lerobot_train',
                         f'--config_path={resume}/train_config.json', '--resume=true'] if resume else
                        train_command(work/'train', output, cfg['policy'], steps, batch, cfg['seed'],cfg.get('device','cuda'),cfg.get('initial_checkpoint')))
+            if profile(cfg['profile']).get('domain') == 'sim' and not resume:
+                # simulation pre-training keeps only the final weights (~1.3 GB each for SmolVLA):
+                # the disk must stay above the 8 GB recording limit
+                command = [a if not a.startswith('--save_freq=') else f'--save_freq={steps}' for a in command]
             (work/f'command-b{batch}.json').write_text(json.dumps(command, indent=2))
             log_path = work/f'trainer-b{batch}.log'
             with log_path.open('a') as log:
