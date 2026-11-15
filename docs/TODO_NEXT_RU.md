@@ -16,9 +16,13 @@
    текст задачи с размером: «pick up the cookie, 7.0 x 7.0 cm, 1.2 cm high»; контроль — тот же текст без размера.
    Сбор показов и обучение SmolVLA — через существующие jobs (как `rosmaster_floor_pick_sim`), по одному за ночь.
    Сравнение: успех на одних seed, `scripts/benchmark_stats.py` для интервалов.
+   **Где править:** текст задачи сейчас один на профиль (`configs/sim-profiles.json` → `task`); нужен текст на эпизод:
+   `explorer3/sim/capture.py` (meta, строка ~26: добавить `task` из `env.episode_parameters['object']`),
+   `explorer3/sim/import_episode.py` (передать в `EpisodeWriter`), и чтение задачи в `explorer3/datasets.py`
+   при сборке LeRobot-датасета (per-episode task). Без этого SmolVLA не видит знание.
 3. **Виртуальная комната**: `.venv/bin/python scripts/knowledge_gap_experiment.py --rooms 10 --conditions K0,K1,K2,K3`,
    потом отдельно `--conditions K4` (Qwen, ~36 с/эпизод). Итоги скопировать в `docs/results/knowledge_gap_sim/`.
-4. `docs/RESEARCH_ROOT_RU.md` (вопрос, K0–K4, MuJoCo, уровни доказательства, что делает владелец) и
+4. (`docs/RESEARCH_ROOT_RU.md` готов.) Добавить
    шаги корневого эксперимента на `/today` (`explorer3/today_pages.py`).
 
 ## B. С роботами (владелец рядом)
