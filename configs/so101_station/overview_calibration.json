@@ -1,0 +1,91 @@
+{
+  "validated": true,
+  "method": "moving-jaw marker, encoder-span correction, joint-zero fit and independent physical control",
+  "camera_matrix": [
+    [
+      912.1728847324201,
+      0.0,
+      640.0
+    ],
+    [
+      0.0,
+      912.1728847324201,
+      360.0
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "distortion": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "camera_from_robot": [
+    [
+      -0.07744953447677694,
+      0.9966464166117293,
+      -0.026410033402664908,
+      0.06265159466258849
+    ],
+    [
+      0.9940408308729922,
+      0.07515471540051011,
+      -0.07895945358473366,
+      -0.19045057708139693
+    ],
+    [
+      -0.07670981792874973,
+      -0.032368024469646796,
+      -0.9965279297768178,
+      0.6368320745202755
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "table_z_m": 0.0,
+  "table_plane_source": "URDF base plane; table bounds and nonplanarity are not reconstructed",
+  "robot_offsets_deg": [
+    0.0,
+    -1.274621896358925,
+    -7.482094887722876,
+    -1.3931238842885714,
+    0.0
+  ],
+  "gripper_encoder_span_deg": 132.83516483516485,
+  "gripper_closed_angle_deg_assumed": -10.0,
+  "reprojection_rmse_px": 1.9969732787268488,
+  "train_rmse_px": 0.8783760297461333,
+  "sample_count": 12,
+  "marker_link": "moving_jaw_so101_v1_link",
+  "marker_local_m": [
+    0.003926876760623569,
+    -0.031114345195955687,
+    0.01679459219991412
+  ],
+  "camera_center_robot_m": [
+    0.24301925921071618,
+    -0.027515232225935857,
+    0.6212377060436911
+  ],
+  "created_at": "2026-11-04T16:07:52+00:00",
+  "source_artifacts": "logs/overview_hand_eye/20261104T160132.954069Z",
+  "validation": {
+    "whole_pose_holdout": true,
+    "independent_physical_control": {
+      "passed": true,
+      "error_px": 3.1203891565308375,
+      "artifacts": "parked-arm live control, six frames"
+    },
+    "refit_by": "scripts/recalibrate_overview.py",
+    "previous_control_px": 5.21
+  }
+}

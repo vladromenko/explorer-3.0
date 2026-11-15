@@ -1,75 +1,43 @@
-"""The SO-101 table station as a KNOWLEDGE helper: it practises / measures an object and returns
-robot-independent grasp knowledge (metric size, grasp height) for the recipient (ROSMASTER).
+"""The SO-101 table station as a KNOWLEDGE helper: it measures an object on its table and returns
+robot-independent grasp knowledge (metric width / length / height, grasp height) for the recipient.
 
-Real station: reuses the existing, physically used SO-101 pick-and-place project
-(~/Projects/so101_autonomous_pick_place, service on :8010): its overview camera + SAM 3 fit the
-object's 3D box (cubes: all eight vertices), and its collect run is a real grasp attempt.
-This adapter only calls that service's HTTP API; it does not drive the arm itself.
-Status: the adapter is code-checked; the end-to-end physical run is still to be accepted.
+Real station: the measuring mechanics are COPIED from the SO-101 pick-and-place project into
+explorer3/so101_vendor (fixed overview camera, validated hand-eye calibration, eight-vertex box fit
+to the SAM 3 silhouette). Explorer does not call or change that project or Wristlab. The station
+does not move the arm: the knowledge is 'measured', not yet 'grasp-verified' (success=None); it is
+confirmed or refuted by the recipient's own grasp (knowledge.record_use).
 """
 import time
 
-import httpx
-
 from . import knowledge
-
-URL = 'http://127.0.0.1:8010'
-
-
-def _sizes(scan):
-    """Metric sizes of detected objects in a scan result, robust to the service's field names."""
-    out = []
-    def walk(v):
-        if isinstance(v, dict):
-            for key in ('size_m', 'edge_m', 'cube_size_m', 'side_m'):
-                if isinstance(v.get(key), (int, float)) and 0.005 < v[key] < .3:
-                    out.append(float(v[key]))
-            for x in v.values():
-                walk(x)
-        elif isinstance(v, list):
-            for x in v:
-                walk(x)
-    walk(scan)
-    return out
 
 
 class SO101Station:
-    def __init__(self, log=None):
+    def __init__(self, log=None, device='cuda'):
         self.log = log or (lambda m: None)
+        self.device = device
 
     def available(self):
-        try:
-            return httpx.get(URL + '/api/status', timeout=3).status_code == 200
-        except Exception:
-            return False
+        from .so101_vendor import measure
+        return measure.CALIBRATION.is_file() and __import__('os').path.exists(measure.CAMERA)
 
-    def practice(self, prompt, grasp=False):
-        """Measure (and optionally grasp) `prompt` on the table. Returns a knowledge item or a reason."""
+    def practice(self, prompt):
+        """Measure `prompt` on the table. Returns {'ok': True, 'knowledge': item} or {'ok': False, 'reason'}."""
+        from .so101_vendor import measure
         if not self.available():
-            return {'ok': False, 'reason': 'стенд SO-101 не запущен (пульт → «SO-101 · стенд захвата»)'}
-        self.log(f'SO-101: измеряю «{prompt}» верхней камерой')
+            return {'ok': False, 'reason': 'верхняя камера SO-101 не подключена'}
+        self.log(f'SO-101: измеряю «{prompt}» верхней камерой (SAM 3 + калибровка стола)')
         try:
-            scan = httpx.post(URL + '/api/scan', timeout=120).json()
+            m = measure.measure(prompt, device=self.device)
         except Exception as exc:
-            return {'ok': False, 'reason': f'стенд SO-101: {exc}'}
-        sizes = _sizes(scan)
-        if not sizes:
-            return {'ok': False, 'reason': 'стенд SO-101 не нашёл и не измерил предмет'}
-        size = sorted(sizes)[len(sizes) // 2]
-        success = None
-        if grasp:
-            self.log('SO-101: пробный захват')
-            r = httpx.post(URL + '/api/collect', params={'expected_cubes': 1}, timeout=30)
-            started = r.status_code == 200
-            end = time.monotonic() + 180
-            while started and time.monotonic() < end:
-                st = httpx.get(URL + '/api/status', timeout=5).json()
-                if not st.get('busy', st.get('running', False)):
-                    success = bool(st.get('last_success', st.get('success')))
-                    break
-                time.sleep(2)
-        params = {'width_m': round(size, 3), 'height_m': round(size, 3), 'grasp_height_m': round(max(.012, size / 2), 3)}
-        item = knowledge.add(prompt, 'so101_station', params, evidence={'scan_objects': len(sizes)}, success=success)
+            return {'ok': False, 'reason': f'стенд SO-101: {type(exc).__name__}: {exc}'}
+        if not m['ok']:
+            return m
+        params = {'width_m': m['width_m'], 'length_m': m['length_m'], 'height_m': m['height_m'],
+                  'grasp_height_m': round(max(.012, min(m['height_m'], .06) / 2), 3)}
+        self.log(f'SO-101: «{prompt}» {m["width_m"] * 100:.1f}×{m["length_m"] * 100:.1f} см, высота {m["height_m"] * 100:.1f} см ({m["model"]})')
+        item = knowledge.add(prompt, 'so101_station', params, success=None,
+                             evidence={k: m[k] for k in ('model', 'silhouette_rmse_px', 'score', 'overlay', 'dir', 'height_sigma_m')})
         return {'ok': True, 'knowledge': item}
 
 

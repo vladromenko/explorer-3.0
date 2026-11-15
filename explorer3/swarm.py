@@ -13,6 +13,7 @@ the article's numbers come from the runs themselves. Tank's session is opened by
 (owner 'swarm', kept alive by its own heartbeat) — no «Включить управление» click needed.
 """
 import math
+import json
 import threading
 import time
 
@@ -400,6 +401,17 @@ class Swarm:
         domain = self.agents.domain()
         gaps = knowledge.assess('rosmaster', prompt, domain)
         self.agents.gaps(gaps, self.mobile())
+        advisor = getattr(self, 'advisor', 'off')       # 'off' | 'decide': the language model chooses the gaps (validated)
+        if advisor == 'decide':
+            from .cognitive.gap_advisor import advise
+            self.say('learn', 'Языковая модель оценивает, каких знаний не хватает…')
+            t0 = time.time()
+            advice = advise('rosmaster', prompt, gaps, self.mobile() + ['so101'])
+            stages.append({'stage': 'advise', 'started': round(t0, 2), 'seconds': round(time.time() - t0, 1),
+                           'ok': 'error' not in advice, 'note': json.dumps({'rules': gaps['gaps'], 'model': advice}, ensure_ascii=False)[:600]})
+            self.agents.role('MissionCoordinator').note('модель', f'правила: {gaps["gaps"]}; модель: {advice.get("gaps", advice.get("error"))}')
+            if 'error' not in advice:
+                gaps = {**gaps, 'gaps': [g for g in advice['gaps'] if g in ('where', 'how')]}
         grasp_knowledge = gaps['how']
         knowledge_case = None
         allowed = getattr(self, 'helpers', None)          # experiment conditions: which helpers may be called

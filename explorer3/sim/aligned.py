@@ -168,11 +168,20 @@ class RosmasterFloorPick(RosmasterPickPlace):
     profile = 'rosmaster_floor_pick_sim'
     model_builder = staticmethod(_without_box(rosmaster_arm_model, 'rosmaster_floor_pick'))
 
-    def __init__(self, **kwargs):
+    # Knowledge-gap root in MuJoCo: object half-extents (x, y, z) in metres. Modelled household objects
+    # (assumed sizes, not measurements of the user's objects); the 32 mm cube is the original task.
+    OBJECTS = {'cube': (.016, .016, .016), 'cookie': (.035, .035, .006), 'sock': (.04, .025, .012),
+               'bottle': (.02, .02, .045), 'block': (.03, .015, .015), 'ball': (.022, .022, .022)}
+
+    def __init__(self, vary_objects=False, **kwargs):
         self.cfg = alignment('rosmaster_floor_pick')
         self.home_native = np.array(self.cfg['start_pose'], float)
+        self.vary_objects = vary_objects
         kwargs.setdefault('deadline_s', 25.)
         super().__init__(**kwargs)
+
+    def object_half(self):
+        return self.model.geom_size[self.model.geom('cube').id].copy()
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed, options=options)
@@ -181,8 +190,18 @@ class RosmasterFloorPick(RosmasterPickPlace):
         self.data.qpos[:6] = self.to_radians(start)
         self.data.qpos[6:11] = self.data.qpos[5] * np.array([1, 1, -1, -1, 1])
         free = int(self.model.joint('cube_free').qposadr[0])
-        self.data.qpos[free:free + 3] = [rng.uniform(*c['object_x_m']), rng.uniform(*c['object_y_m']), .018]
-        self.data.qpos[free + 3:free + 7] = [1, 0, 0, 0]
+        g = self.model.geom('cube').id
+        name = 'cube'
+        if self.vary_objects:
+            name = (options or {}).get('object') or str(rng.choice(sorted(self.OBJECTS)))
+        half = np.array(self.OBJECTS[name])
+        self.model.geom_size[g] = half
+        self.model.geom_rbound[g] = float(np.linalg.norm(half))
+        self.object_name = name
+        self.episode_parameters['object'] = {'name': name, 'size_m': (2 * half).round(4).tolist()}
+        self.data.qpos[free:free + 3] = [rng.uniform(*c['object_x_m']), rng.uniform(*c['object_y_m']), half[2] + .002]
+        yaw = rng.uniform(-np.pi, np.pi) if self.vary_objects else 0.
+        self.data.qpos[free + 3:free + 7] = [np.cos(yaw / 2), 0, 0, np.sin(yaw / 2)]
         self.data.ctrl[:] = self.data.qpos[:6]
         self.filtered, self.pending = self.data.ctrl.copy(), self.data.ctrl.copy()
         self.episode_parameters['looks'] = randomize_looks(self, rng, self.camera_name)
@@ -194,7 +213,10 @@ class RosmasterFloorPick(RosmasterPickPlace):
         cube = self.data.body('task_cube').xpos
         ee = self.data.site('gripperframe').xpos
         state = self.from_radians(self.data.qpos[:6])
-        held = bool(not self.gripper_is_open() and np.linalg.norm(ee - cube) < .05 and cube[2] > self.cfg['lift_min_m'])
+        if self.vary_objects:     # wider objects stop the jaws earlier: held = lifted off the floor at the gripper
+            held = bool(np.linalg.norm(ee - cube) < .06 and cube[2] - self.object_half()[2] > self.cfg['lift_min_m'] - .016)
+        else:
+            held = bool(not self.gripper_is_open() and np.linalg.norm(ee - cube) < .05 and cube[2] > self.cfg['lift_min_m'])
         carry = bool(np.abs(state[:5] - np.array(self.cfg['carry_pose'])).max() < self.cfg['carry_tolerance_deg'])
         base.update(held=held, in_carry_pose=carry, inside_box=False, task='rosmaster_floor_pick',
                     success=self.stable >= self.cfg['hold_s'])
@@ -286,13 +308,29 @@ class ScriptedHandover:
 
 
 class ScriptedFloorPick:
-    """Privileged teacher for rosmaster_floor_pick_sim: the console IK, as in the real arm skill."""
-    def __init__(self, env):
+    """Privileged teacher for rosmaster_floor_pick_sim: the console IK, as in the real arm skill.
+
+    knowledge: None -> privileged (true object centre, the original teacher);
+               'none' -> the recipient knows WHERE (x, y) but not the object: assumes the 32 mm cube
+                         (grasp height 16 mm, default jaw opening/closing), as ROSMASTER without help;
+               dict  -> grasp knowledge from a helper ({'width_m', 'height_m', ...}, e.g. the SO-101
+                         station): grasp height = half the height, jaw closing for that width.
+    """
+    def __init__(self, env, knowledge=None):
         from .vendor_rosmaster.arm_model import ArmModel
         self.env = env
         self.arm = ArmModel(tcp_offset=float(env.model.site('gripperframe').pos[2]))
         self.cube = env.data.body('task_cube').xpos.copy()
         self.carry = list(env.cfg['carry_pose'])
+        self.open, self.close = 30, 150
+        if knowledge is not None:
+            from ..rosmaster_arm import grip_command, GRIP_OPEN
+            if knowledge == 'none':
+                height, width = .032, .032
+            else:
+                height, width = float(knowledge['height_m']), float(knowledge['width_m'])
+            self.cube = np.r_[self.cube[:2], height / 2]
+            self.open, self.close = GRIP_OPEN, grip_command(width)
         self.command = env.observation()['state'].astype(float).copy()
         self.targets = {}
         self.phase = 'approach'
@@ -305,9 +343,10 @@ class ScriptedFloorPick:
 
     def action(self):
         t = self.env.elapsed
-        plan = [(2.5, 'approach', self.cube + [0, 0, .10], 30), (4.5, 'descend', self.cube + [0, 0, .004], 30),
-                (6.5, 'grasp', self.cube + [0, 0, .004], 150), (8., 'lift', self.cube + [0, 0, .12], 150)]
-        phase, target, grip = 'carry', None, 150
+        o, c = self.open, self.close
+        plan = [(2.5, 'approach', self.cube + [0, 0, .10], o), (4.5, 'descend', self.cube + [0, 0, .004], o),
+                (6.5, 'grasp', self.cube + [0, 0, .004], c), (8., 'lift', self.cube + [0, 0, .12], c)]
+        phase, target, grip = 'carry', None, c
         for end, name, xyz, g in plan:
             if t < end:
                 phase, target, grip = name, xyz, g

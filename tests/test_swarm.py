@@ -9,7 +9,7 @@ import time
 import numpy as np
 import pytest
 
-from explorer3 import episodes, so101_handoff, swarm, world_memory
+from explorer3 import episodes, knowledge, so101_handoff, swarm, world_memory
 
 
 @pytest.fixture(autouse=True)
@@ -135,8 +135,15 @@ def make(arm_log, explore_effect=None):
                     goto_factory=lambda robot, text: Goal(robot, 'arrived'),
                     drive_factory=lambda robot, pose, text: Goal(robot, 'arrived'),
                     arm_factory=lambda log: arm_log.append(Arm(log)) or arm_log[-1],
-                    so101_factory=lambda prompt, log: Hand(prompt, log))
+                    so101_factory=lambda prompt, log: Hand(prompt, log),
+                    station_factory=lambda log: Station())
     return s, ros, tank
+
+
+class Station:
+    """Fake SO-101 measuring station (the real one opens the overview camera and SAM 3)."""
+    def practice(self, prompt):
+        return {'ok': True, 'knowledge': knowledge.add(prompt, 'so101_station', {'width_m': .07, 'height_m': .012, 'grasp_height_m': .006})}
 
 
 def wait(s, timeout=10):
@@ -162,9 +169,9 @@ def test_fetch_known_object_runs_every_stage():
     assert ('drive', -.15) in arms[0].calls                               # backs off before SO-101 moves
     ep = episodes.load()[0]
     # ROSMASTER had no grasp knowledge for the cookie: it asked the SO-101 station first ('learn');
-    # the station is not running in the test, so it went on with its own estimate
+    # (fake station here) and picked with that knowledge
     assert ep['kind'] == 'fetch' and ep['success'] and [x['stage'] for x in ep['stages']] == ['learn', 'approach', 'pick', 'deliver', 'place', 'handoff']
-    assert ep['stages'][0]['ok'] is False
+    assert ep['stages'][0]['ok'] is True
 
 
 def test_fetch_unknown_object_team_search_stops_both():
