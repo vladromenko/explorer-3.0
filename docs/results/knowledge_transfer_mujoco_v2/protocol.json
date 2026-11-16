@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "episodes": 60,
+  "start_seed": 12000,
+  "conditions": [
+    "privileged",
+    "none",
+    "so101"
+  ],
+  "sources": {
+    "scripts/knowledge_transfer_mujoco.py": "9479938430394ffe87bff7450088c22f66dd972de7258a5ea07f555ebb5f2563",
+    "explorer3/sim/aligned.py": "c1d59758360120a290349349aab967769dadfdd086e57d7292ce37b7af412583",
+    "explorer3/sim/models.py": "684dcc4c84380093ebdfa61a3fb3a12f1d049abc1dec965e26ff0213c3ceb78c",
+    "explorer3/sim/vendor_rosmaster/arm_model.py": "2329f86e6d8f20115aa7809ed18a357f505e916a8b4d9ed415a35498853a1fa3",
+    "configs/sim-alignment.json": "1a9b964268cb469ae52b0ddac1489d26c334bbf36e8cef6d28403fd5b49154fa"
+  }
+}

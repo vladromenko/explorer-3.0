@@ -1,0 +1,53 @@
+{
+ "privileged": {
+  "n": 60,
+  "success_rate": 0.733,
+  "success_ci95": [
+   0.61,
+   0.829
+  ],
+  "by_object": {
+   "ball": "10/10",
+   "block": "10/10",
+   "bottle": "10/10",
+   "cookie": "0/10",
+   "cube": "10/10",
+   "sock": "4/10"
+  }
+ },
+ "none": {
+  "n": 60,
+  "success_rate": 0.567,
+  "success_ci95": [
+   0.441,
+   0.684
+  ],
+  "by_object": {
+   "ball": "9/10",
+   "block": "6/10",
+   "bottle": "8/10",
+   "cookie": "0/10",
+   "cube": "10/10",
+   "sock": "1/10"
+  }
+ },
+ "so101": {
+  "n": 60,
+  "success_rate": 0.583,
+  "success_ci95": [
+   0.457,
+   0.699
+  ],
+  "by_object": {
+   "ball": "9/10",
+   "block": "6/10",
+   "bottle": "9/10",
+   "cookie": "0/10",
+   "cube": "10/10",
+   "sock": "1/10"
+  }
+ },
+ "note": "MuJoCo, scripted grasp, rigid box proxies. Privileged teacher knows orientation; SO-101 condition supplies noisy size only. No trained policy or hardware evidence.",
+ "completed": true,
+ "expected_trials": 180
+}
