@@ -21,7 +21,10 @@ def configuration():
     return json.loads(CONFIG.read_text()) if CONFIG.exists() else {'enabled': False}
 
 
-def configure_capture(*, enabled, instance_id, marker_side_m, size_m):
+MARKERS = {'DICT_4X4_50': 'ArUco 4×4', 'DICT_APRILTAG_36h11': 'AprilTag 36h11'}
+
+
+def configure_capture(*, enabled, instance_id, marker_side_m, size_m, marker_dictionary='DICT_4X4_50', marker_id=7):
     if type(enabled) is not bool or not isinstance(instance_id, str) or not instance_id.strip():
         raise ValueError('Укажите отдельный экземпляр предмета')
     size = np.asarray(size_m, dtype=float)
@@ -30,10 +33,12 @@ def configure_capture(*, enabled, instance_id, marker_side_m, size_m):
         raise ValueError('Нужны три измеренных размера твёрдого предмета от 10 до 100 мм')
     if not np.isfinite(side) or not .005 <= side <= min(size[:2]):
         raise ValueError('Метка должна помещаться на верхней грани; измерьте чёрный квадрат')
+    if marker_dictionary not in MARKERS or type(marker_id) is not int or not 0 <= marker_id < 50:
+        raise ValueError('Неизвестный тип или номер метки')
     anchor = np.eye(4)
     anchor[2, 3] = -size[2] / 2
     value = {'enabled': enabled, 'instance_id': instance_id.strip(), 'object_class': 'cube',
-             'surface': 'rigid_box', 'size_m': size.tolist(), 'marker_id': 7, 'marker_side_m': side,
+             'surface': 'rigid_box', 'size_m': size.tolist(), 'marker_dictionary': marker_dictionary, 'marker_id': marker_id, 'marker_side_m': side,
              'marker_from_object': anchor.tolist(), 'physical_verified': False,
              'scope': 'passive raw evidence only; no verified SkillPacket or movement authorization'}
     CONFIG.parent.mkdir(parents=True, exist_ok=True)
@@ -82,7 +87,7 @@ def marker_object_pose(rgb, calibration, settings):
     side = float(settings['marker_side_m'])
     if not .005 <= side <= .1:
         raise ValueError('Marker size outside supported metric range')
-    dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+    dictionary = cv2.aruco.getPredefinedDictionary(getattr(cv2.aruco, settings.get('marker_dictionary', 'DICT_4X4_50')))
     detector = cv2.aruco.ArucoDetector(dictionary)
     corners, ids, _ = detector.detectMarkers(cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY))
     found = [] if ids is None else [i for i, value in enumerate(ids.flatten()) if int(value) == settings['marker_id']]
