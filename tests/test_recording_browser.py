@@ -55,6 +55,14 @@ def test_preparation_and_guides_without_execution(tmp_path):
                 assert 'series=tank_dock-s01' in page.locator('#collection-control').get_attribute('src')
                 # Isolated server has no motor routes; creating a series never calls one.
                 assert page.evaluate('document.documentElement.scrollWidth<=window.innerWidth+1')
+                page.get_by_text('Опыт SO-101 для переноса захвата', exact=True).click()
+                page.get_by_label('Экземпляр кубика', exact=True).fill('browser-fixture-cube')
+                page.get_by_role('checkbox', name='Сохранять верхнюю камеру и геометрию в следующих показах SO-101', exact=True).check()
+                page.get_by_role('button', name='Сохранить подготовку', exact=True).click()
+                expect(page.get_by_text('Настройки следующего показа сохранены. Робот не включён.', exact=True)).to_be_visible()
+                geometry = json.loads((tmp_path/'configs/so101_donor_capture.json').read_text())
+                assert geometry['enabled'] and not geometry['physical_verified']
+                assert geometry['instance_id'] == 'browser-fixture-cube'
                 page.goto('http://127.0.0.1:8037/recording/check/tank')
                 expect(page.get_by_text('Проверка «всё ездит» · Tank',exact=True)).to_be_visible()
                 assert page.locator('#physical-control').get_attribute('src')=='/?robot=tank'

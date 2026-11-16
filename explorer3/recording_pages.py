@@ -138,6 +138,29 @@ def install_collection():
                     setup();choice.set_value(record['id']);open_series()
                 except Exception as exc:ui.notify(str(exc),type='negative')
             new_button=ui.button('Новая серия',on_click=create)
+        with ui.expansion('Опыт SO-101 для переноса захвата').classes('ready-card'):
+            from . import so101_geometry
+            from .paths import ROOT
+            cfg = so101_geometry.configuration()
+            ui.label('Для трёх пробных показов используйте Leader/Follower, камеру запястья и верхнюю C920. Tank и ROSMASTER здесь не нужны.')
+            ui.label('Расположите метку №7 по центру верхней грани твёрдого кубика. Измерьте её чёрный квадрат после печати. Верхнюю камеру и основание SO-101 не перемещайте.')
+            ui.button('Скачать метку №7 · чёрный квадрат 20 мм',
+                      on_click=lambda: ui.download.file(ROOT/'assets/so101_donor_marker_7.svg')).props('outline no-caps')
+            geometry_enabled = ui.checkbox('Сохранять верхнюю камеру и геометрию в следующих показах SO-101', value=cfg.get('enabled', False))
+            instance = ui.input('Экземпляр кубика', value=cfg.get('instance_id', '')).classes('w-full')
+            dimensions = cfg.get('size_m', [.032] * 3)
+            sizes = [ui.number(label, value=dimensions[i]*1000, min=10, max=100).classes('w-full')
+                     for i, label in enumerate(('Ширина, мм', 'Длина, мм', 'Высота, мм'))]
+            marker_size = ui.number('Измеренная сторона чёрной метки, мм', value=cfg.get('marker_side_m', .020)*1000, min=5, max=100).classes('w-full')
+            def save_geometry():
+                try:
+                    so101_geometry.configure_capture(enabled=bool(geometry_enabled.value), instance_id=instance.value,
+                        marker_side_m=float(marker_size.value)/1000, size_m=[float(v.value)/1000 for v in sizes])
+                    ui.notify('Настройки следующего показа сохранены. Робот не включён.')
+                except Exception as exc:
+                    ui.notify(str(exc), type='negative')
+            ui.button('Сохранить подготовку', on_click=save_geometry).props('no-caps')
+            ui.label('Это исходные измерения. Перед созданием пакета отдельно проверяются положение камеры, погрешность геометрии, метрическое раскрытие губок и удержание предмета. Закрытие захвата само по себе успех не подтверждает.').classes('ready-action')
         counters=ui.label('').style('font-size:18px')
         progress=ui.label('')
         ui.label('В панели ниже: «Начать показ», затем «Успех», «Неуспех» или «Прервать». F9 — начать, F10 — успех, F11 — неуспех; пробел — STOP. Клавиши записи работают при фокусе в панели.').style('color:#a6b6c6')

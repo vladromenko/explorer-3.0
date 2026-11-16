@@ -98,6 +98,7 @@ class Session:
     def _run(self,name,session_id,scene):
         source=None
         writer=None
+        donor_geometry=None
         provenance={}
         provider=None
         pilot_writers={}
@@ -128,6 +129,12 @@ class Session:
                     else TankSource(self.control,mode=self.trial_plan['kind'] if self.trial_plan else ('policy' if self.autonomous else 'manual'),
                                     environment=bool(profile(name).get('environment_channels'))))
             provenance=source.start(explicit_user_start=True,stop=self.control.expired)
+            if name == 'so101_pick_place' and writer is not None and not self.trial_plan:
+                from .so101_geometry import configuration, DonorGeometryRecorder
+                geometry_settings = configuration()
+                if geometry_settings.get('enabled') is True:
+                    donor_geometry = DonorGeometryRecorder(writer.root, geometry_settings)
+                    provenance['donor_geometry'] = donor_geometry.start()
             source.begin_episode()
             self.phase='aligning'
             deadline=time.monotonic()
@@ -177,6 +184,8 @@ class Session:
                 with self.lock:
                     self.latest=sample
                 self.phase=sample['teleoperation_phase']
+                if donor_geometry:
+                    donor_geometry.add(sample)
                 if writer:
                     writer.add(sample)
                 self.frame_count+=1
@@ -209,6 +218,12 @@ class Session:
                     catalog.event('error','; '.join(errors))
                     self.error='; '.join(errors)
                     self.outcome='aborted'
+            if donor_geometry:
+                try:
+                    provenance['donor_geometry'] = donor_geometry.close()
+                except Exception as exc:
+                    self.error = 'Geometry finalize: ' + str(exc)
+                    self.outcome = 'aborted'
             if writer:
                 self.phase='saving'
                 try:

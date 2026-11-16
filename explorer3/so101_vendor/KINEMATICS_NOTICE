@@ -1,0 +1,6 @@
+Derived joint-origin data from so101ik, Copyright 2026 Stepan Kandrushin.
+Apache License 2.0; see KINEMATICS_LICENSE.
+Includes data derived from SO-ARM100 by TheRobotStudio, Apache License 2.0.
+https://github.com/TheRobotStudio/SO-ARM100
+Explorer extracts only static joint origins and the fixed tip. No motor driver,
+IK, meshes, Cephes functions or LeRobot code copied.
