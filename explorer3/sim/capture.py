@@ -12,9 +12,14 @@ from explorer3.paths import DATA
 
 
 class SimCapture:
-    def __init__(self, env, seed, source='human'):
+    def __init__(self, env, seed, source='human', *, spool_parent=None):
         self.ident=uuid.uuid4().hex
-        self.root=DATA/'staging/sim'/self.ident
+        parent = Path(spool_parent) if spool_parent is not None else DATA/'staging/sim'
+        allowed = ((DATA/'staging/sim').resolve(), (DATA/'checkpoints/sim-staging').resolve())
+        if parent.resolve() not in allowed:
+            raise ValueError('Unknown simulation capture directory')
+        parent.mkdir(parents=True, exist_ok=True)
+        self.root=parent/self.ident
         self.root.mkdir(parents=True)
         self.count=0
         self.finished=False

@@ -10,7 +10,7 @@ from explorer3.validation import validate
 
 def ingest(root,review=None):
     root=Path(root).resolve()
-    if not root.is_relative_to(DATA/'staging/sim'):
+    if not any(root.is_relative_to(parent.resolve()) for parent in (DATA/'staging/sim', DATA/'checkpoints/sim-staging')):
         raise ValueError('Not an Explorer simulation spool')
     meta=json.loads((root/'manifest.json').read_text())
     if meta['domain']!='sim' or meta['frames']<1:

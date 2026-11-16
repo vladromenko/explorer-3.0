@@ -1,0 +1,108 @@
+{
+  "seed": 50000,
+  "geometry_version": 3,
+  "object": {
+    "name": "ball",
+    "size_m": [
+      0.0442,
+      0.045,
+      0.0482
+    ],
+    "geometry": "box_proxy",
+    "mass_kg": 0.035,
+    "geometry_version": 3,
+    "size_scale": [
+      1.003535541804263,
+      1.021733540090391,
+      1.0948419310783333
+    ]
+  },
+  "frames": 217,
+  "outcome": "success",
+  "source_spool": "/home/jetsonnx/.local/share/explorer3/checkpoints/sim-staging/7333e4aa1aa74b79bcabcdc940e924ef",
+  "pair_same_pixels_and_actions": true,
+  "instructions": {
+    "rosmaster_floor_pick_knowledge_sim": "pick up the ball, 4.2 x 4.5 cm, 5.2 cm high",
+    "rosmaster_floor_pick_noknowledge_sim": "pick up the ball"
+  },
+  "imports": {
+    "rosmaster_floor_pick_knowledge_sim": {
+      "episode_id": "8c1fc2039cc544f1aeb40aa9711ec50b",
+      "outcome": "success",
+      "frames": 217,
+      "readback": "PASS",
+      "synthetic": true,
+      "domain": "sim",
+      "observation_action_availability_order": "PASS",
+      "observation_action_causality": "PASS",
+      "video_sampled_first_middle_last": "PASS",
+      "duration_seconds": 10.8,
+      "actual_hz": 20.0,
+      "interval_ms_p50_p95_max": [
+        50.0,
+        50.0,
+        50.0
+      ],
+      "reused_camera_frames": 0,
+      "camera_age_ms_p95": 0.0,
+      "units": [
+        "native_servo_degrees",
+        "native_servo_degrees",
+        "native_servo_degrees",
+        "native_servo_degrees",
+        "native_servo_degrees",
+        "native_servo_degrees"
+      ],
+      "channels": [
+        "base_rotation",
+        "shoulder",
+        "elbow",
+        "wrist_pitch",
+        "wrist_roll",
+        "gripper"
+      ],
+      "physical_policy_skill_verified": false,
+      "dataset_sha256": "2a1fe2dd31ab8e2fec7a56d95b5d214d8e17688dcb3ef7d8d72e2578a878e1e1"
+    },
+    "rosmaster_floor_pick_noknowledge_sim": {
+      "episode_id": "587a5163d1fd46d4aa018dae5b64c093",
+      "outcome": "success",
+      "frames": 217,
+      "readback": "PASS",
+      "synthetic": true,
+      "domain": "sim",
+      "observation_action_availability_order": "PASS",
+      "observation_action_causality": "PASS",
+      "video_sampled_first_middle_last": "PASS",
+      "duration_seconds": 10.8,
+      "actual_hz": 20.0,
+      "interval_ms_p50_p95_max": [
+        50.0,
+        50.0,
+        50.0
+      ],
+      "reused_camera_frames": 0,
+      "camera_age_ms_p95": 0.0,
+      "units": [
+        "native_servo_degrees",
+        "native_servo_degrees",
+        "native_servo_degrees",
+        "native_servo_degrees",
+        "native_servo_degrees",
+        "native_servo_degrees"
+      ],
+      "channels": [
+        "base_rotation",
+        "shoulder",
+        "elbow",
+        "wrist_pitch",
+        "wrist_roll",
+        "gripper"
+      ],
+      "physical_policy_skill_verified": false,
+      "dataset_sha256": "8a908c1ec73dc0811e434250b6b1c57fa651b9d66ce4eaac75e201791713fbf8"
+    }
+  },
+  "training_started": false,
+  "physical_skill_verified": false
+}

@@ -58,3 +58,11 @@ def test_donor_lineage_is_read_from_immutable_recording_provenance(tmp_path):
             'source_episodes': [{'id': 'shared-donor', 'sha256': 'a' * 64}]}}}))
         rows.append(dict(id=str(index), session='session-' + str(index), scene='scene-' + str(index), dataset=str(root)))
     assert len(connected_groups(rows)) == 1
+
+
+def test_external_capture_mount_is_required_before_simulation(tmp_path, monkeypatch):
+    from explorer3.sim import paired_capture
+    monkeypatch.setattr(paired_capture.os.path, 'ismount', lambda path: False)
+    with pytest.raises(ValueError, match='not mounted'):
+        paired_capture.collect_seed(50000, tmp_path / 'result.json', external_spool=True)
+    assert not (tmp_path / 'result.json').exists()

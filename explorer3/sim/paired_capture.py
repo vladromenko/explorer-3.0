@@ -38,10 +38,13 @@ def control_copy(source):
     return target
 
 
-def collect_seed(seed, output):
+def collect_seed(seed, output, *, external_spool=False):
+    output = Path(output)
+    parent = DATA / 'checkpoints/sim-staging' if external_spool else DATA / 'staging/sim'
+    if external_spool and not os.path.ismount(DATA / 'checkpoints'):
+        raise ValueError('External checkpoint volume is not mounted; collection not started')
     from .factory import make, EXPERTS
     from .capture import SimCapture
-    output = Path(output)
     # A restart reuses a finished spool/import, including failures. It never
     # selects a second successful trajectory for only one of the conditions.
     if output.exists():
@@ -52,7 +55,7 @@ def collect_seed(seed, output):
         try:
             env.reset(seed=seed)
             expert = EXPERTS[KNOWN](env)
-            capture = SimCapture(env, seed, 'scripted_expert')
+            capture = SimCapture(env, seed, 'scripted_expert', spool_parent=parent)
             group = f'knowledge-pair-{seed}-{env.manifest["xml_sha256"]}'
             capture.meta.update(session=group, scene=group, paired_group=group)
             try:
@@ -92,5 +95,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--seed', type=int, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--external-spool', action='store_true')
     args = parser.parse_args()
-    print(json.dumps(collect_seed(args.seed, args.output)), flush=True)
+    print(json.dumps(collect_seed(args.seed, args.output, external_spool=args.external_spool)), flush=True)
