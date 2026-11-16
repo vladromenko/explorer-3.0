@@ -14,7 +14,7 @@ def test_runtime_resizing_matches_independently_compiled_geometry():
         # Reuse one environment through large, flat, narrow, and original objects. This
         # catches stale broad-phase geometry from either the XML or the preceding episode.
         for name in ('bottle', 'cookie', 'block', 'cube'):
-            env.reset(seed=9000, options={'object': name})
+            env.reset(seed=9000, options={'object': name, 'size_scale': [1, 1, 1]})
             half = RosmasterFloorPick.OBJECTS[name]
             reference = mujoco.MjModel.from_xml_string(
                 '<mujoco><worldbody><body><freejoint/><geom type="box" size="' +
@@ -40,7 +40,7 @@ def test_new_geometry_is_a_distinct_training_revision():
         tree = ET.fromstring(xml)
         custom = tree.find('custom')
         marker = custom.find("numeric[@name='explorer_floor_object_geometry_version']")
-        assert marker.get('data') == '2'
+        assert marker.get('data') == '3'
         custom.remove(marker)
         assert manifest['xml_sha256'] != hashlib.sha256(ET.tostring(tree, encoding='unicode').encode()).hexdigest()
     finally:

@@ -71,6 +71,9 @@ def grouped_split(episodes, seed=1000):
     groups=connected_groups(episodes)
     if len(groups) < 3:
         raise ValueError('Нужны ≥3 независимые группы: общие сессии ИЛИ расстановки нельзя разделять между train/validation/test')
+    # Paired modalities of one scene have different episode UUIDs. Sort by the
+    # recording group before shuffling so the same scene stays in the same split.
+    groups.sort(key=lambda group: (sorted({e['session'] for e in group}), sorted({e['scene'] for e in group})))
     random.Random(seed).shuffle(groups)
     hold = max(1, round(len(groups) * .1))
     return {key: [e for group in part for e in group] for key, part in

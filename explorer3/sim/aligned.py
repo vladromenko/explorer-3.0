@@ -41,12 +41,12 @@ def _without_box(builder, variant, camera_roll_deg=0.):
         root = ET.fromstring(xml)
         root.find(".//body[@name='target_box']").set('pos', AWAY)
         if variant == 'rosmaster_floor_pick':
-            # Runtime object geometry/inertia changed in v2. Keep old demonstrations out of
-            # the new physics revision even though the nominal 32 mm cube XML is unchanged.
+            # v2 rebuilt collision bounds/inertia; v3 varies size within each class,
+            # so naming the object alone no longer specifies its dimensions.
             custom = root.find('custom')
             if custom is None:
                 custom = ET.SubElement(root, 'custom')
-            ET.SubElement(custom, 'numeric', name='explorer_floor_object_geometry_version', data='2')
+            ET.SubElement(custom, 'numeric', name='explorer_floor_object_geometry_version', data='3')
         for site in root.iter('site'):           # debug markers must not appear in the policy camera
             site.set('rgba', '0 0 0 0')
         if camera_roll_deg:
@@ -208,6 +208,12 @@ class RosmasterFloorPick(RosmasterPickPlace):
             # (cookie 1.2 cm, sock) stay available by name for the experiments (options={'object': ...})
             name = (options or {}).get('object') or str(rng.choice(self.GRASPABLE))
         half = np.array(self.OBJECTS[name])
+        scale = np.ones(3)
+        if self.vary_objects:
+            scale = np.asarray((options or {}).get('size_scale', rng.uniform(.8, 1.2, 3)), dtype=float)
+            if scale.shape != (3,) or not np.isfinite(scale).all() or np.any((scale < .6) | (scale > 1.4)):
+                raise ValueError('Object size scale must have three finite values in [.6, 1.4]')
+            half *= scale
         self.model.geom_size[g] = half
         # Changing geom_size alone leaves MuJoCo's broad-phase boxes/BVH at the old cube
         # dimensions. Rebuild those constants and the uniform box's inertia. The mass is
@@ -219,7 +225,7 @@ class RosmasterFloorPick(RosmasterPickPlace):
         self.object_name = name
         self.episode_parameters['object'] = {'name': name, 'size_m': (2 * half).round(4).tolist(),
                                              'geometry': 'box_proxy', 'mass_kg': float(self.model.body_mass[body]),
-                                             'geometry_version': 2}
+                                             'geometry_version': 3, 'size_scale': scale.tolist()}
         # task text: with the helper's knowledge (measured size, ±1.5 mm like the SO-101 station) or without
         self.task_text = None
         if self.vary_objects:
