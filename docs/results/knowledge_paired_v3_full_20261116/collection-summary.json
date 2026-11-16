@@ -1,0 +1,136 @@
+{
+  "scope": "K instruction-size assistance, synthetic scripted source; not donor motor skill transfer",
+  "attempts": 224,
+  "successful_pairs": 200,
+  "failed_pairs": 24,
+  "technical_errors": 0,
+  "seeds": [
+    50006,
+    50229
+  ],
+  "readback_passes": 448,
+  "by_class": {
+    "ball": {
+      "attempts": 73,
+      "successes": 65,
+      "failures": 8,
+      "observed_size_bounds_m": [
+        [
+          0.0355,
+          0.0523
+        ],
+        [
+          0.0354,
+          0.0523
+        ],
+        [
+          0.0355,
+          0.0525
+        ]
+      ]
+    },
+    "block": {
+      "attempts": 50,
+      "successes": 50,
+      "failures": 0,
+      "observed_size_bounds_m": [
+        [
+          0.0483,
+          0.0719
+        ],
+        [
+          0.0241,
+          0.0357
+        ],
+        [
+          0.0244,
+          0.0359
+        ]
+      ]
+    },
+    "bottle": {
+      "attempts": 54,
+      "successes": 40,
+      "failures": 14,
+      "observed_size_bounds_m": [
+        [
+          0.0327,
+          0.0474
+        ],
+        [
+          0.0321,
+          0.048
+        ],
+        [
+          0.072,
+          0.1075
+        ]
+      ]
+    },
+    "cube": {
+      "attempts": 47,
+      "successes": 45,
+      "failures": 2,
+      "observed_size_bounds_m": [
+        [
+          0.0259,
+          0.0383
+        ],
+        [
+          0.0258,
+          0.0383
+        ],
+        [
+          0.0265,
+          0.0381
+        ]
+      ]
+    }
+  },
+  "failure_reasons": {
+    "task_deadline": 24
+  },
+  "successful_frames_per_condition": 42377,
+  "generation_and_import_wall_s": 9362.571135520935,
+  "attempt_wall_median_s": 38.88572537899017,
+  "attempt_wall_max_s": 57.18938446044922,
+  "same_scene_splits": true,
+  "split_counts": {
+    "test": 20,
+    "train": 160,
+    "validation": 20
+  },
+  "separate_probe_excluded": {
+    "seeds": [
+      50000,
+      50005
+    ],
+    "pairs": 6,
+    "updates": 50,
+    "weights_reused": false,
+    "in_full_corpus": false
+  },
+  "initial_source_provenance": {
+    "protocol_sha256": "cb997b99ec6238d664f92f873436fadcec0f7f086d9c10d8a0f0bc2b95a9a9bb",
+    "source_sha256": {
+      "explorer3/sim/aligned.py": "6034342783605a4ab00550a6be90f8ead2adc65f0814c23303e62460018387dc",
+      "explorer3/sim/capture.py": "699d82b33a4236fc28475ad85af2c0a01e68229401c0dd0abb6086c9c95cc406",
+      "explorer3/sim/import_episode.py": "8c6d955701cf2e3ea961a00a1c7b49316e7994aaac2768896ba09aa19138565d",
+      "explorer3/sim/paired_capture.py": "87f6f8a73c2b6be7efc4cb627208b0963c974db325ab016dc340444ef18249f7",
+      "explorer3/training.py": "2ffdf8c34510ea2a3a4c674cdea573e98af468ee85be271d6f910436b2e3f5d8",
+      "explorer3/datasets.py": "82c44c7dc161d9982883bd3c938b8ae86cee09f6a8a8f3a31801b00584eef406",
+      "explorer3/policy_runtime.py": "71ff687b1a8e20427248ee6ab38a13513716f5be5574576a02008752c0682013",
+      "explorer3/sim/evaluate.py": "93b21f9899da81ad32916c772d4febbe88415e515e3b4767acba99ea9dc1f072",
+      "explorer3/sim/factory.py": "95d9b0f8c5c1fb7457d1467db0743796dfc55253a5351adae0173bb2dfc0a3b2",
+      "explorer3/sim/environment.py": "892906a3ffc253241c53f79d4cdb0f478f7baacc4a90b54015fbb9adb946906b",
+      "configs/sim-profiles.json": "fa2af0dc45e4bc000a43ccea1b234672beb351b3195615d6451662b55c34096f",
+      "scripts/knowledge_paired_training.py": "ad12b5914c0ad4a1bffc44338ff3c092c334f399ee9259975d5c4dcc0db71cc9"
+    },
+    "pretrained_sha256": [
+      "a5a49af8b4483befd38e0dddc5419f35c46c4e55b3d72f9bbfdea27027a4deae",
+      "1ef29ae2b9d9ccd59b929cbad195b72eb65b8414ec33994388835381dc7864c7"
+    ]
+  },
+  "physical_commands_sent": 0,
+  "trained_policy_results": "pending; do not interpret scripted generation success as policy success"
+}
