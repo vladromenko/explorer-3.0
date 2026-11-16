@@ -125,7 +125,7 @@ class DonorGeometryRecorder:
         self.meta = {'kind': 'passive_so101_geometry', 'physical_verified': False,
                      'calibration_sha256': hashlib.sha256(CALIBRATION.read_bytes()).hexdigest(),
                      'model_sha256': hashlib.sha256(MODEL.read_bytes()).hexdigest(), 'settings': settings,
-                     'calibration_snapshot': self.calibration,
+                     'calibration_snapshot': self.calibration, 'calibration_source_json': CALIBRATION.read_text(),
                      'pose_admission': 'unverified; copied camera calibration requires current independent control'}
 
     def start(self):
