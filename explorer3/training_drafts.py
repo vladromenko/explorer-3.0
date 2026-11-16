@@ -66,7 +66,7 @@ def validate_budget(steps,batch,seed,device):
     if device not in {'cpu','cuda'}:raise ValueError('Выберите CPU или GPU')
 
 
-def prepare(name,policy,episode_ids,*,steps,batch,seed,device,source=None):
+def prepare(name,policy,episode_ids,*,steps,batch,seed,device,source=None,acquisition_request=None):
     validate_budget(steps,batch,seed,device)
     domain=profile(name).get('domain','real')
     if domain not in ('real','sim'):raise ValueError('Unknown recording domain')
@@ -103,7 +103,13 @@ def prepare(name,policy,episode_ids,*,steps,batch,seed,device,source=None):
         'test_rule':'prior hold-outs retained; test not used for training or validation selection',
         'training_started':False,'preparation_only':True,
         'limitation':'Independent groups and the recording count are technical gates, not proof of sufficient data or learned skill'}
-    return save_content(DATA/'training-drafts',draft),draft
+    if acquisition_request:
+        from .cognitive.broker import acquisition_training_lineage, record_acquisition_draft
+        draft.update(acquisition_training_lineage(acquisition_request, plan))
+    ident = save_content(DATA/'training-drafts', draft)
+    if acquisition_request:
+        record_acquisition_draft(acquisition_request, ident, draft)
+    return ident, draft
 
 
 def load(ident):

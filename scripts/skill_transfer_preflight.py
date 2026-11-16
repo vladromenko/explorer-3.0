@@ -147,6 +147,7 @@ if __name__ == '__main__':
     parser.add_argument('--donor-seed', type=int, default=41000)
     parser.add_argument('--recipient-seed', type=int, default=42000)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--acquisition-request', help='Link this attempt to an existing prepared request')
     parser.add_argument('--packet', type=Path, help='Reuse a verified donor artifact without collecting it again')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=False)
@@ -156,4 +157,7 @@ if __name__ == '__main__':
         from explorer3.knowledge import add_packet
         add_packet(packet)
         report = recipient(packet, args.recipient_seed, args.output)
+        if args.acquisition_request:
+            from explorer3.cognitive.broker import record_transfer_attempt
+            record_transfer_attempt(args.acquisition_request, args.output / 'recipient.json')
     print(json.dumps({'outcome': report['outcome'], 'packet_sha256': digest(packet), 'output': str(args.output)}), flush=True)

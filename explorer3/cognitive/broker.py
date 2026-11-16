@@ -322,7 +322,7 @@ def acquisition_requests():
     with catalog.connect() as db:
         exists = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cognitive_requests'").fetchone()
         rows = db.execute("SELECT result FROM cognitive_requests WHERE decision_id='acquisition' ORDER BY created DESC LIMIT 20").fetchall() if exists else []
-    return [json.loads(row['result']) for row in rows if row['result']]
+    return [reconcile_acquisition(json.loads(row['result'])['id']) for row in rows if row['result']]
 
 
 def cancel_acquisition(identifier):
@@ -342,4 +342,175 @@ def cancel_acquisition(identifier):
             db.execute('UPDATE cognitive_missions SET body=? WHERE id=?', (store.encoded(mission), linked['id']))
             db.execute('DELETE FROM cognitive_claims WHERE mission_id=?', (linked['id'],))
         store.event(row['mission_id'], 'acquisition_cancelled', {'request_id': identifier}, db)
+    return value
+
+
+def acquisition(identifier):
+    with catalog.connect() as db:
+        row = db.execute("SELECT result FROM cognitive_requests WHERE id=? AND decision_id='acquisition'", (identifier,)).fetchone()
+    if row is None:
+        raise ValueError('Запрос навыка не найден')
+    return json.loads(row['result'])
+
+
+def _save_acquisition(db, value, event):
+    value['title'] = ACQUISITION_TITLES[value['state']]
+    db.execute('UPDATE cognitive_requests SET state=?,result=? WHERE id=?',
+               (value['state'], store.encoded(value), value['id']))
+    store.event(value['mission_id'], event, {'request_id': value['id'], 'state': value['state']}, db)
+
+
+def select_acquisition_packet(identifier, packet_sha):
+    """Choose immutable evidence, without a collection job or hardware command."""
+    from explorer3 import knowledge
+    from explorer3.skill_packets import admission
+    packet = knowledge.load_packet(packet_sha)
+    with catalog.connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        row = db.execute('SELECT result FROM cognitive_requests WHERE id=?', (identifier,)).fetchone()
+        if row is None:
+            raise ValueError('Запрос навыка не найден')
+        value = json.loads(row['result'])
+        if value['state'] not in ('transfer_preparation', 'data_preparation') or value.get('jobs'):
+            raise ValueError('Выбор пакета сейчас закрыт')
+        if packet_sha not in value['candidate_packets'] or not admission(packet, domain=value['source_domain'])['eligible']:
+            raise ValueError('Пакет не подходит этому запросу')
+        if packet['object']['class'] != value['object_class'] or packet['object']['surface'] != 'rigid_box':
+            raise ValueError('Предмет или механика пакета не поддерживаются')
+        size = value['context'].get('size_m')
+        if size is not None and (len(size) != 3 or any(abs(a / b - 1.) > .2 for a, b in zip(size, packet['object']['size_m']))):
+            raise ValueError('Размеры выходят за область первого переноса')
+        chosen = sorted(set(value.get('selected_packets', [])) | {packet_sha})
+        value.update(selected_packet=chosen[0], selected_packets=chosen, state='data_preparation',
+                     operator_next='Пакет выбран. Нужны собственные успешные показы ROSMASTER и независимые группы данных.')
+        _save_acquisition(db, value, 'donor_packet_selected')
+    return value
+
+
+def record_transfer_attempt(identifier, report_path):
+    """Link an actual imported simulator rollout, including failed attempts."""
+    import hashlib
+    from pathlib import Path
+    from explorer3.paths import DATA
+    from explorer3 import datasets
+    path = Path(report_path).resolve()
+    if not path.is_relative_to(DATA / 'simlab/skill-transfer') or not path.is_file():
+        raise ValueError('Отчёт должен находиться в хранилище переноса Explorer')
+    report = json.loads(path.read_text())
+    imported = report['recipient_import']
+    matches = [e for e in catalog.rows('episodes') if e['id'] == imported['episode_id']]
+    if len(matches) != 1 or matches[0]['profile'] != 'rosmaster_floor_pick_sim':
+        raise ValueError('Нет собственного эпизода ROSMASTER')
+    episode = matches[0]
+    if datasets.fingerprint(episode['dataset']) != imported['dataset_sha256']:
+        raise ValueError('Сохранённый эпизод изменился')
+    provenance = json.loads((Path(episode['dataset']) / 'provenance.json').read_text())
+    lineage = provenance.get('hardware', {}).get('transfer_lineage', {})
+    if lineage.get('packet_sha256') != report.get('packet_sha256') or report.get('physical_commands_sent') != 0:
+        raise ValueError('Происхождение отчёта не совпадает с записью')
+    accepted = (report['outcome'] == episode['outcome'] == 'success'
+                and report.get('independent_verification', {}).get('accepted') is True)
+    attempt = {'path': str(path.relative_to(DATA)), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+               'packet_sha256': report['packet_sha256'], 'episode_id': episode['id'],
+               'dataset_sha256': imported['dataset_sha256'], 'accepted': accepted,
+               'reason': report.get('termination_reason'), 'seed': report['recipient_seed']}
+    with catalog.connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        row = db.execute('SELECT result FROM cognitive_requests WHERE id=?', (identifier,)).fetchone()
+        if row is None:
+            raise ValueError('Запрос навыка не найден')
+        value = json.loads(row['result'])
+        if value['state'] != 'data_preparation' or report['packet_sha256'] not in value.get('selected_packets', []):
+            raise ValueError('Результат не относится к выбранной подготовке')
+        attempts = {a['episode_id']: a for a in value.get('transfer_attempts', [])}
+        if episode['id'] in attempts and attempts[episode['id']] != attempt:
+            raise ValueError('Существующий результат нельзя перезаписать')
+        attempts[episode['id']] = attempt
+        value['transfer_attempts'] = list(attempts.values())
+        _save_acquisition(db, value, 'transfer_attempt_recorded')
+    return value
+
+
+def acquisition_training_lineage(identifier, plan):
+    """A prepared plan may use only linked, verified recipient derivatives."""
+    value = acquisition(identifier)
+    if value['state'] not in ('data_preparation', 'awaiting_training_budget') or value.get('jobs'):
+        raise ValueError('Подготовка нового обучения сейчас закрыта')
+    if plan['profile'] != 'rosmaster_floor_pick_sim' or plan['domain'] != 'sim':
+        raise ValueError('Первый план переноса использует собственную среду ROSMASTER')
+    allowed = {a['episode_id']: a for a in value.get('transfer_attempts', []) if a['accepted']}
+    entries = [e for group in plan['splits'].values() for e in group]
+    if not entries or any(e['id'] not in allowed or e['sha256'] != allowed[e['id']]['dataset_sha256'] for e in entries):
+        raise ValueError('В плане есть записи вне проверенного переноса')
+    packets = sorted({allowed[e['id']]['packet_sha256'] for e in entries})
+    from explorer3 import knowledge
+    for sha in packets:
+        if 'training' not in knowledge.load_packet(sha)['donor']['usage']['allowed']:
+            raise ValueError('Использование источника для обучения не разрешено')
+    return {'acquisition_request': identifier, 'donor_packet_shas': packets,
+            'recipient_derivatives': sorted(e['id'] for e in entries), 'target_real_demonstrations': 0,
+            'experiment_scope': 'simulation transfer mechanism; no physical low-data result implied'}
+
+
+def record_acquisition_draft(identifier, draft_id, draft):
+    with catalog.connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        row = db.execute('SELECT result FROM cognitive_requests WHERE id=?', (identifier,)).fetchone()
+        value = json.loads(row['result'])
+        if value['state'] not in ('data_preparation', 'awaiting_training_budget') or value.get('jobs'):
+            raise ValueError('Запрос изменился во время подготовки')
+        value.update(state='awaiting_training_budget', draft_id=draft_id,
+                     budget={k: draft[k] for k in ('policy', 'steps', 'batch_size', 'device', 'frames')},
+                     operator_next='Проверьте готовый план и подтвердите его запуск на существующей странице обучения.')
+        _save_acquisition(db, value, 'acquisition_training_prepared')
+
+
+def acquisition_training_queued(db, draft, job_id):
+    """Called inside the existing Jobs insertion transaction, never a second queue."""
+    identifier = draft.get('acquisition_request')
+    if identifier:
+        row = db.execute('SELECT result FROM cognitive_requests WHERE id=?', (identifier,)).fetchone()
+        value = json.loads(row['result']) if row else {}
+        if value.get('state') != 'awaiting_training_budget' or value.get('draft_id') != draft['draft_id']:
+            raise ValueError('Запрос отменён или подготовленный план изменился')
+        value.update(state='training', jobs=[job_id], training_started=True,
+                     operator_next='Ход работы и отмена доступны в карточке существующего задания. Роботы освобождены.')
+        _save_acquisition(db, value, 'acquisition_training_queued')
+
+
+def reconcile_acquisition(identifier):
+    """Reflect existing jobs and accepted cards; no polling worker or automatic launch."""
+    with catalog.connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        row = db.execute('SELECT result FROM cognitive_requests WHERE id=?', (identifier,)).fetchone()
+        value = json.loads(row['result'])
+        before = store.encoded(value)
+        if value.get('jobs') and value['state'] not in ('cancelled', 'rejected', 'accepted'):
+            job = db.execute('SELECT * FROM jobs WHERE id=?', (value['jobs'][-1],)).fetchone()
+            if job is not None:
+                state = job['status']
+                if state in ('failed', 'cancelled'):
+                    value.update(state='cancelled' if state == 'cancelled' else 'rejected',
+                                 operator_next='Обучение ' + ('отменено.' if state == 'cancelled' else 'завершилось ошибкой.') + ' Причина и продолжение — в карточке задания.')
+                elif state in ('interrupted', 'unknown'):
+                    value['operator_next'] = 'Задание прервано. Продолжите его через существующую очередь; движение не возобновляется.'
+                elif state == 'completed':
+                    value.update(state='validation', operator_next='Веса готовы. Нужна независимая проверка ROSMASTER без помощи донора.')
+                    records = [json.loads(r['body']) for r in db.execute('SELECT body FROM cognitive_skills')]
+                    accepted = [r for r in records if r['job_id'] == job['id'] and r['verification']['status'] == 'accepted']
+                    exact = [r for r in accepted if r['domain'] == value['domain']]
+                    if exact:
+                        value.update(state='accepted', skill_id=exact[0]['skill_id'],
+                                     operator_next='Навык принят в указанной области. Для продолжения цели нужны свежая сцена, конечная зона и действующее разрешение движения.')
+                    elif value['domain'] == 'real' and any(r['domain'] == 'sim' for r in accepted):
+                        value.update(state='awaiting_physical_trial',
+                                     operator_next='Симуляционная проверка пройдена. Подготовьте отдельное испытание ROSMASTER и подтвердите физический допуск.')
+        if store.encoded(value) != before:
+            _save_acquisition(db, value, 'acquisition_reconciled')
+            if value['state'] in ('accepted', 'cancelled', 'rejected'):
+                phase = 'awaiting_resume' if value['state'] == 'accepted' else value['state']
+                for linked in db.execute("SELECT id,body FROM cognitive_missions WHERE json_extract(body,'$.acquisition_request')=?", (identifier,)).fetchall():
+                    mission = json.loads(linked['body'])
+                    mission.update(phase=phase, auto_resume_motion=False, resume_requires_fresh_scene=True)
+                    db.execute('UPDATE cognitive_missions SET body=? WHERE id=?', (store.encoded(mission), linked['id']))
     return value

@@ -2,6 +2,7 @@
 floor seen by the cameras), the three robots' cameras and states, the running task's stages,
 a readiness check and the command bar with STOP."""
 import io
+import json
 import math
 import shutil
 import threading
@@ -234,6 +235,25 @@ def install(app, ui, control, notify_error, css=''):
         from .cognitive.broker import acquisition_requests
         return {k: st.get(k) for k in ('task', 'stage', 'message', 'active', 'robots')} | {'log': st.get('log', [])[-25:], 'acquisitions': acquisition_requests()}
 
+    @app.get('/api/swarm/acquisition/{identifier}/artifact/{kind}')
+    def acquisition_artifact(identifier: str, kind: str):
+        from .cognitive.broker import acquisition
+        from . import knowledge, training_drafts
+        try:
+            request = acquisition(identifier)
+            if kind == 'request':
+                result = request
+            elif kind == 'packet' and request.get('selected_packet'):
+                result = knowledge.load_packet(request['selected_packet'])
+            elif kind == 'draft' and request.get('draft_id'):
+                result = training_drafts.load(request['draft_id'])
+            else:
+                return Response(status_code=404)
+            return Response(json.dumps(result, ensure_ascii=False, indent=2), media_type='application/json',
+                            headers={'Cache-Control': 'no-store'})
+        except (ValueError, OSError):
+            return Response(status_code=404)
+
     @app.get('/research/search_trials.csv')
     def search_trials_csv():
         from . import research_log
@@ -413,6 +433,25 @@ def install(app, ui, control, notify_error, css=''):
                             ui.label(request.get('operator_next', '')).classes('sw-muted')
                             if request.get('candidate_packets'):
                                 ui.label(f"Подходящих исходных пакетов: {len(request['candidate_packets'])}").classes('sw-muted')
+                            ui.link('Сведения о запросе', f"/api/swarm/acquisition/{request['id']}/artifact/request", new_tab=True)
+                            if request.get('selected_packet'):
+                                ui.link('Исходный опыт SO-101', f"/api/swarm/acquisition/{request['id']}/artifact/packet", new_tab=True)
+                            if request['state'] in ('transfer_preparation', 'data_preparation') and request.get('candidate_packets'):
+                                selected = set(request.get('selected_packets', []))
+                                for packet_sha in request['candidate_packets']:
+                                    if packet_sha not in selected:
+                                        def choose_packet(ident=request['id'], sha=packet_sha):
+                                            from .cognitive.broker import select_acquisition_packet
+                                            try:
+                                                select_acquisition_packet(ident, sha)
+                                                last_acquisitions[0] = None
+                                            except Exception as exc:
+                                                notify_error(exc)
+                                        ui.button('Выбрать опыт ' + packet_sha[:8], on_click=choose_packet).props('flat dense no-caps')
+                            if request['state'] in ('data_preparation', 'awaiting_training_budget'):
+                                ui.link('Подготовить или открыть план обучения', '/sim/training?acquisition=' + request['id'])
+                            for job_id in request.get('jobs', []):
+                                ui.link('Обучение · ход работы и отмена', '/jobs/' + job_id)
                             if request['state'] not in ('accepted', 'cancelled', 'rejected') and not request.get('jobs'):
                                 def cancel_request(ident=request['id']):
                                     try:

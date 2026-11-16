@@ -111,3 +111,56 @@ def test_infeasibility_cannot_be_overridden_by_a_stored_skill(isolated):
                 'reasons': {'physically_infeasible': 'Новая сцена недостижима'}}
     request = prepare_acquisition('mission', 'принеси кубик', 'rosmaster', 'cube', assessed, domain='real')
     assert request['state'] == 'rejected' and request['jobs'] == []
+
+
+def test_transfer_draft_uses_existing_queue_and_cancel_blocks_late_start(isolated, monkeypatch):
+    from explorer3 import datasets, training_drafts
+    from explorer3.jobs import Jobs
+    from explorer3.cognitive import broker
+    from test_skill_packets import packet_fixture
+    packet = packet_fixture()
+    packet['donor']['usage']['allowed'].append('training')
+    sha = store.digest(packet)
+    monkeypatch.setattr(knowledge, '_load', lambda: [{'object_class': 'cube', 'domain': 'real', 'skill_packet_sha256': sha}])
+    monkeypatch.setattr(knowledge, 'load_packet', lambda value: packet)
+    monkeypatch.setattr(training_drafts, 'DATA', isolated)
+    entries = [{'id': str(i), 'sha256': str(i) * 64, 'frames': 10} for i in range(3)]
+    plan = {'domain': 'sim', 'profile': 'rosmaster_floor_pick_sim',
+            'splits': dict(zip(('train', 'validation', 'test'), [[e] for e in entries]))}
+    monkeypatch.setattr(datasets, 'freeze', lambda *a, **kw: ('p' * 64, plan))
+    monkeypatch.setattr(datasets, 'load_plan', lambda *a: plan)
+    req = broker.prepare_acquisition('one', 'принеси кубик', 'rosmaster', 'cube', {}, domain='real')
+    req = broker.select_acquisition_packet(req['id'], sha)
+    with pytest.raises(ValueError, match='вне проверенного переноса'):
+        broker.acquisition_training_lineage(req['id'], plan)
+    # Queue/state fixture only; actual imported-report validation has a separate run artifact.
+    req['transfer_attempts'] = [{'episode_id': e['id'], 'dataset_sha256': e['sha256'], 'accepted': True, 'packet_sha256': sha} for e in entries]
+    with catalog.connect() as db:
+        broker._save_acquisition(db, req, 'test_fixture')
+    draft_id, draft = training_drafts.prepare('rosmaster_floor_pick_sim', 'act', ['0', '1', '2'],
+        steps=50, batch=1, seed=17, device='cpu', acquisition_request=req['id'])
+    assert draft['donor_packet_shas'] == [sha]
+    assert broker.acquisition(req['id'])['state'] == 'awaiting_training_budget'
+    jobs = Jobs(None)
+    job_id = jobs.start_prepared_training(draft_id)
+    assert jobs.start_prepared_training(draft_id) == job_id
+    assert len(catalog.rows('jobs')) == 1
+    assert broker.acquisition(req['id'])['jobs'] == [job_id]
+    with catalog.connect() as db:
+        db.execute("UPDATE jobs SET status='completed' WHERE id=?", (job_id,))
+    assert broker.reconcile_acquisition(req['id'])['state'] == 'validation'
+    assert store.mission('one')['auto_resume_motion'] is False
+    with pytest.raises(ValueError, match='Запрос отменён|изменился'):
+        jobs.start_prepared_training(draft_id)
+    assert len(catalog.rows('jobs')) == 1  # completed acquisition is not silently retrained
+    second = broker.prepare_acquisition('two', 'принеси кубик', 'rosmaster', 'cube', {}, domain='real', context={'scene': 'other'})
+    second = broker.select_acquisition_packet(second['id'], sha)
+    second['transfer_attempts'] = req['transfer_attempts']
+    with catalog.connect() as db:
+        broker._save_acquisition(db, second, 'test_fixture')
+    second_draft, _ = training_drafts.prepare('rosmaster_floor_pick_sim', 'act', ['0', '1', '2'],
+        steps=50, batch=1, seed=17, device='cpu', acquisition_request=second['id'])
+    broker.cancel_acquisition(second['id'])
+    with pytest.raises(ValueError, match='Запрос отменён'):
+        jobs.start_prepared_training(second_draft)
+    assert len(catalog.rows('jobs')) == 1

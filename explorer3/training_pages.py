@@ -11,8 +11,8 @@ from .sim_pages import STYLE
 
 def install(css,jobs):
     @ui.page('/sim/training')
-    async def page():
-        await builder_page('sim')
+    async def page(acquisition: str = ''):
+        await builder_page('sim', acquisition)
 
     @ui.page('/training/prepare')
     async def real_page():
@@ -34,7 +34,7 @@ def install(css,jobs):
         text=(ROOT/'docs'/filename).read_text().replace('(PHYSICAL_ACCEPTANCE_RU.md)','(/datasets/acceptance)').replace('(DATASET_GUIDE_RU.md)','(/datasets/guide)')
         ui.markdown(text).classes('w-full dataset-guide')
 
-    async def builder_page(domain):
+    async def builder_page(domain, acquisition_id=None):
         ui.add_css(css+STYLE);ui.dark_mode().enable();ui.colors(primary='#2b9c8f',secondary='#748aa4',negative='#d45050')
         draft_id=None;preparing=False;loading=False;starting=False;selection_generation=0
         def refresh():
@@ -60,7 +60,7 @@ def install(css,jobs):
             try:
                 parent=None if source.value=='new' else jobs.get(source.value)
                 draft_id,draft=await asyncio.to_thread(training_drafts.prepare,profile.value,policy.value,episodes.value,
-                    steps=int(steps.value),batch=int(batch.value),seed=int(seed.value),device=device.value,source=parent)
+                    steps=int(steps.value),batch=int(batch.value),seed=int(seed.value),device=device.value,source=parent,acquisition_request=acquisition_id)
                 show(draft);history.set_options(saved(),value=draft_id);status.set_text('План сохранён · обучение не запущено')
             except Exception as exc:
                 draft_id=None;confirmed.value=False;start_button.disable();status.set_text(str(exc))
@@ -85,6 +85,11 @@ def install(css,jobs):
             ui.label('Реальные записи' if domain=='real' else 'Симуляционные данные').classes('sim-badge')
         with ui.row():
             ui.link('← Explorer','/');ui.link('Как собрать датасет','/datasets/guide')
+        if acquisition_id:
+            from .cognitive.broker import acquisition
+            request = acquisition(acquisition_id)
+            ui.label('Для запроса: ' + request['task']).classes('sim-status')
+            ui.label('Только проверенные записи переноса; связанные показы одного донора остаются в одной части данных.').classes('muted')
         names=({key:value.get('label',key) for key,value in PROFILES.items()} if domain=='real' else
             {'so101_pick_place_sim':'SO-101 · кубик в коробку','tank_dock_sim':'Tank · подъезд к цели',
              'rosmaster_pick_place_sim':'ROSMASTER · кубик в коробку','rosmaster_dock_sim':'ROSMASTER · подъезд к цели',
@@ -92,7 +97,7 @@ def install(css,jobs):
         with ui.element('div').classes('sim-layout') as builder:
             with ui.column().classes('sim-panel'):
                 ui.label('Данные и исходная модель').classes('sim-title')
-                profile=ui.select(names,value=next(iter(names)),label='Задача',on_change=lambda:refresh()).classes('w-full')
+                profile=ui.select(names,value='rosmaster_floor_pick_sim' if acquisition_id else next(iter(names)),label='Задача',on_change=lambda:refresh()).classes('w-full')
                 policy=ui.select(POLICIES,value='act',label='Модель',on_change=lambda:refresh()).classes('w-full')
                 source=ui.select({},label='Начать заново или дообучить').classes('w-full')
                 episodes=ui.select({},multiple=True,label='Показы и исправления для нового плана').props('use-chips').classes('w-full')

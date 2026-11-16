@@ -174,6 +174,8 @@ class Jobs:
                 AND json_extract(config,'$.draft_id')=?""",(draft_id,)).fetchone()
             if row:return row['id']
             ident=uuid.uuid4().hex
+            from .cognitive.broker import acquisition_training_queued
+            acquisition_training_queued(db, config, ident)
             db.execute('INSERT INTO jobs(id,profile,policy,status,config,created) VALUES(?,?,?,?,?,?)',
                 (ident,draft['profile'],draft['policy'],'queued',json.dumps(config),time.time()))
         return ident
