@@ -35,6 +35,10 @@ def test_incompatible_object_and_floor_target_are_rejected_before_motion():
     env = make('rosmaster_floor_pick_sim')
     try:
         packet = packet_fixture()
+        uncertain = copy.deepcopy(packet)
+        uncertain['measurement']['position_sigma_m'] = .02
+        with pytest.raises(ValueError, match='uncertainty'):
+            RetargetedGrasp(env, uncertain)
         packet['object']['size_m'] = [.08] * 3
         with pytest.raises(ValueError, match='dimensions'):
             RetargetedGrasp(env, packet)

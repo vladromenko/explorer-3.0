@@ -101,6 +101,10 @@ class RetargetedGrasp:
         decision = admission(packet)
         if not decision['eligible']:
             raise ValueError('Donor packet incomplete: ' + ', '.join(decision['reasons']))
+        quality = packet['measurement']
+        if any(quality[key] > limit for key, limit in
+               (('position_sigma_m', .005), ('orientation_sigma_rad', .2), ('jaw_sigma_m', .003))):
+            raise TransferRejected('Donor measurement uncertainty exceeds first-transfer scope')
         if packet['object']['surface'] != 'rigid_box':
             raise ValueError('Only measured rigid box contact geometry is supported in this pilot')
         size = np.asarray(packet['object']['size_m'])

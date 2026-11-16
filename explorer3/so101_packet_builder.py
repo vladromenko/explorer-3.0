@@ -185,6 +185,13 @@ def build_real_packet(episode_id, review):
                 best_held, best_lift = held_s, lift
             trace.append({'time_s': t, 'lift_m': lift, 'held_s': held_s, 'visual_valid': bool(valid)})
         phases.append(phase)
+    samples = [sample for phase in phases for sample in phase['samples']]
+    speeds = [np.linalg.norm(np.asarray(b['world_tcp'])[:3, 3] - np.asarray(a['world_tcp'])[:3, 3]) / (b['time_s'] - a['time_s'])
+              for a, b in zip(samples, samples[1:])]
+    timing_sigma = max(speeds, default=0.) * calibration['camera_delay_sigma_s']
+    position_sigma = float(np.hypot(calibration['position_sigma_m'], timing_sigma))
+    if position_sigma > .005:
+        raise ValueError('Measured motion and camera timing uncertainty exceed the 5 mm pilot scope')
     if best_held < 1.:
         raise ValueError('No independently visible 50 mm lift held for one continuous second')
     verification = {'method': 'independent_visual_measurement', 'episode_id': episode_id,
@@ -212,7 +219,8 @@ def build_real_packet(episode_id, review):
                         'tcp_definition': 'reviewed calibrated fixed contact reference; not uncorrected URDF tip',
                         'synchronization': 'bracketed measured joints interpolated to distinct overview timestamps minus independently measured camera delay',
                         'camera_delay_s': calibration['camera_delay_s'], 'camera_delay_sigma_s': calibration['camera_delay_sigma_s'],
-                        **{key: calibration[key] for key in ('position_sigma_m', 'orientation_sigma_rad', 'jaw_sigma_m')}},
+                        **{key: calibration[key] for key in ('orientation_sigma_rad', 'jaw_sigma_m')},
+                        'position_sigma_m': position_sigma, 'timing_position_sigma_m': timing_sigma},
         'donor_verification': {'status': 'success', 'lift_m': best_lift, 'held_s': best_held,
                               'method': 'independent_visual_measurement', 'evidence_ref': str(path.relative_to(DATA)),
                               'evidence_sha256': hashlib.sha256(path.read_bytes()).hexdigest()}}

@@ -180,12 +180,16 @@ def register_acquired_pick(job_id, packet_shas, scope, evidence_ids, *, domain):
     if domain not in ('real', 'sim') or not packet_shas:
         raise ValueError('Recipient domain and donor lineage required')
     for sha in packet_shas:
-        knowledge.load_packet(sha)
+        source_packet = knowledge.load_packet(sha)
+        if domain == 'real' and source_packet['donor']['domain'] != 'real':
+            raise ValueError('Real donor source required for physical transfer registration')
     jobs = [j for j in catalog.rows('jobs') if j['id'] == job_id and j['status'] == 'completed']
     if len(jobs) != 1 or not jobs[0]['checkpoint'] or jobs[0]['policy'] not in ('act', 'smolvla'):
         raise ValueError('Completed recipient policy training required')
     job = jobs[0]
     config = json.loads(job['config'])
+    if config.get('kind', 'train') != 'train' or job['profile'] not in ('rosmaster_pick_place', 'rosmaster_floor_pick_sim', 'rosmaster_floor_pick_knowledge_sim', 'rosmaster_floor_pick_noknowledge_sim'):
+        raise ValueError('A recipient grasp training job is required')
     if set(config.get('donor_packet_shas', [])) != set(packet_shas):
         raise ValueError('Training lineage differs from the donor packets')
     if profile(job['profile'])['robot'] != 'rosmaster':
