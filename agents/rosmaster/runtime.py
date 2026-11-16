@@ -258,7 +258,7 @@ class Runtime:
                     elif self.profile!='rosmaster_dock' and self.core.measured_arm(self.ARM_FEEDBACK_HOLD_S) is None:
                         reason='Arm feedback lost: '+json.dumps(self.ages(now)['joints_s'])
                     self.trace.append((round(now,3),self.last_arm_command,
-                        [round(v,1) for v in self.core.servo_deg] if getattr(self.core,'servo_deg',None) is not None else None,
+                        [None if v is None else round(v,1) for v in self.core.servo_deg] if getattr(self.core,'servo_deg',None) is not None else None,
                         self.controls.input.get('arm') if hasattr(self.controls,'input') else None,
                         bool(self.core.state.get('arm_enabled')),bool(self.core.state.get('arm_cancel_pending')),self.core.arm_not_ready))
                     if not reason and self.arm_recovering(now,dt):pass
