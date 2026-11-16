@@ -137,6 +137,8 @@ class Swarm:
         self.station_factory = station_factory
         self.thread = None
         self.stop_event = threading.Event()
+        self.command_lock = threading.RLock()
+        self.command_generation = 0
         self.state = {'task': None, 'stage': None, 'message': 'Рой ждёт команду', 'log': [], 'active': False}
         self.current = {}                 # robot -> goal object of this task
         self.only = None
@@ -164,6 +166,32 @@ class Swarm:
 
     def command(self, text, robots=None, *, executor=None, task_context=None):
         """robots: subset of mobile robots that take part (solo vs team runs for the article)."""
+        with self.command_lock:
+            return self._command(text, robots, executor=executor, task_context=task_context,
+                                 expected_generation=self.command_generation)
+
+    def resume(self, mission_id):
+        """Explicit existing UI action; never called by training completion."""
+        from .cognitive.broker import claim_acquisition_resume, finish_acquisition_resume
+        with self.command_lock:
+            if self.thread is not None and self.thread.is_alive():
+                raise RuntimeError('Рой уже выполняет задание')
+            generation = self.command_generation
+            mission, context = claim_acquisition_resume(mission_id, self.agents.domain())
+            try:
+                result = self._command(mission['task'], mission.get('robots', ['rosmaster']), task_context=context,
+                                       expected_generation=generation)
+            except Exception as exc:
+                finish_acquisition_resume(mission_id, error=str(exc))
+                raise
+            try:
+                finish_acquisition_resume(mission_id, next_mission=self.agents.mission)
+            except Exception:
+                self.stop('Продолжение сохранённой цели отменено')
+                raise
+            return result
+
+    def _command(self, text, robots=None, *, executor=None, task_context=None, expected_generation):
         if self.thread is not None and self.thread.is_alive():
             raise RuntimeError('Рой уже выполняет задание: ' + (self.state['task'] or ''))
         kind, prompt = parse(text)
@@ -181,13 +209,26 @@ class Swarm:
         self.only = set(robots) if robots else None
         self.agents.start(kind, prompt, self.mobile())      # plan of registered skills, or a clear refusal
         self.stop_event.clear()
+        if expected_generation != self.command_generation:
+            self.stop_event.set()
+            raise InterruptedError('STOP отменил подготовку команды')
         self.state = {'task': text, 'kind': kind, 'prompt': prompt, 'stage': 'start', 'message': 'Начинаю',
                       'log': [], 'active': True, 'robots': {}}
+        if self.task_context.get('resumed_from'):
+            from . import catalog
+            from .cognitive import store
+            current = {'id': self.agents.mission, 'task': text, 'domain': self.agents.domain(),
+                       'phase': 'running', 'generation': 0, 'resumed_from': self.task_context['resumed_from'],
+                       'terminal_goal': self.task_context['terminal_goal'], 'task_context': self.task_context,
+                       'robots': self.mobile(), 'auto_resume_motion': False}
+            with catalog.connect() as db:
+                db.execute('INSERT INTO cognitive_missions VALUES(?,?)', (current['id'], store.encoded(current)))
         self.thread = threading.Thread(target=self._run, args=(kind, prompt, text), daemon=True, name='swarm')
         self.thread.start()
         return kind, prompt
 
     def stop(self, reason='STOP роя'):
+        self.command_generation += 1  # STOP never waits for preparation or checkpoint hashing
         self.stop_event.set()
         for robot, link in self.links.items():
             try:
@@ -276,6 +317,7 @@ class Swarm:
         stages = []
         outcome, message = 'error', ''
         try:
+            self._check()
             fn = {'explore': self._explore, 'find': self._find, 'fetch': self._fetch, 'goto': self._goto}[kind]
             outcome, message = fn(prompt, text, stages)
         except InterruptedError as exc:
@@ -295,6 +337,15 @@ class Swarm:
             self.skill = self.handoff = None
             self.say(outcome, message)
             self.agents.finish(outcome, message)
+            if getattr(self, 'task_context', {}).get('resumed_from'):
+                from . import catalog
+                from .cognitive import store
+                with catalog.connect() as db:
+                    row = db.execute('SELECT body FROM cognitive_missions WHERE id=?', (self.agents.mission,)).fetchone()
+                    current = json.loads(row['body'])
+                    if current['phase'] == 'running':
+                        current.update(phase='completed' if outcome == 'done' else outcome, outcome=outcome, message=message)
+                        db.execute('UPDATE cognitive_missions SET body=? WHERE id=?', (store.encoded(current), self.agents.mission))
             trial, self.trial = getattr(self, 'trial', None), None
             if trial is not None:
                 from . import research_log
@@ -303,7 +354,7 @@ class Swarm:
                                           found if found and found['at'] >= trial['started'] else None,
                                           episode.id, self.mobile())
             self.state['active'] = False
-            episode.extra.update(terminal_goal=getattr(self, 'task_context', {}).get('terminal_goal'), stages=stages, robots=self.mobile(), condition='team' if len(self.mobile()) > 1 else 'solo')
+            episode.extra.update(resumed_from=getattr(self, 'task_context', {}).get('resumed_from'), terminal_goal=getattr(self, 'task_context', {}).get('terminal_goal'), stages=stages, robots=self.mobile(), condition='team' if len(self.mobile()) > 1 else 'solo')
             episode.finish({'done': 'arrived', 'explored': 'explored'}.get(outcome, outcome), message)
 
     def _stage(self, stages, name, message):
@@ -416,7 +467,7 @@ class Swarm:
                        'registered_skill': gaps['registered_skill'].get('skill_id')})
         if gaps['readiness']['physically_infeasible'] or 'skill' in gaps['gaps']:
             from .cognitive.broker import prepare_acquisition
-            request = prepare_acquisition(self.agents.mission, text, 'rosmaster', prompt, gaps, domain=domain, context=context)
+            request = prepare_acquisition(self.agents.mission, text, 'rosmaster', prompt, gaps, domain=domain, context=context, robots=self.mobile())
             self.state['acquisition'] = request
             self.agents.role('LearningAndExperimentCurator').note(request['state'], request['title'], request_id=request['id'])
             return 'awaiting_skill', request['title'] + '. ' + request['operator_next']
@@ -457,7 +508,7 @@ class Swarm:
             learning['thread'].start()
         # 1. where is it
         item = self._known(prompt, max_age_s=knowledge.WHERE_MAX_AGE_S) if 'where' not in gaps['gaps'] else None
-        if item is None or not item.get('room_xy'):
+        if item is None or item.get('at', 0) < context.get('resume_after', 0) or not item.get('room_xy'):
             item = self._search(prompt, stages)
             if item is None:
                 return 'not_found', f'«{prompt}» не найден: принести нечего'

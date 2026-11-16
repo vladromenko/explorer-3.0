@@ -438,9 +438,10 @@ def install(app, ui, control, notify_error, css=''):
         async def refresh():
             import asyncio
             t = time.time()
-            from .cognitive.broker import acquisition_requests, cancel_acquisition
+            from .cognitive.broker import acquisition_requests, cancel_acquisition, acquisition_missions
             requests = acquisition_requests()
-            request_key = json.dumps(requests, sort_keys=True)
+            saved = {r['id']: acquisition_missions(r['id']) for r in requests if r['state'] == 'accepted'}
+            request_key = json.dumps([requests, saved], sort_keys=True)
             if request_key != last_acquisitions[0]:
                 last_acquisitions[0] = request_key
                 acquisition_box.clear()
@@ -470,6 +471,16 @@ def install(app, ui, control, notify_error, css=''):
                                         ui.button('Выбрать опыт ' + packet_sha[:8], on_click=choose_packet).props('flat dense no-caps')
                             if request['state'] in ('data_preparation', 'awaiting_training_budget'):
                                 ui.link('Подготовить или открыть план обучения', '/sim/training?acquisition=' + request['id'])
+                            for mission in saved.get(request['id'], []):
+                                if mission['phase'] == 'awaiting_resume':
+                                    ui.label('Сохранённая цель: ' + mission['task']).classes('sw-muted')
+                                    def resume_goal(ident=mission['id']):
+                                        try:
+                                            team().resume(ident)
+                                            last_acquisitions[0] = None
+                                        except Exception as exc:
+                                            notify_error(exc)
+                                    ui.button('Продолжить сохранённую цель', on_click=resume_goal).props('flat dense no-caps')
                             for job_id in request.get('jobs', []):
                                 ui.link('Обучение · ход работы и отмена', '/jobs/' + job_id)
                             if request['state'] not in ('accepted', 'cancelled', 'rejected') and not request.get('jobs'):

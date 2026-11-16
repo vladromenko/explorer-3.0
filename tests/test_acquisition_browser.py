@@ -67,11 +67,13 @@ def test_acquisition_pages_without_hardware(tmp_path):
                 expect(page.get_by_text('новый навык принят', exact=True)).to_be_visible()
                 page.reload()
                 expect(page.get_by_text('новый навык принят', exact=True)).to_be_visible()
+                page.get_by_role('button', name='Продолжить сохранённую цель', exact=True).click()
+                expect(page.get_by_text('Нужно измерить место на полу, подъезд и позу выкладки.', exact=True)).to_be_visible()
                 page.goto(base + '/today')
                 expect(page.get_by_text('новый навык принят.', exact=False)).to_be_visible()
                 assert not errors
                 import sqlite3
-                database = next(tmp_path.glob('*.sqlite*'))
+                database = tmp_path / 'catalog.sqlite3'
                 with sqlite3.connect(database) as db:
                     assert db.execute('SELECT COUNT(*) FROM jobs').fetchone()[0] == 0
                 browser.close()

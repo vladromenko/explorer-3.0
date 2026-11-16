@@ -256,7 +256,7 @@ ACQUISITION_TITLES = {
 }
 
 
-def prepare_acquisition(mission_id, task, robot, object_class, assessed, *, domain, context=None):
+def prepare_acquisition(mission_id, task, robot, object_class, assessed, *, domain, context=None, robots=None):
     """Persist the existing fleet mission's nonmoving wait, deduplicated across requests.
 
     Preparation only: no new worker, trainer, hardware lease or permission. Existing
@@ -265,7 +265,7 @@ def prepare_acquisition(mission_id, task, robot, object_class, assessed, *, doma
     from explorer3 import knowledge
     mission_context = dict(context or {})
     context = {key: value for key, value in mission_context.items()
-               if key not in ('terminal_goal', 'scene', 'scene_id', 'observed_at', 'battery', 'permission')}
+               if key not in ('terminal_goal', 'scene', 'scene_id', 'observed_at', 'battery', 'permission', 'resume_after', 'resumed_from')}
     if domain not in ('real', 'sim') or robot != 'rosmaster':
         raise ValueError('Unsupported acquisition recipient')
     if assessed.get('registered_skill', {}).get('state') == 'available' and not assessed.get('readiness', {}).get('physically_infeasible'):
@@ -314,6 +314,7 @@ def prepare_acquisition(mission_id, task, robot, object_class, assessed, *, doma
         row = db.execute('SELECT body FROM cognitive_missions WHERE id=?', (mission_id,)).fetchone()
         mission = json.loads(row['body']) if row else {'id': mission_id, 'task': task, 'domain': domain, 'generation': 0}
         mission.update(terminal_goal=mission_context.get('terminal_goal'), task_context=mission_context,
+                       robots=list(robots or ['rosmaster']),
                        phase='awaiting_skill', acquisition_request=value['id'], training_authorized=False,
                        real_authorized=False, auto_resume_motion=False, resume_requires_fresh_scene=True)
         db.execute('INSERT INTO cognitive_missions VALUES(?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body',
@@ -517,3 +518,55 @@ def reconcile_acquisition(identifier):
                     mission.update(phase=phase, auto_resume_motion=False, resume_requires_fresh_scene=True)
                     db.execute('UPDATE cognitive_missions SET body=? WHERE id=?', (store.encoded(mission), linked['id']))
     return value
+
+
+def acquisition_missions(identifier):
+    """Saved goals, not motion grants; several missions can share one acquisition."""
+    with catalog.connect() as db:
+        rows = db.execute("SELECT body FROM cognitive_missions WHERE json_extract(body,'$.acquisition_request')=?",
+                          (identifier,)).fetchall()
+    return [json.loads(row['body']) for row in rows]
+
+
+def claim_acquisition_resume(mission_id, domain):
+    """A click claims one continuation. Restart/STOP cannot replay this claim."""
+    old = store.mission(mission_id)
+    request = reconcile_acquisition(old['acquisition_request'])
+    if request['state'] != 'accepted':
+        raise ValueError('Собственный навык ещё не принят')
+    if old['domain'] != domain:
+        raise ValueError('Сохранённая цель относится к другому режиму')
+    from explorer3.mission_goal import preparation_reason
+    reason = preparation_reason(old.get('terminal_goal'), domain)
+    if reason:
+        raise ValueError(reason)
+    context = {k: v for k, v in old.get('task_context', {}).items()
+               if k not in ('scene', 'scene_id', 'observed_at', 'battery', 'permission', 'resume_after', 'resumed_from')}
+    context.update(terminal_goal=old['terminal_goal'], skill_id=request['skill_id'])
+    selection = registry.acquired_pick('rosmaster', request['object_class'], domain, context)
+    if selection.get('state') != 'available' or selection.get('skill_id') != request['skill_id']:
+        raise ValueError('Навык или условия изменились; нужна новая проверка')
+    with catalog.connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        current = json.loads(db.execute('SELECT body FROM cognitive_missions WHERE id=?', (mission_id,)).fetchone()['body'])
+        if current['phase'] != 'awaiting_resume':
+            raise ValueError('Эта цель уже продолжена, отменена или требует сверки')
+        context.update(resume_after=time.time(), resumed_from=mission_id)
+        current.update(phase='resuming', generation=current.get('generation', 0)+1,
+                       auto_resume_motion=False, real_authorized=False)
+        db.execute('UPDATE cognitive_missions SET body=? WHERE id=?', (store.encoded(current), mission_id))
+        store.event(mission_id, 'resume_requested', {'generation':current['generation'], 'at':context['resume_after']}, db)
+    return current, context
+
+
+def finish_acquisition_resume(mission_id, *, next_mission=None, error=None):
+    with catalog.connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        current = json.loads(db.execute('SELECT body FROM cognitive_missions WHERE id=?', (mission_id,)).fetchone()['body'])
+        if current['phase'] != 'resuming':
+            raise ValueError('Продолжение отменено или прервано')
+        current.update(phase='resumed' if next_mission else 'unknown', resumed_as=next_mission,
+                       error=error, auto_resume_motion=False)
+        db.execute('UPDATE cognitive_missions SET body=? WHERE id=?', (store.encoded(current), mission_id))
+        store.event(mission_id, 'resume_dispatched' if next_mission else 'resume_failed',
+                    {'next_mission':next_mission, 'error':error}, db)

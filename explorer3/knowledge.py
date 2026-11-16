@@ -92,6 +92,8 @@ def assess(robot, prompt, domain='real', *, context=None, executor=None):
     context = context or {}
     out = {'gaps': [], 'reasons': {}, 'readiness': {}, 'executor': executor}
     item = world_memory.target_for(None, prompt, WHERE_MAX_AGE_S)
+    if item is not None and item.get('at', 0) < context.get('resume_after', 0):
+        item = None
     uncertainty = item.get('uncertainty_m') if item else None
     unknown_location = item is None or type(uncertainty) not in (int, float) or not math.isfinite(uncertainty)
     poor_location = not unknown_location and uncertainty > WHERE_MAX_UNCERTAINTY_M

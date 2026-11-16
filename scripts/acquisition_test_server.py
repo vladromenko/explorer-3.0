@@ -60,6 +60,11 @@ def fixture(scenario: str):
             request.update(state=scenario, operator_next='Изолированный пример состояния; физических испытаний не было.')
             with catalog.connect() as db:
                 broker._save_acquisition(db, request, 'browser_fixture')
+                if scenario == 'accepted':
+                    from explorer3.mission_goal import first_floor_goal
+                    mission = json.loads(db.execute('SELECT body FROM cognitive_missions WHERE id=?', ('fixture',)).fetchone()['body'])
+                    mission.update(phase='awaiting_resume', domain='real', terminal_goal=first_floor_goal('real'))
+                    db.execute('UPDATE cognitive_missions SET body=? WHERE id=?', (store.encoded(mission), 'fixture'))
     return request
 
 ui.run(host='127.0.0.1', port=int(os.environ['EXPLORER3_TEST_PORT']), reload=False, show=False, tailwind=False,

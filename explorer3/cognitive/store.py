@@ -222,7 +222,7 @@ def recover_interrupted():
         db.execute("UPDATE cognitive_requests SET state='unknown' WHERE state='running'")
         for row in db.execute('SELECT * FROM cognitive_missions').fetchall():
             value=json.loads(row['body'])
-            if value['phase'] in ('planning','planned','running'):
+            if value['phase'] in ('planning','planned','running','resuming'):
                 value.update(phase='unknown',generation=value['generation']+1,error='Application restarted; reconcile before a new mission')
                 db.execute('UPDATE cognitive_missions SET body=? WHERE id=?',(encoded(value),row['id']))
                 event(row['id'],'restart_unknown',{'generation':value['generation']},db)
