@@ -1,0 +1,35 @@
+{
+  "training_started": false,
+  "hardware_commands_sent": false,
+  "profiles": {
+    "rosmaster_floor_pick_knowledge_sim": {
+      "plan": "24ef1ae0cef1c4b811021c9c94c9ff6ec702698cbb299cc5af73e2bd803c6572",
+      "model_hash": "c235bd476b7bf8c2b15419b5d0b64782d417c8b2c20f2ef6aa121964c087fb00",
+      "splits": {
+        "test": 1,
+        "validation": 1,
+        "train": 1
+      },
+      "merged_frames": 218,
+      "training_tasks": [
+        "pick up the cube, 3.1 x 3.1 cm, 3.4 cm high"
+      ],
+      "readback": "PASS"
+    },
+    "rosmaster_floor_pick_noknowledge_sim": {
+      "plan": "d6024f5538ce0b323be4248d0348b245c14f943a322af6d9228810df33e8268d",
+      "model_hash": "c235bd476b7bf8c2b15419b5d0b64782d417c8b2c20f2ef6aa121964c087fb00",
+      "splits": {
+        "test": 1,
+        "validation": 1,
+        "train": 2
+      },
+      "merged_frames": 420,
+      "training_tasks": [
+        "pick up the cube",
+        "pick up the cube"
+      ],
+      "readback": "PASS"
+    }
+  }
+}
