@@ -38,10 +38,18 @@ def check_source(source,target):
     return plan,contract(real),checkpoint_hash(root)
 
 
-def prepare(source,target,episode_ids,*,steps,batch,seed,device):
+def prepare(source,target,episode_ids,*,steps,batch,seed,device,partition_ids=None,k=None):
     validate_budget(steps,batch,seed,device)
     old,channels,fingerprint=check_source(source,target)
-    plan_id,plan=datasets.freeze(target,False,seed=seed,selected_ids=episode_ids,min_real_episodes=3)
+    if partition_ids is not None:
+        selected=[i for group in partition_ids.values() for i in group]
+        if len(episode_ids)!=len(selected) or set(episode_ids)!=set(selected):
+            raise ValueError('All selected target episodes must appear once in the declared budget')
+        plan_id,plan=datasets.freeze_target_budget(target,partition_ids,k,seed=seed)
+    else:
+        if k is not None:
+            raise ValueError('A claimed k requires explicit target partitions')
+        plan_id,plan=datasets.freeze(target,False,seed=seed,selected_ids=episode_ids,min_real_episodes=3)
     source_plan_id=json.loads(source['config'])['plan_id']
     frames={role:sum(e['frames'] for e in rows) for role,rows in plan['splits'].items()}
     common={'version':1,'kind':'train','profile':target,'policy':source['policy'],'smoke':False,
@@ -53,7 +61,10 @@ def prepare(source,target,episode_ids,*,steps,batch,seed,device):
         'mixture':{'sim_train_frames':0,'real_train_frames':frames['train']},'training_started':False,
         'preparation_only':True,'physical_deployment_authorized':False,'pilot':True,
         'limitation':'Three independent groups are a pipeline pilot, not proof of transfer or adequate sample size'}
-    transfer={**common,'mode':'sim_to_real_new_optimizer','initial_checkpoint':source['checkpoint'],
+    if plan.get('target_data_budget'):
+        common['target_data_budget']=plan['target_data_budget']
+    transfer={**common,'donor_packet_shas':json.loads(source['config']).get('donor_packet_shas',[]),
+        'mode':'sim_to_real_new_optimizer','initial_checkpoint':source['checkpoint'],
         'initial_checkpoint_sha256':fingerprint,'source_smoke':bool(old['smoke'])}
     scratch={**common,'mode':'matched_real_only_from_scratch','initial_checkpoint':None,
         'initial_checkpoint_sha256':None,'source_job':None,'source_plan_id':None}

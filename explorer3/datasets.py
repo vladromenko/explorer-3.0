@@ -234,6 +234,36 @@ def freeze(name, smoke, seed=1000, sim_model_hash=None, *, selected_ids=None, mi
     return ident, plan
 
 
+def freeze_target_budget(name, partition_ids, k, *, seed=1000):
+    """Explicit small target budget; additional hold-outs never become training data."""
+    if name != 'rosmaster_pick_place' or type(k) is not int or k not in (5,10,20):
+        raise ValueError('First target-data pilot supports ROSMASTER floor grasp with k=5,10,20')
+    roles = ('train','validation','test')
+    if set(partition_ids) != set(roles) or any(not isinstance(partition_ids[r],list) for r in roles):
+        raise ValueError('Explicit train/validation/test identifiers required')
+    if len(partition_ids['train']) != k or not partition_ids['validation'] or not partition_ids['test']:
+        raise ValueError('Exactly k training demonstrations and separate nonempty hold-outs required')
+    ids = [i for role in roles for i in partition_ids[role]]
+    if len(ids) != len(set(ids)):
+        raise ValueError('Repeated target demonstration across partitions')
+    _, checked = freeze(name,False,seed=seed,selected_ids=ids,min_real_episodes=3)
+    entries = {e['id']:e for group in checked['splits'].values() for e in group}
+    assigned = {i:role for role in roles for i in partition_ids[role]}
+    for group in connected_groups(list(entries.values())):
+        if len({assigned[e['id']] for e in group}) != 1:
+            raise ValueError('Related target scenes or source lineages cross explicit partitions')
+    plan = {**checked, 'splits':{role:[entries[i] for i in partition_ids[role]] for role in roles},
+            'split_rule':'explicit independent groups; exactly the declared target training budget',
+            'target_data_budget':{'k':k,'train_demonstrations':k,
+                'validation_demonstrations':len(partition_ids['validation']),
+                'test_demonstrations':len(partition_ids['test']),
+                'total_target_demonstrations':len(ids),
+                'calibration_demonstrations_in_training':0,
+                'calibration_cost':'must be accounted separately; never an undeclared normalization source'}}
+    from .training_drafts import save_content
+    return save_content(DATA/'plans',plan),plan
+
+
 def load_plan(ident, verify=True):
     if len(ident) != 64 or any(c not in '0123456789abcdef' for c in ident):
         raise ValueError('Invalid plan ID')
