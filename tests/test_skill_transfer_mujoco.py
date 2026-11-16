@@ -68,3 +68,36 @@ def test_stalled_variant_is_rejected_without_object_chasing(monkeypatch):
         assert expert.path_time == 0 and env.steps == 0
     finally:
         env.close()
+
+
+def test_existing_policy_evaluator_attaches_independent_physics_measurements(tmp_path, monkeypatch):
+    from explorer3.sim import evaluate
+    from explorer3.sim.aligned import ScriptedFloorPick
+    from explorer3 import training_drafts
+    env = make('rosmaster_floor_pick_sim', images=False)
+    monkeypatch.setattr(evaluate, 'make', lambda *a, **kw: env)
+    monkeypatch.setattr(training_drafts, 'checkpoint_hash', lambda p: 'a'*64)
+    class ScriptedFixture:
+        # Test transport only: this deliberately is not a trained policy or accepted skill.
+        ready = {'policy_type':'scripted_fixture'}
+        def __init__(self, *a, **kw):
+            self.expert = None
+        def request(self, command):
+            self.expert = ScriptedFloorPick(env)
+        def action(self, obs, cfg):
+            return self.expert.action()
+        def close(self):
+            pass
+    monkeypatch.setattr(evaluate, 'ACTClient', ScriptedFixture)
+    checkpoint = tmp_path/'checkpoint';checkpoint.mkdir()
+    (checkpoint/'model.safetensors').write_bytes(b'fixture only')
+    result = evaluate.evaluate(checkpoint, tmp_path/'result.json', [42000,42001,42002],
+                               profile='rosmaster_floor_pick_sim', verify_grasp=True)
+    assert result['independent_grasp_verification'] and not result['physical_skill_verified']
+    assert result['checkpoint_bundle_sha256'] == 'a'*64
+    assert len(result['trials']) == 3
+    for trial in result['trials']:
+        m = trial['grasp_verification']
+        assert m['method'].startswith('every MuJoCo physics substep')
+        assert m['held_s'] >= 0 and not trial['donor_online'] and not trial['geometric_correction']
+        assert trial['object']['name'] == 'cube'

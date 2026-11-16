@@ -2,6 +2,7 @@
 import hashlib
 import json
 import math
+from pathlib import Path
 from explorer3.paths import ROOT
 from explorer3.profiles import profile,PROFILES
 from .schemas import SkillCard
@@ -247,3 +248,78 @@ def register_acquired_pick(job_id, packet_shas, scope, evidence_ids, *, domain):
             raise ValueError('Accepted skill is immutable; make a new version')
         db.execute('INSERT OR IGNORE INTO cognitive_skills VALUES(?,?)', (identifier, store.encoded(value)))
     return value
+
+
+def register_sim_grasp_evaluation(job_id, evaluation_id):
+    """Import the complete existing Jobs evaluation; never select only good trials."""
+    import time
+    from explorer3 import catalog, datasets
+    from explorer3.paths import DATA
+    from explorer3.jobs import Jobs
+    from explorer3.training_drafts import checkpoint_hash
+    from . import store
+    job, evaluation = Jobs(None).get(job_id), Jobs(None).get(evaluation_id)
+    config, evaluated = json.loads(job['config']), json.loads(evaluation['config'])
+    if job['status'] != 'completed' or evaluation['status'] != 'completed' or evaluated.get('kind') != 'sim_evaluate':
+        raise ValueError('Completed policy training and its completed simulation evaluation required')
+    if evaluated.get('source_job') != job_id or evaluated.get('verify_grasp') is not True or not config.get('donor_packet_shas'):
+        raise ValueError('Evaluation must verify the actual donor-trained recipient job')
+    path = DATA/'jobs'/evaluation_id/'result.json'
+    result = json.loads(path.read_text())
+    sha = checkpoint_hash(job['checkpoint'])
+    if result.get('domain') != 'sim' or result.get('policy') != job['policy'] or result.get('independent_grasp_verification') is not True or result.get('checkpoint_bundle_sha256') != sha:
+        raise ValueError('Independent evaluation must match the unchanged checkpoint')
+    expected_verifier = file_hash('explorer3/sim/skill_transfer.py')
+    if result.get('verifier_sha256') != expected_verifier:
+        raise ValueError('Independent verifier implementation changed')
+    trials = result['trials']
+    if len(trials) != evaluated['episodes'] or len(trials) < 3 or len({t['seed'] for t in trials}) != len(trials):
+        raise ValueError('Complete independent trial series required')
+    plan = datasets.load_plan(config['plan_id'])
+    recorded_seeds = set()
+    for group in plan['splits'].values():
+        for entry in group:
+            provenance = json.loads((Path(entry['dataset'])/'provenance.json').read_text())
+            seed = provenance.get('hardware', {}).get('seed')
+            if seed is not None:
+                recorded_seeds.add(seed)
+    if any(t['seed'] in recorded_seeds for t in trials):
+        raise ValueError('Acceptance scenes overlap recorded training/hold-out scenes')
+    objects = [t['object'] for t in trials]
+    if len({o['name'] for o in objects}) != 1 or any(o.get('geometry') != 'box_proxy' for o in objects):
+        raise ValueError('First acceptance requires one rigid object class')
+    model = result['model']
+    if evaluated.get('expected_model_hash') != model['xml_sha256'] or plan['sim_model_hash'] != model['xml_sha256']:
+        raise ValueError('Evaluation geometry differs from the recipient training corpus')
+    bounds = [[min(o['size_m'][i] for o in objects), max(o['size_m'][i] for o in objects)] for i in range(3)]
+    scope = {'object_class': objects[0]['name'], 'surface': 'rigid_box', 'size_bounds_m': bounds,
+             'camera_sha256': digest({'profile': profile(evaluated['profile']), 'model': model}),
+             'calibration_sha256': model['xml_sha256']}
+    def passed(trial):
+        m = trial['grasp_verification']
+        return (trial['outcome']=='success' and m['accepted'] is True
+                and trial.get('donor_online') is False and trial.get('geometric_correction') is False
+                and not m['forbidden_contact_pairs'] and 0 <= m['max_arm_penetration_m'] <= .002
+                and all(type(m[k]) in (int,float) and math.isfinite(m[k]) and m[k] >= minimum
+                        for k,minimum in (('lift_m',.05),('held_s',1.))))
+    accepted = [t for t in trials if passed(t)]
+    if len(accepted) < 3 or len(accepted)/len(trials) < .8:
+        raise ValueError('Complete independent series did not meet 80 percent acceptance with at least three successes')
+    artifact_sha = hashlib.sha256(path.read_bytes()).hexdigest()
+    identifiers = []
+    for trial in accepted:
+        measured = trial['grasp_verification']
+        payload = {'checkpoint_sha256': sha, 'scope_sha256': digest(scope),
+                   'donor_online': False, 'geometric_correction': False, 'recipient': 'success',
+                   'lift_m': measured['lift_m'], 'held_s': measured['held_s'],
+                   'scene_id': model['xml_sha256']+':'+str(trial['seed']),
+                   'evaluation_job': evaluation_id, 'whole_series_successes': len(accepted),
+                   'whole_series_trials': len(trials), 'report_ref': str(path.relative_to(DATA)), 'report_sha256': artifact_sha}
+        ident = 'grasp:'+digest({'evaluation':evaluation_id,'seed':trial['seed'],'report':artifact_sha})
+        now = time.time()
+        store.put_evidence({'id':ident, 'domain':'sim', 'robot':'rosmaster', 'source':'fixed_outcome_verifier',
+                            'sample_id':ident, 'frame_id':'MuJoCo_world', 'received_timestamp_ns':time.time_ns(),
+                            'clock_domain':'homebrain_wall', 'created_at':now, 'expires_at':now+1,
+                            'status':'observed', 'content_sha256':digest(payload), 'payload':payload})
+        identifiers.append(ident)
+    return register_acquired_pick(job_id, config['donor_packet_shas'], scope, identifiers, domain='sim')

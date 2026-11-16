@@ -211,6 +211,7 @@ class Jobs:
         return self._insert(source['profile'],source['policy'],{'kind':'sim_evaluate','profile':source['profile'],
             'source_job':job_id,'checkpoint':source['checkpoint'],'device':'cuda',
             'expected_model_hash':model_hash,
+            'verify_grasp':bool(config.get('donor_packet_shas')),
             'episodes':3 if json.loads(source['config']).get('smoke') else 20})
 
     def compare_sim_branches(self,name,*,source_job=None,seed=14,warmup_s=.5,delay_s=.5,correction_s=5.,horizon_s=15.):
@@ -409,6 +410,17 @@ class Jobs:
                     db.execute('UPDATE jobs SET status=?,error=?,checkpoint=? WHERE id=?',
                         (status, None if result else f'Process exit={code}; см. журнал',
                          result.get('checkpoint') if result else None, ident))
+                if status == 'completed' and cfg.get('kind') == 'sim_evaluate' and cfg.get('verify_grasp'):
+                    from .cognitive.registry import register_sim_grasp_evaluation
+                    try:
+                        record = register_sim_grasp_evaluation(cfg['source_job'], ident)
+                        acceptance = {'status':'accepted', 'domain':'sim', 'skill_id':record['skill_id'],
+                                      'physical_skill_verified':False, 'motion_authorized':False}
+                    except (ValueError, KeyError, OSError) as exc:
+                        acceptance = {'status':'rejected', 'domain':'sim', 'reason':str(exc),
+                                      'physical_skill_verified':False, 'motion_authorized':False}
+                    (DATA/'jobs'/ident/'acceptance.json').write_text(json.dumps(acceptance,indent=2))
+                    catalog.event('info', 'Independent recipient acceptance: '+json.dumps(acceptance))
         except ResourceBusy as exc:
             with catalog.connect() as db:
                 db.execute("UPDATE jobs SET error=? WHERE id=? AND status='queued'",(str(exc),ident))
