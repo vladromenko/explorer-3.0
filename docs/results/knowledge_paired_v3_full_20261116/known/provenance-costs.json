@@ -1,0 +1,120 @@
+{
+  "jobs": [
+    {
+      "id": "cc5c2964f6ee4456b13b9820bbe066d1",
+      "profile": "rosmaster_floor_pick_knowledge_sim",
+      "policy": "smolvla",
+      "status": "completed",
+      "config": {
+        "batch_size": 8,
+        "device": "cuda",
+        "domain": "sim",
+        "frames": {
+          "test": 4194,
+          "train": 33935,
+          "validation": 4248
+        },
+        "initial_checkpoint": null,
+        "initial_checkpoint_sha256": null,
+        "kind": "train",
+        "limitation": "Independent groups and the recording count are technical gates, not proof of sufficient data or learned skill",
+        "mixture": {
+          "new_train_frames": 33935,
+          "old_train_frames": 0
+        },
+        "mode": "new_training",
+        "normalization": "new train partition only; official LeRobot non-resume statistics override",
+        "plan_id": "266492073b84bfdd63322e9624cec4c4113d603c88b36ccbcb361ab3e09dbfd2",
+        "policy": "smolvla",
+        "preparation_only": false,
+        "profile": "rosmaster_floor_pick_knowledge_sim",
+        "sampling": "uniform merged train frames; no oversampling or hidden class weights",
+        "seed": 1000,
+        "smoke": false,
+        "source_job": null,
+        "source_plan_id": null,
+        "split_counts": {
+          "test": 20,
+          "train": 160,
+          "validation": 20
+        },
+        "steps": 12000,
+        "test_rule": "prior hold-outs retained; test not used for training or validation selection",
+        "version": 1,
+        "draft_id": "f22f95751d0a51aca3033ba8d853c8e663777e3777a0fcf32f46cbe4cfd0f42a",
+        "training_requested": true
+      },
+      "created": 1794804601.3930407,
+      "error": null,
+      "checkpoint": "/home/jetsonnx/.local/share/explorer3/checkpoints/cc5c2964f6ee4456b13b9820bbe066d1-b8/checkpoints/last/pretrained_model"
+    },
+    {
+      "id": "0425eff7fe3d46c28e74f8da382af0e9",
+      "profile": "rosmaster_floor_pick_knowledge_sim",
+      "policy": "smolvla",
+      "status": "completed",
+      "config": {
+        "kind": "sim_evaluate",
+        "profile": "rosmaster_floor_pick_knowledge_sim",
+        "source_job": "cc5c2964f6ee4456b13b9820bbe066d1",
+        "checkpoint": "/home/jetsonnx/.local/share/explorer3/checkpoints/cc5c2964f6ee4456b13b9820bbe066d1-b8/checkpoints/last/pretrained_model",
+        "device": "cuda",
+        "expected_model_hash": "0e44d9f93c8dd4b9a6452e009097b205209f509ebe0653dc78a339783e5925dc",
+        "episodes": 20
+      },
+      "created": 1794815346.93867,
+      "error": null,
+      "checkpoint": "/home/jetsonnx/.local/share/explorer3/checkpoints/cc5c2964f6ee4456b13b9820bbe066d1-b8/checkpoints/last/pretrained_model"
+    }
+  ],
+  "resources": {
+    "cc5c2964f6ee4456b13b9820bbe066d1": {
+      "profile": "rosmaster_floor_pick_knowledge_sim",
+      "kind": "train",
+      "first_seen": 1794804601.4765708,
+      "samples": 2144,
+      "memory_peak_bytes": 6442450944,
+      "swap_peak_bytes": 49152,
+      "min_system_available_kib": 7290704,
+      "status": "completed",
+      "error": null,
+      "checkpoint": "/home/jetsonnx/.local/share/explorer3/checkpoints/cc5c2964f6ee4456b13b9820bbe066d1-b8/checkpoints/last/pretrained_model",
+      "created": 1794804601.3930407,
+      "first_running_seen": 1794804606.4783053,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 70570,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      },
+      "last_step": 12000,
+      "first_terminal_seen": 1794815342.594532
+    },
+    "0425eff7fe3d46c28e74f8da382af0e9": {
+      "profile": "rosmaster_floor_pick_knowledge_sim",
+      "kind": "evaluation",
+      "first_seen": 1794815347.5966463,
+      "samples": 90,
+      "memory_peak_bytes": 4151480320,
+      "swap_peak_bytes": 0,
+      "min_system_available_kib": 8470576,
+      "status": "completed",
+      "error": null,
+      "checkpoint": "/home/jetsonnx/.local/share/explorer3/checkpoints/cc5c2964f6ee4456b13b9820bbe066d1-b8/checkpoints/last/pretrained_model",
+      "created": 1794815346.93867,
+      "first_running_seen": 1794815352.5987847,
+      "memory_events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      },
+      "first_terminal_seen": 1794815803.446828
+    }
+  },
+  "interpretation": "0/20 autonomous MuJoCo successes; all task_deadline; not physical admission. Control pending."
+}

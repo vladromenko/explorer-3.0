@@ -1,0 +1,232 @@
+{
+  "status": "completed",
+  "domain": "sim",
+  "policy": "smolvla",
+  "checkpoint": "/home/jetsonnx/.local/share/explorer3/checkpoints/cc5c2964f6ee4456b13b9820bbe066d1-b8/checkpoints/last/pretrained_model",
+  "checkpoint_sha256": "41ff1569dbfa012a9049f9abacc4b6653e4b31e0bad7da1f1476ad8f8b379158",
+  "model": {
+    "source": "Yahboom official ROSMASTER M3 PRO code archive, orin/M3Pro_ws-0.0.1.zip",
+    "source_url": "https://drive.google.com/file/d/1WxZbB2ulfWldWYRKiT5zheso-8EtqfdV/view",
+    "archive_sha256": "7f9083d301fef50633445272505e9acb561a4b6abe362dd946d7deaaf4caff0f",
+    "srdf_sha256": "770c7df6680f2bfb379019223f52f80162423e1e6dc392c35dae46650b853d59",
+    "gripper_closed_rad": -0.8398,
+    "urdf_sha256": "8046676e826b02f7764d1db5cbf24ea3d82202d22837ae824f8b6a8ddd82b6aa",
+    "meshes_sha256": {
+      "base_link.STL": "82897ec12100b78d8f33800edd7be19f86de3ffbc3574ed446f1d2bf04079f4a",
+      "arm1.STL": "d12f701abb74171df8ed3179b3885d10c6af2863f29d13e52bcce2d0d8933643",
+      "arm2.STL": "6ec3d8c7b02106560f61035e03a034637b988d153319d87bb50994e96728271e",
+      "arm3.STL": "74e309203df8ed80e57962a5ccc871909163cb07c1b1f6db0628233684360a98",
+      "arm4.STL": "8f74b107bdaba930ea482c95e6685d5cf5dccb3923a1e6d8b9280b7986811cda",
+      "arm5.STL": "1a52a732e4664ac3b703968416446b76d67067a78632b520d33858a80a26a281",
+      "rlink1.STL": "9e3bb9c0d08d3d177e01a532d275f108f514eb4be13e857c0a596c61c32891a6",
+      "rlink2.STL": "ff22b15d51ff0d96cddcaa74b6056c9e5f88e1abe6886023a2a90ca80ec3230d",
+      "llink1.STL": "0acf2b0ea73e9eb63e3ef9fec5637f0a151dae108ac3eed58ffd98f0062a6c9d",
+      "llink2.STL": "e356dfad82f1468a6c80e20fe127df4b7b40c395398cf5cb85a1522d9691b31c",
+      "rlink3.STL": "bcf76ccbadf426c3e7ec6135f0fd09c0669b54735e7de91bbee92276b5404b25",
+      "llink3.STL": "81f1c9f5ab75d86362d7e227fda6018c87488db713bd9621f6eb761bbec3109d",
+      "Gripping.STL": "e35ed860419dad49687084f9c8493f43c81cfece5b421d7e63944d27d22d63f7",
+      "DCW2.STL": "085efb1ffed33d9440071886bf1c2ce769facda5e45fd7e1ab24d4d55298d1a1",
+      "Camera.STL": "12d7158cdf2fab1072f2bd3989726e854a20d1fe717206cb7edc114afe59fdbe",
+      "lwheel1.STL": "e629352d69aaef698c948505f046fb241b1d9a7e734f0417a06dfe2d383eacfd",
+      "lwheel2.STL": "f07f85985d6c189b71d839a0d44bf3e893eacfd76dccc4f954b63d247a78ae1b",
+      "rwheel1.STL": "7218e9bea1d0862cacd44b0a8a72e207085d367a022843bfd4e6be23f6786fff",
+      "rwheel2.STL": "f8daf44a79b1b3d5bdec95ef3885e8151f3a39f21f93c2bf2e8fcbf09d57c323",
+      "arm_base_Link.STL": "bbd67c0a59cdbb8fd02c567e8ddff62bde72d3cae753ee63da7681f98f29871c"
+    },
+    "geometry": "original URDF link transforms, visual/collision STL, gripper mimic constraints",
+    "inertias": "original manufacturer CAD values, not identified whole-robot mass",
+    "calibration": "manufacturer_geometry_unverified_local_dynamics",
+    "license": "package.xml says Apache 2.0 but retains TurtleBot metadata; assets cached locally, no redistribution",
+    "adaptations": [
+      "empty visual tags removed",
+      "camera pan and wheels fixed for arm task",
+      "MuJoCo native URDF import; balanceinertia enabled; manufacturer SRDF collision exclusions",
+      "duplicate collision geometry invisible, still active"
+    ],
+    "xml_sha256": "0e44d9f93c8dd4b9a6452e009097b205209f509ebe0653dc78a339783e5925dc",
+    "presentation": {
+      "renderer": "native MuJoCo/Studio",
+      "style": "laboratory-v1",
+      "checker_cell_m": 0.1,
+      "reference": "Menagerie robotstudio_so101/scene.xml (Apache-2.0)",
+      "policy_camera": "same physical scene, no object coordinates or debug overlays"
+    },
+    "numerical_contact": {
+      "timestep_s": 0.0005,
+      "solref": [
+        0.001,
+        1
+      ],
+      "solimp": [
+        0.95,
+        0.99,
+        0.001,
+        0.5,
+        2
+      ],
+      "iterations": 100,
+      "purpose": "bound numerical interpenetration, not fitted material compliance"
+    },
+    "controller_assumptions": [
+      "position servo gains/torque caps",
+      "lag",
+      "friction",
+      "servo-to-gripper alignment pending physical check",
+      "camera FOV pending intrinsics"
+    ],
+    "task_geometry": "simulated 32mm cube and bin; not a measurement of user objects",
+    "task_variant": "rosmaster_floor_pick",
+    "camera_roll_deg": 0.0
+  },
+  "new_process_reload": true,
+  "privileged_input": false,
+  "trials": [
+    {
+      "seed": 10000,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10001,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10002,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10003,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10004,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10005,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10006,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10007,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10008,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10009,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10010,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10011,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10012,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10013,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10014,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10015,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10016,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10017,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10018,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    },
+    {
+      "seed": 10019,
+      "outcome": "failure",
+      "reason": "task_deadline",
+      "steps": 500,
+      "sim_seconds": 24.999999999987086
+    }
+  ],
+  "success_fraction": 0.0,
+  "sensor_to_action_seconds_p50_p95_max": [
+    0.01760548201855272,
+    0.01999663066526409,
+    1.2549230749718845
+  ],
+  "physical_skill_verified": false
+}
