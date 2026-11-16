@@ -22,12 +22,23 @@ def combine(episodes: list[dict], destination: Path, name: str):
                           concatenate_videos=False,concatenate_data=False)
 
 
+def loader_workers():
+    """Video-decoding DataLoader workers. 0 (the default) decodes in the trainer process and made a
+    16-sample ACT batch take ~1.5 s with an idle GPU; DATA/configs/training.json may raise it (max 6)."""
+    try:
+        from .paths import DATA
+        value=json.loads((DATA/'configs/training.json').read_text()).get('num_workers',0)
+    except (OSError,ValueError):
+        return 0
+    return value if type(value) is int and 0<=value<=6 else 0
+
+
 def train_command(dataset: Path, output: Path, policy='act',steps=50,batch=8,seed=1000,device='cuda',initial_checkpoint=None):
     args=[sys.executable,'-m','lerobot.scripts.lerobot_train',f'--dataset.repo_id=local/{dataset.name}',
           f'--dataset.root={dataset}','--dataset.video_backend=pyav','--dataset.use_imagenet_stats=false',
           f'--policy.type={policy}',f'--policy.device={device}','--policy.push_to_hub=false',
           '--wandb.enable=false',f'--output_dir={output}',f'--steps={steps}',f'--batch_size={batch}',
-          '--num_workers=0','--persistent_workers=false',f'--seed={seed}','--env_eval_freq=0',
+          f'--num_workers={loader_workers()}','--persistent_workers=false',f'--seed={seed}','--env_eval_freq=0',
           '--log_freq=10',f'--save_freq={min(steps,5000)}']
     info_path=dataset/'meta/info.json'
     if info_path.exists() and 'observation.environment_state' in json.loads(info_path.read_text())['features'] and not initial_checkpoint:

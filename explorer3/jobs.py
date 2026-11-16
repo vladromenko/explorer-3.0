@@ -166,6 +166,13 @@ class Jobs:
         draft=load(draft_id)
         config={**draft,'draft_id':draft_id,'preparation_only':False,'training_requested':True}
         config.pop('training_started',None)
+        # Optional cgroup memory cap for this run (compute_process bounds it to 1024-8192 MiB);
+        # parallel video-decoding workers (training.loader_workers) need more than the 6 GiB default.
+        try:
+            limit=json.loads((DATA/'configs/training.json').read_text()).get('memory_limit_mib')
+        except (OSError,ValueError):
+            limit=None
+        if limit is not None:config['memory_limit_mib']=limit
         # One active execution per immutable draft, including requests from two
         # browser tabs/processes. Completed experiments may be repeated explicitly.
         with catalog.connect() as db:
