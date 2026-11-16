@@ -31,7 +31,7 @@ def save(path, value):
 
 
 def rows():
-    return [json.loads(p.read_text()) for p in sorted(OUT.glob('5????.json'))]
+    return [json.loads(p.read_text()) for p in sorted(OUT.glob('[0-9][0-9][0-9][0-9][0-9].json'))]
 
 
 def provenance():

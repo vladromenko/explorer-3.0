@@ -8,7 +8,7 @@
   "geometry_version": 3,
   "model_sha256": "0e44d9f93c8dd4b9a6452e009097b205209f509ebe0653dc78a339783e5925dc",
   "successful_pairs": 200,
-  "start_seed": 60006,
+  "start_seed": 60106,
   "max_attempts": 300,
   "technical_probe": {
     "seeds": [
