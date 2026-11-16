@@ -3,7 +3,7 @@
     "robot": "so101",
     "fps": 30,
     "version": 1,
-    "task": "Pick up the cube, place it in the box, and withdraw the arm.",
+    "task": "hand over the cube",
     "policy": "act",
     "camera": "wrist",
     "channels": [
@@ -25,7 +25,9 @@
     "schema_status": "verified_physical_recordings",
     "recording_status": "verified",
     "training_status": "smoke_verified",
-    "physical_skill_status": "not_verified"
+    "physical_skill_status": "not_verified",
+    "task_template": "hand over the {object}",
+    "task_variant": "so101_handover_block4"
   },
   "tank_dock": {
     "robot": "tank",
@@ -150,7 +152,7 @@
     "robot": "rosmaster",
     "fps": 20,
     "version": 3,
-    "task": "Pick up the cube and place it in the box with the base stationary.",
+    "task": "pick up the cube",
     "policy": "act",
     "camera": "front",
     "channels": [
@@ -206,7 +208,9 @@
       90.0,
       90.0
     ],
-    "pipeline_check": "2026-11-12 PASS on the real robot without motion: 3 episodes x 60 frames at 20.0 Hz, readback PASS, ACT smoke 50 steps batch 8, reload+inference PASS (no commands); not demonstrations"
+    "pipeline_check": "2026-11-12 PASS on the real robot without motion: 3 episodes x 60 frames at 20.0 Hz, readback PASS, ACT smoke 50 steps batch 8, reload+inference PASS (no commands); not demonstrations",
+    "task_template": "pick up the {object}",
+    "task_variant": "rosmaster_floor_pick_block3"
   },
   "tank_dock_rgbd_lidar": {
     "robot": "tank",
@@ -784,7 +788,7 @@
     "robot": "rosmaster",
     "fps": 20,
     "version": 1,
-    "task": "Pick up the cube and place it in the box with the base stationary.",
+    "task": "pick up the cube",
     "policy": "act",
     "camera": "front",
     "channels": [
@@ -1109,6 +1113,8 @@
       "odom_vy",
       "odom_wz",
       "odom_valid"
-    ]
+    ],
+    "task_template": "pick up the {object}",
+    "task_variant": "rosmaster_floor_pick_block3"
   }
 }

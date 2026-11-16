@@ -2,6 +2,7 @@
 import hashlib
 import json
 import random
+import re
 from pathlib import Path
 from . import catalog
 from .paths import DATA
@@ -27,7 +28,8 @@ def fingerprint(root):
 # block 4 «hand over»). Training/evaluation of the current task uses only its recording block,
 # recognised by the series description/instruction; older tasks stay recorded, untouched.
 TASK_BLOCKS = {'rosmaster_pick_place': ('взять с пола', 'pick up'),
-               'so101_pick_place': ('передач', 'hand over')}
+               'so101_pick_place': ('передач', 'hand over'),
+               'rosmaster_pick_place_rgbd_lidar': ('взять с пола', 'pick up')}
 
 
 def series_text():
@@ -149,6 +151,30 @@ def cotraining_episodes(name, real_train_frames, ratio):
                     'reference': 'Sim-and-Real Co-Training, arXiv:2503.24361'}
 
 
+def recording_contract(episode, provenance, expected):
+    """Accept a current task's recorded instruction, including pre-template clips.
+
+    The immutable recording must agree with its archived collection instruction;
+    editing today's catalogue description cannot relabel an old box demonstration.
+    """
+    from .training_drafts import semantic_contract
+    recorded = provenance.get('profile') or {}
+    contract = semantic_contract(recorded)
+    if provenance.get('domain','real') == 'real' and episode['profile'] in TASK_BLOCKS:
+        context = provenance.get('hardware', {}).get('collection') or {}
+        instruction = recorded.get('task', '').strip()
+        prefix = expected.get('task_template', '').split('{')[0].strip().lower()
+        noun = r'[a-z][a-z0-9_-]*(?: [a-z][a-z0-9_-]*){0,3}'
+        matches = bool(prefix and re.fullmatch(re.escape(prefix)+' '+noun+r'\.?', instruction.lower()))
+        if (not matches or any(word in instruction.lower().split() for word in ('and','then','into','put','place','withdraw'))
+                or (recorded.get('task_template') and contract['task'] != semantic_contract(expected)['task'])
+                or instruction != (context.get('instruction') or '').strip()
+                or context.get('id') != episode['session'] or context.get('profile') != episode['profile']):
+            raise ValueError('Записанная команда и исходная серия не подтверждают текущую задачу: '+episode['id'])
+        contract['task'] = semantic_contract(expected)['task']
+    return contract
+
+
 def freeze(name, smoke, seed=1000, sim_model_hash=None, *, selected_ids=None, min_sim_episodes=None,min_real_episodes=None,cotrain_sim=None):
     domain=profile(name).get('domain','real')
     episodes = eligible(name)
@@ -173,7 +199,7 @@ def freeze(name, smoke, seed=1000, sim_model_hash=None, *, selected_ids=None, mi
         if provenance.get('domain','real')!=domain or provenance.get('synthetic') is not (domain!='real'):
             raise ValueError('Синтетические данные запрещены в физическом наборе')
         from .training_drafts import semantic_contract
-        if semantic_contract(provenance.get('profile'))!=semantic_contract(profile(name)):
+        if recording_contract(episode,provenance,profile(name))!=semantic_contract(profile(name)):
             raise ValueError('Камера, частота, единицы или каналы записи отличаются от текущего профиля: '+episode['id'])
         validation = DATA / 'validation' / f"episode-{episode['id']}.json"
         digest = fingerprint(root)
