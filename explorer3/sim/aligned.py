@@ -350,6 +350,12 @@ class ScriptedFloorPick:
         self.cube = env.data.body('task_cube').xpos.copy()
         self.carry = list(env.cfg['carry_pose'])
         self.open, self.close = 30, 150
+        self.closing_axis = None
+        if env.vary_objects and knowledge is None:
+            # Only the full-information teacher knows the object's narrow axis. A helper
+            # carrying size alone must not silently receive the true orientation as well.
+            rotation = env.data.body('task_cube').xmat.reshape(3, 3)
+            self.closing_axis = rotation[:, int(np.argmin(env.object_half()[:2]))].copy()
         if knowledge is not None:
             from ..rosmaster_arm import grip_command, GRIP_OPEN
             if knowledge == 'none':
@@ -362,15 +368,38 @@ class ScriptedFloorPick:
         self.targets = {}
         self.phase = 'approach'
 
-    def _ik(self, xyz, grip):
-        solution, _ = self.arm.grasp_ik(xyz, self.env.observation()['state'])
+    def _ik(self, xyz, grip, quick=False):
+        solution = None
+        if quick:
+            solution, _ = self.arm.ik(xyz, 70, self.command, quick=True)
+        if solution is None:
+            solution, _ = self.arm.grasp_ik(xyz, self.env.observation()['state'])
         if solution is None:
             raise RuntimeError('ROSMASTER IK cannot reach the floor object')
+        if self.closing_axis is not None:
+            rotation = self.arm.fk(solution)['arm5'][:3, :3]
+            angle = np.degrees(np.arctan2(-np.dot(self.closing_axis, rotation[:, 0]),
+                                          np.dot(self.closing_axis, rotation[:, 1])))
+            # Symmetric jaws: modulo 180 keeps the wrist inside its 0..270 degree range.
+            solution[4] = (angle + 90) % 180
         return np.r_[solution, grip]
 
     def action(self):
         t = self.env.elapsed
         o, c = self.open, self.close
+        if self.env.vary_objects and (2.5 <= t < 4.5 or 6.5 <= t < 8.):
+            # A joint-space shortcut from hover to grasp sweeps the open fingers through
+            # wide/tall objects and pushes them away before closing. Follow a vertical TCP
+            # path instead, retaining the same speed limits and phase deadlines.
+            if t < 4.5:
+                phase, fraction, z0, z1, grip = 'descend', (t - 2.5) / 1.7, .10, .004, o
+            else:
+                phase, fraction, z0, z1, grip = 'lift', (t - 6.5) / 1.2, .004, .12, c
+            target = self._ik(self.cube + [0, 0, z0 + (z1 - z0) * min(1., fraction)], grip, quick=True)
+            self.phase = phase
+            maximum = np.array([45] * 5 + [120]) * self.env.dt
+            self.command += np.clip(target - self.command, -maximum, maximum)
+            return self.command.copy()
         plan = [(2.5, 'approach', self.cube + [0, 0, .10], o), (4.5, 'descend', self.cube + [0, 0, .004], o),
                 (6.5, 'grasp', self.cube + [0, 0, .004], c), (8., 'lift', self.cube + [0, 0, .12], c)]
         phase, target, grip = 'carry', None, c

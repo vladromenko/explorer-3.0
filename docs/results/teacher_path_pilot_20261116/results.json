@@ -1,0 +1,122 @@
+[
+  {
+    "object": "cube",
+    "seed": 9000,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "cube",
+    "seed": 9001,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "cube",
+    "seed": 9002,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "cube",
+    "seed": 9003,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "cube",
+    "seed": 9004,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "bottle",
+    "seed": 9000,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "bottle",
+    "seed": 9001,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "bottle",
+    "seed": 9002,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "bottle",
+    "seed": 9003,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "bottle",
+    "seed": 9004,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "block",
+    "seed": 9000,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "block",
+    "seed": 9001,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "block",
+    "seed": 9002,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "block",
+    "seed": 9003,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "block",
+    "seed": 9004,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "ball",
+    "seed": 9000,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "ball",
+    "seed": 9001,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "ball",
+    "seed": 9002,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "ball",
+    "seed": 9003,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  },
+  {
+    "object": "ball",
+    "seed": 9004,
+    "success": true,
+    "reason": "held_in_carry_pose"
+  }
+]

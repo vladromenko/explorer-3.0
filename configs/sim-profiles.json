@@ -290,6 +290,7 @@
     "fps": 20,
     "version": 3,
     "task": "pick up the object (task text carries its measured size)",
+    "task_template": "pick up the {object}, {width_cm:.1f} x {length_cm:.1f} cm, {height_cm:.1f} cm high",
     "policy": "act",
     "camera": "front",
     "channels": [
@@ -355,6 +356,7 @@
     "fps": 20,
     "version": 3,
     "task": "pick up the object (task text names it only)",
+    "task_template": "pick up the {object}",
     "policy": "act",
     "camera": "front",
     "channels": [

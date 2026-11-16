@@ -45,3 +45,46 @@ def test_new_geometry_is_a_distinct_training_revision():
         assert manifest['xml_sha256'] != hashlib.sha256(ET.tostring(tree, encoding='unicode').encode()).hexdigest()
     finally:
         env.close()
+
+
+def test_knowledge_and_control_receive_the_same_scene_but_different_task_text():
+    from explorer3.sim.factory import make
+    known = make('rosmaster_floor_pick_knowledge_sim')
+    control = make('rosmaster_floor_pick_noknowledge_sim')
+    try:
+        for seed in (7000, 7001):
+            a, _ = known.reset(seed=seed)
+            b, _ = control.reset(seed=seed)
+            np.testing.assert_array_equal(known.data.qpos, control.data.qpos)
+            np.testing.assert_array_equal(known.object_half(), control.object_half())
+            assert known.episode_parameters == control.episode_parameters
+            assert known.task_text.startswith(control.task_text + ', ')
+            assert 'cm high' in known.task_text and 'cm' not in control.task_text
+            assert set(a) == set(b) == {'state'}  # no privileged object data in the observation
+    finally:
+        known.close()
+        control.close()
+
+
+@pytest.mark.parametrize('name', RosmasterFloorPick.GRASPABLE)
+def test_full_information_teacher_lifts_wide_objects_without_sweeping_them_away(name):
+    from explorer3.sim.aligned import ScriptedFloorPick
+    env = RosmasterFloorPick(vary_objects=True)
+    try:
+        env.reset(seed=9000, options={'object': name})
+        expert = ScriptedFloorPick(env)
+        # Size-only helpers and no-help control do not get a hidden orientation oracle.
+        assert ScriptedFloorPick(env, knowledge='none').closing_axis is None
+        assert ScriptedFloorPick(env, knowledge={'width_m': .04, 'height_m': .04}).closing_axis is None
+        previous = expert.command.copy()
+        for _ in range(round(env.fps * env.deadline_s) + 1):
+            action = expert.action()
+            assert np.all(np.abs(action - previous) <= np.array([45] * 5 + [120]) * env.dt + 1e-8)
+            previous = action.copy()
+            _, _, terminated, truncated, info = env.step(action)
+            if terminated or truncated:
+                break
+        assert info['success'], info
+        assert env.data.body('task_cube').xpos[2] > .1
+    finally:
+        env.close()

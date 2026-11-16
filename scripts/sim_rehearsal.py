@@ -52,7 +52,16 @@ def successes(name, model=None):
 
 
 def collect(name, need, workers=2):          # 3 MuJoCo renderers + a model hit the 16 GB OOM limit
-    have = len(successes(name))
+    # Read today's physics, not the most recently recorded (possibly obsolete) episode.
+    probe = subprocess.run([str(ROOT / '.venv-sim/bin/python'), '-c',
+                            'import sys; from explorer3.sim.factory import make; '
+                            'e=make(sys.argv[1]); print(e.manifest["xml_sha256"]); e.close()', name],
+                           cwd=ROOT, env=offline_environment(), capture_output=True, text=True,
+                           check=True, timeout=60)
+    model = probe.stdout.strip()
+    if len(model) != 64 or any(c not in '0123456789abcdef' for c in model):
+        raise RuntimeError('Не удалось определить текущую версию сцены MuJoCo')
+    have = len(successes(name, model))
     if have >= need:
         log(name, f'показов уже {have}')
         return have
@@ -70,8 +79,10 @@ def collect(name, need, workers=2):          # 3 MuJoCo renderers + a model hit 
         log(name, f'не хватает {missing} показов: {tries} попыток эксперта в MuJoCo ({workers} процесса)')
         for p in procs:
             p.wait()
-        have = len(successes(name))
+        have = len(successes(name, model))
         log(name, f'показов теперь {have}')
+    if have < need:
+        raise RuntimeError(f'{name}: получено {have}/{need} показов текущей сцены; обучение не запускается')
     return have
 
 
@@ -167,15 +178,20 @@ def main():
     ap.add_argument('--skills', default=','.join(SKILLS))
     ap.add_argument('--policies', default=','.join(POLICIES))
     ap.add_argument('--collect-only', action='store_true')
+    ap.add_argument('--demonstrations', type=int, help='Required successes per skill (default: 50, smoke: 6)')
+    ap.add_argument('--workers', type=int, choices=(1, 2), default=1,
+                    help='Concurrent capture processes; one by default for the 6 GiB scope')
     a = ap.parse_args()
     out = DATA / 'simlab' / 'rehearsal' / time.strftime('%Y%m%d-%H%M%S')
     out.mkdir(parents=True, exist_ok=True)
     from explorer3.jobs import Jobs
     jobs = Jobs(None)
     report = {'started': time.time(), 'smoke': a.smoke, 'results': []}
-    need = 6 if a.smoke else 50
+    need = a.demonstrations if a.demonstrations is not None else 6 if a.smoke else 50
+    if need < (3 if a.collect_only or a.smoke else 50):
+        ap.error('At least 3 demonstrations for collection/smoke; at least 50 for training')
     for name in a.skills.split(','):
-        collect(name, need)
+        collect(name, need, workers=a.workers)
     if a.collect_only:
         return
     for name in a.skills.split(','):

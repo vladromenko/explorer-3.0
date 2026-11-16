@@ -29,7 +29,12 @@ def checkpoint_hash(root):
 
 def semantic_contract(value):
     if value is None:return None
-    return {key:value.get(key) for key in ('robot','fps','task','camera','image_shape','channels','units','state_channels','state_units','environment_channels','sensor_schema')}
+    contract = {key:value.get(key) for key in ('robot','fps','task','camera','image_shape','channels','units','state_channels','state_units','environment_channels','sensor_schema')}
+    # Explicitly parameterised tasks keep their common skill contract while the dataset
+    # carries the actual object/measurement text for each episode. Fixed tasks stay strict.
+    if value.get('task_template'):
+        contract['task'] = {'template': value['task_template'], 'variant': value.get('task_variant')}
+    return contract
 
 
 def merge_plans(old,new):

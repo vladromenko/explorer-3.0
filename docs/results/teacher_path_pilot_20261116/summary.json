@@ -1,0 +1,30 @@
+{
+  "evidence": "MuJoCo 4.0.1, privileged scripted teacher; rigid box proxies, not hardware or trained policy",
+  "seeds": [
+    9000,
+    9001,
+    9002,
+    9003,
+    9004
+  ],
+  "teacher_source_sha256": "c1d59758360120a290349349aab967769dadfdd086e57d7292ce37b7af412583",
+  "results": {
+    "ball": {
+      "episodes": 5,
+      "successes": 5
+    },
+    "block": {
+      "episodes": 5,
+      "successes": 5
+    },
+    "bottle": {
+      "episodes": 5,
+      "successes": 5
+    },
+    "cube": {
+      "episodes": 5,
+      "successes": 5
+    }
+  },
+  "limitation": "Development pilot; cookie and sock are not included and remain unresolved. Independent balanced experiment uses all six objects."
+}
