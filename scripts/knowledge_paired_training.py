@@ -17,8 +17,10 @@ from explorer3.resources import ResourceLease, ExistingTrainingLease
 from explorer3 import datasets, training_drafts
 from explorer3.jobs import Jobs
 
-OUT = DATA / 'runs/knowledge-policy-v3-20261116/full'
-PROTOCOL = ROOT / 'configs/knowledge-policy-v3.json'
+import os
+# v4 (16.11): same protocol with the arm camera looking at the grasp window (KP_OUT / KP_PROTOCOL)
+OUT = Path(os.environ.get('KP_OUT', str(DATA / 'runs/knowledge-policy-v3-20261116/full')))
+PROTOCOL = Path(os.environ.get('KP_PROTOCOL', str(ROOT / 'configs/knowledge-policy-v3.json')))
 
 
 def save(path, value):
@@ -151,7 +153,7 @@ def main():
     parser.add_argument('phase',choices=('collect','train'))
     args=parser.parse_args()
     protocol=json.loads(PROTOCOL.read_text())
-    probe=json.loads((OUT.parent/'memory-smoke.json').read_text())
+    probe=json.loads((Path(os.environ.get('KP_PROBE', str(OUT.parent/'memory-smoke.json')))).read_text())
     if probe['status']!='completed' or Jobs(None).get(probe['job'])['status']!='completed':
         raise ValueError('Successful actual trainer memory probe required first')
     OUT.mkdir(parents=True,exist_ok=True)

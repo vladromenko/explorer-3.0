@@ -180,6 +180,7 @@ class RosmasterFloorPick(RosmasterPickPlace):
     OBJECTS = {'cube': (.016, .016, .016), 'cookie': (.035, .035, .006), 'sock': (.04, .025, .012),
                'bottle': (.02, .02, .045), 'block': (.03, .015, .015), 'ball': (.022, .022, .022)}
     GRASPABLE = ('cube', 'bottle', 'block', 'ball')
+    LOOK_POSE = (90., 130., 0., -15., 90., 30.)
 
     def __init__(self, vary_objects=False, with_knowledge=False, **kwargs):
         self.with_knowledge = with_knowledge
@@ -187,6 +188,11 @@ class RosmasterFloorPick(RosmasterPickPlace):
             self.profile = 'rosmaster_floor_pick_' + ('knowledge' if with_knowledge else 'noknowledge') + '_sim'
         self.cfg = alignment('rosmaster_floor_pick')
         self.home_native = np.array(self.cfg['start_pose'], float)
+        if vary_objects:
+            # The aligned start pose (wrist pitch 25) looks over the grasp window: the object was in the
+            # arm camera in 0/30 scenes, so a policy could not aim (diagnosis 16.11: 0/20, jaws closed
+            # 5 cm from the cube). Wrist pitch -15 sees it in 30/30 scenes at the same shoulder.
+            self.home_native = np.array(self.LOOK_POSE, float)
         self.vary_objects = vary_objects
         kwargs.setdefault('deadline_s', 25.)
         super().__init__(**kwargs)
