@@ -172,7 +172,12 @@ class Swarm:
         if executor not in (None, 'geometric_baseline'):
             raise ValueError('Unknown grasp executor')
         self.pick_executor = executor
-        self.task_context = task_context or {}
+        self.task_context = dict(task_context or {})
+        if kind == 'fetch' and executor is None and 'terminal_goal' not in self.task_context:
+            from .mission_goal import first_floor_goal
+            from . import swarm_sim
+            self.task_context['terminal_goal'] = (swarm_sim.WORLD.floor_goal(prompt) if swarm_sim.WORLD is not None
+                                                  else first_floor_goal(self.agents.domain()))
         self.only = set(robots) if robots else None
         self.agents.start(kind, prompt, self.mobile())      # plan of registered skills, or a clear refusal
         self.stop_event.clear()
@@ -298,7 +303,7 @@ class Swarm:
                                           found if found and found['at'] >= trial['started'] else None,
                                           episode.id, self.mobile())
             self.state['active'] = False
-            episode.extra.update(stages=stages, robots=self.mobile(), condition='team' if len(self.mobile()) > 1 else 'solo')
+            episode.extra.update(terminal_goal=getattr(self, 'task_context', {}).get('terminal_goal'), stages=stages, robots=self.mobile(), condition='team' if len(self.mobile()) > 1 else 'solo')
             episode.finish({'done': 'arrived', 'explored': 'explored'}.get(outcome, outcome), message)
 
     def _stage(self, stages, name, message):
@@ -394,10 +399,10 @@ class Swarm:
 
     def _fetch(self, prompt, text, stages):
         from . import so101_handoff
-        missing = so101_handoff.missing()
-        if missing:      # no taught hand-over: the mission ends with ROSMASTER holding the object
-            self.say('locate', 'Места передачи SO-101 не показаны: ROSMASTER найдёт, возьмёт и будет держать предмет')
-        cfg = so101_handoff.load()
+        context = getattr(self, 'task_context', {})
+        terminal_goal = context.get('terminal_goal')
+        missing = so101_handoff.missing() if terminal_goal is None else []
+        cfg = so101_handoff.load() if terminal_goal is None else {}
         if 'rosmaster' not in self.links:
             raise RuntimeError('Принести может только ROSMASTER: он не подключён')
         # 0. what does ROSMASTER not know? (knowledge gaps -> who can fill them)
@@ -415,6 +420,11 @@ class Swarm:
             self.state['acquisition'] = request
             self.agents.role('LearningAndExperimentCurator').note(request['state'], request['title'], request_id=request['id'])
             return 'awaiting_skill', request['title'] + '. ' + request['operator_next']
+        if terminal_goal is not None:
+            from .mission_goal import preparation_reason
+            reason = preparation_reason(terminal_goal, domain)
+            if reason:
+                return 'awaiting_delivery_setup', reason + ' Подъём не будет отмечен как доставка.'
         advisor = getattr(self, 'advisor', 'off')       # 'off' | 'decide': the language model chooses the gaps (validated)
         if advisor == 'decide':
             from .cognitive.gap_advisor import advise
@@ -430,7 +440,7 @@ class Swarm:
         knowledge_case = None
         allowed = getattr(self, 'helpers', None)          # experiment conditions: which helpers may be called
         learning = None
-        if 'how' in gaps['gaps'] and (allowed is None or 'so101' in allowed):
+        if executor == 'geometric_baseline' and 'how' in gaps['gaps'] and (allowed is None or 'so101' in allowed):
             # the SO-101 station studies the object on its table WHILE the mobile robots search
             self.say('learn', f'ROSMASTER не знает, как брать «{prompt}»: SO-101 измеряет; проверенный опыт захвата учитывается отдельно')
             station = self.station_factory(lambda m: self.say('learn', m)) if self.station_factory else None
@@ -537,6 +547,12 @@ class Swarm:
             else:
                 self._settle(pending, 'failure')
                 return 'failed', message
+            if terminal_goal is not None:
+                if knowledge_case:
+                    pending.append((knowledge_case, 'success', 'success', 'ROSMASTER взял предмет'))
+                outcome, note = self._deliver_floor(prompt, terminal_goal, arm, picked, stages)
+                self._settle(pending, 'success' if outcome == 'done' else 'unknown')
+                return outcome, note
             if missing:
                 self.agents.step('deliver', 'rosmaster', 'не нужен: передача не настроена')
                 if knowledge_case:
@@ -584,6 +600,34 @@ class Swarm:
         if not result['ok']:
             return 'failed', result['reason']
         return 'done', f'«{prompt}» доставлено: ROSMASTER привёз, SO-101 передал'
+
+    def _deliver_floor(self, prompt, zone, arm, picked, stages):
+        """Use the existing drive/place executors, with a separate terminal measurement."""
+        if not callable(getattr(arm, 'observe_delivery', None)):
+            return 'grasp_only', 'Захват завершён; независимая проверка выкладки недоступна. Доставка не подтверждена.'
+        arm.release()
+        self._stage(stages, 'deliver', 'ROSMASTER везёт в отмеченную зону на полу')
+        drive = self._make_drive('rosmaster', zone['approach_pose'], 'к конечной зоне')
+        self._start('rosmaster', drive)
+        self._wait([drive], 240)
+        self._end_stage(stages, drive.state == 'arrived', drive.message)
+        if drive.state != 'arrived':
+            return 'failed', 'ROSMASTER не доехал до конечной зоны: ' + drive.message
+        self._stage(stages, 'place', 'ROSMASTER кладёт в отмеченную зону')
+        arm.terminal_goal = zone
+        started = time.time()
+        arm.place(zone['place_pose'], picked['grip'])
+        self._check()
+        observed = arm.observe_delivery(prompt)
+        from .mission_goal import delivery_verified
+        verified = delivery_verified(zone, observed, domain=self.agents.domain(), object_class=prompt, since=started)
+        stages[-1]['observation'] = observed
+        self._end_stage(stages, verified)
+        self.agents.step('deliver', 'rosmaster', 'доехал')
+        self.agents.step('place', 'rosmaster', 'проверено' if verified else 'не подтверждено')
+        if verified:
+            return 'done', f'«{prompt}» оставлен в отмеченной зоне на полу; выкладка проверена'
+        return 'delivery_unverified', 'Выкладка выполнена, но предмет в конечной зоне независимо не подтверждён'
 
     def _settle(self, pending, task):
         """OutcomeVerifier: helper / recipient / task outcomes of every help in this mission."""

@@ -210,12 +210,21 @@ def install(app, ui, control, notify_error, css=''):
         return request.client is not None and request.client.host in ('127.0.0.1', '::1')
 
     @app.post('/api/swarm/command')
-    def swarm_command(request: Request, text: str, robots: str = '', executor: str = ''):
+    def swarm_command(request: Request, text: str, robots: str = '', executor: str = '', destination: str = ''):
         from . import swarm
         if not _local(request):
             return Response(status_code=403)
         try:
-            kind, prompt = swarm.SWARM.command(text, [r for r in robots.split(',') if r] or None, executor=executor or None)
+            context = {}
+            if destination:
+                if destination != 'floor_zone':
+                    raise ValueError('Неизвестная конечная зона')
+                from . import swarm_sim
+                from .mission_goal import first_floor_goal
+                _, target = swarm.parse(text)
+                context['terminal_goal'] = swarm_sim.WORLD.floor_goal(target) if swarm_sim.WORLD is not None else first_floor_goal('real')
+            kind, prompt = swarm.SWARM.command(text, [r for r in robots.split(',') if r] or None,
+                                               executor=executor or None, task_context=context)
         except Exception as exc:
             return {'ok': False, 'error': str(exc)}
         return {'ok': True, 'kind': kind, 'prompt': prompt}
@@ -299,13 +308,24 @@ def install(app, ui, control, notify_error, css=''):
                 executor_choice = ui.select({'skill': 'Проверенный захват или запрос навыка', 'geometric_baseline': 'Геометрический эксперимент'},
                                             value='skill', label='Способ захвата').props('dense outlined dark')
 
+                destination_choice = ui.select({'floor_zone': 'Кубик в зону на полу', 'legacy': 'Прежний эксперимент K'},
+                                               value='floor_zone', label='Конечное условие').props('dense outlined dark')
+                ui.label('Первая новая миссия: кубик в отдельную зону 40×40 см на свободном полу. SO-101 — учитель. Координаты и выкладка ещё требуют проверки.').classes('sw-muted')
+
                 def go(value=None):
                     try:
                         v = (value or text.value or '').strip()
                         if not v:
                             raise ValueError('Напишите команду')
+                        context = {}
+                        kind, target = _swarm.parse(v)
+                        if kind == 'fetch' and destination_choice.value == 'floor_zone':
+                            from .mission_goal import first_floor_goal
+                            context['terminal_goal'] = swarm_sim.WORLD.floor_goal(target) if swarm_sim.WORLD is not None else first_floor_goal('real')
+                        if kind == 'fetch' and destination_choice.value == 'legacy' and executor_choice.value != 'geometric_baseline':
+                            raise ValueError('Прежний K использует явно выбранный геометрический эксперимент')
                         team().command(v, {'Оба робота': None, 'Только ROSMASTER': ['rosmaster'], 'Только Tank': ['tank']}[who.value],
-                                       executor='geometric_baseline' if executor_choice.value == 'geometric_baseline' else None)
+                                       executor='geometric_baseline' if executor_choice.value == 'geometric_baseline' else None, task_context=context)
                         ui.notify('Рой: ' + v)
                     except Exception as exc:
                         notify_error(exc)
@@ -405,7 +425,7 @@ def install(app, ui, control, notify_error, css=''):
             found_row = ui.row().style('gap:10px;flex-wrap:wrap')
 
         stage_names = {'learn': 'SO-101 изучает', 'help': 'помощь', 'search': 'поиск', 'explore': 'осмотр', 'approach': 'подъезд', 'pick': 'захват', 'deliver': 'доставка',
-                       'place': 'на площадку', 'handoff': 'SO-101 передаёт', 'goto': 'подъезд'}
+                       'place': 'выкладка', 'awaiting_delivery_setup': 'нужна подготовка конечной зоны', 'delivery_unverified': 'доставка не подтверждена', 'grasp_only': 'только захват', 'handoff': 'SO-101 передаёт', 'goto': 'подъезд'}
         last_found = [None]
         with ui.element('div').classes('sw-card').style('margin:0 6px 12px'):
             ui.label('Приобретение захвата').style('font-weight:700;font-size:17px')

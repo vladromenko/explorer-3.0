@@ -181,9 +181,13 @@ class FleetAgents:
                 c.note('отказ', 'Принести может только ROSMASTER: у Tank нет руки')
                 raise RuntimeError('Принести может только ROSMASTER: он не подключён или не выбран')
             steps = [(r, 'search', f'найти «{prompt}», если места нет в памяти') for r in mobile]
-            steps += [('rosmaster', 'approach', f'подъехать к «{prompt}»'), ('rosmaster', 'pick_floor', f'взять «{prompt}» с пола'),
-                      ('rosmaster', 'deliver', 'отвезти к SO-101'), ('rosmaster', 'place', 'положить на площадку'),
-                      ('so101', 'handover', 'взять с площадки и протянуть человеку')]
+            steps += [('rosmaster', 'approach', f'подъехать к «{prompt}»'), ('rosmaster', 'pick_floor', f'взять «{prompt}» с пола')]
+            if getattr(self.swarm, 'task_context', {}).get('terminal_goal') is not None:
+                steps += [('rosmaster', 'deliver', 'отвезти в отмеченную зону на полу'),
+                          ('rosmaster', 'place', 'положить и независимо проверить предмет в зоне')]
+            else:
+                steps += [('rosmaster', 'deliver', 'отвезти к SO-101'), ('rosmaster', 'place', 'положить на площадку'),
+                          ('so101', 'handover', 'взять с площадки и протянуть человеку')]
         else:
             c.note('отказ', f'Неизвестная команда: {kind}')
             raise ValueError('Неизвестная команда')
@@ -192,8 +196,11 @@ class FleetAgents:
             card = self.card(robot, skill)          # unknown robot/skill -> error, never invented
             if card.kind == 'learned':
                 text += ' (обученная модель, допуск пройден)'
+            postconditions = card.postconditions
+            if getattr(self.swarm, 'task_context', {}).get('terminal_goal') is not None:
+                postconditions = {'deliver': ['at_floor_zone_approach'], 'place': ['released_object_observed_inside_zone']}.get(skill, postconditions)
             self.plan.append({'id': f's{i + 1}', 'robot': robot, 'skill': card.skill_id, 'version': card.version[:12], 'kind': card.kind,
-                              'text': text, 'verify': ', '.join(card.postconditions), 'status': 'ждёт'})
+                              'text': text, 'verify': ', '.join(postconditions), 'status': 'ждёт'})
         c.note('план', f'{len(self.plan)} шагов из зарегистрированных навыков: ' +
                ' → '.join(f'{p["robot"]}:{p["skill"].split(".")[1].removeprefix("fleet_")}' for p in self.plan), mission=self.mission)
         return self.plan

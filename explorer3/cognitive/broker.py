@@ -263,7 +263,9 @@ def prepare_acquisition(mission_id, task, robot, object_class, assessed, *, doma
     Jobs and prepared training drafts execute later stages after a concrete budget.
     """
     from explorer3 import knowledge
-    context = context or {}
+    mission_context = dict(context or {})
+    context = {key: value for key, value in mission_context.items()
+               if key not in ('terminal_goal', 'scene', 'scene_id', 'observed_at', 'battery', 'permission')}
     if domain not in ('real', 'sim') or robot != 'rosmaster':
         raise ValueError('Unsupported acquisition recipient')
     if assessed.get('registered_skill', {}).get('state') == 'available' and not assessed.get('readiness', {}).get('physically_infeasible'):
@@ -311,7 +313,8 @@ def prepare_acquisition(mission_id, task, robot, object_class, assessed, *, doma
             store.event(mission_id, 'acquisition_prepared', value, db)
         row = db.execute('SELECT body FROM cognitive_missions WHERE id=?', (mission_id,)).fetchone()
         mission = json.loads(row['body']) if row else {'id': mission_id, 'task': task, 'domain': domain, 'generation': 0}
-        mission.update(phase='awaiting_skill', acquisition_request=value['id'], training_authorized=False,
+        mission.update(terminal_goal=mission_context.get('terminal_goal'), task_context=mission_context,
+                       phase='awaiting_skill', acquisition_request=value['id'], training_authorized=False,
                        real_authorized=False, auto_resume_motion=False, resume_requires_fresh_scene=True)
         db.execute('INSERT INTO cognitive_missions VALUES(?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body',
                    (mission_id, store.encoded(mission)))

@@ -87,6 +87,23 @@ class SimWorld:
         return {'rosmaster_spot': list(self.to_map(*spot)), 'rosmaster_place': [90, 120, 0, 0, 90, 30],
                 'so101': {p: [0.] * 6 for p in POSES}, 'simulation': True}
 
+    def floor_goal(self, prompt):
+        """A separate reachable floor patch for the 2D development mission only."""
+        from .mission_goal import first_floor_goal
+        if prompt not in self.objects:
+            raise ValueError('Предмет отсутствует в виртуальной комнате')
+        origin = self.objects[prompt]
+        for angle in np.linspace(0., 2 * math.pi, 16, endpoint=False):
+            center = origin + .7 * np.array([math.cos(angle), math.sin(angle)])
+            heading = math.atan2(center[1] - self.true['rosmaster'][1], center[0] - self.true['rosmaster'][0])
+            approach = center - .22 * np.array([math.cos(heading), math.sin(heading)])
+            if sim2d.wall_distance(self.room, center) > .35 and sim2d.wall_distance(self.room, approach) > .3:
+                return {**first_floor_goal('sim'), 'center_xy_m': list(map(float, self.to_map(*center)[:2])),
+                        'approach_pose': list(map(float, self.to_map(*approach, heading))),
+                        'place_pose': [90., 120., 0., 0., 90., 30.],
+                        'calibration': 'nominal 2D release model only'}
+        raise ValueError('Рядом с предметом нет свободной зоны 40×40 см')
+
     # ------------------------------------------------------------------ physics loop
     def start(self):
         self.true0 = dict(self.true)
@@ -206,6 +223,8 @@ class SimArm:
         """As the real ArmSkills.pick: the arm camera must see it; the base corrects into the reach
         window (0.16-0.26 m ahead), up to three attempts; then the gripper closes on it."""
         from .rosmaster_arm import REACH_X, base_correction
+        if getattr(self, 'execution_selection', 'geometric_baseline') != 'geometric_baseline':
+            return {'ok': False, 'reason': '2D-комната не исполняет обученную политику; нужна её проверка в MuJoCo'}
         w = self.world
         if prompt not in w.objects:
             return {'ok': False, 'reason': f'«{prompt}» нет в комнате'}
@@ -246,8 +265,24 @@ class SimArm:
     def place(self, pose, grip):
         time.sleep(1.)
         w = self.world
-        w.objects[w.carried] = np.array(w.pad, float)
+        if getattr(self, 'terminal_goal', None):
+            x, y, theta = w.true['rosmaster']
+            # Modelled 2D release point, not a teleport to the requested goal.
+            w.objects[w.carried] = np.array([x + .22 * math.cos(theta), y + .22 * math.sin(theta)])
+        else:
+            w.objects[w.carried] = np.array(w.pad, float)
         w.carried = None
+
+    def observe_delivery(self, prompt):
+        w = self.world
+        xy = w.objects.get(prompt)
+        if xy is None:
+            return None
+        return {'domain': 'sim', 'object_class': prompt, 'frame': 'fleet_map',
+                'xy_m': list(map(float, w.to_map(*xy)[:2])), 'position_sigma_m': 0.,
+                'object_half_extent_m': w.sizes[prompt] / 2,
+                'at': time.time(), 'released': w.carried != prompt, 'inside_height_band': True,
+                'source': 'sim2d_object_state', 'limitation': '2D state, not MuJoCo or physical verification'}
 
     def drive(self, dx, w_):
         for _ in range(int(abs(dx) / .1 / DT)):

@@ -91,13 +91,15 @@ def test_pending_acquisition_survives_restart_and_is_not_duplicate_training(isol
     from explorer3.cognitive.broker import prepare_acquisition, acquisition_requests, cancel_acquisition
     assessed = knowledge.assess('rosmaster', 'cube')
     first = prepare_acquisition('mission-1', 'принеси кубик', 'rosmaster', 'cube', assessed, domain='real')
-    second = prepare_acquisition('mission-2', 'принеси кубик', 'rosmaster', 'cube', assessed, domain='real')
+    second = prepare_acquisition('mission-2', 'принеси кубик', 'rosmaster', 'cube', assessed, domain='real',
+                                 context={'scene': 'refreshed', 'terminal_goal': {'kind': 'floor_zone'}})
     assert first['id'] == second['id'] and first['state'] == 'needs_demonstration'
     assert not first['training_started'] and not first['motion_authorized']
     assert catalog.rows('jobs') == []
     store.recover_interrupted()
     assert acquisition_requests()[0]['id'] == first['id']
     assert store.mission('mission-2')['auto_resume_motion'] is False
+    assert store.mission('mission-2')['terminal_goal'] == {'kind': 'floor_zone'}
     cancel_acquisition(first['id'])
     assert acquisition_requests()[0]['state'] == 'cancelled'
     assert store.mission('mission-1')['phase'] == 'cancelled'
@@ -153,7 +155,7 @@ def test_transfer_draft_uses_existing_queue_and_cancel_blocks_late_start(isolate
     with pytest.raises(ValueError, match='Запрос отменён|изменился'):
         jobs.start_prepared_training(draft_id)
     assert len(catalog.rows('jobs')) == 1  # completed acquisition is not silently retrained
-    second = broker.prepare_acquisition('two', 'принеси кубик', 'rosmaster', 'cube', {}, domain='real', context={'scene': 'other'})
+    second = broker.prepare_acquisition('two', 'принеси кубик', 'rosmaster', 'cube', {}, domain='real', context={'object_instance': 'different-instance'})
     second = broker.select_acquisition_packet(second['id'], sha)
     second['transfer_attempts'] = req['transfer_attempts']
     with catalog.connect() as db:
