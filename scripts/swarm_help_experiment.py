@@ -62,7 +62,7 @@ def episode(seed, comparison, prompt, memory_db, *, frozen=True, in_place=False,
     team.agents.frozen = frozen
     (swarm_sim.WORLD.vanish_after_seen if vanish else swarm_sim.WORLD.relocate_after_seen).add(prompt)
     started = time.time()
-    team.command('принеси ' + {'cookie': 'печенье', 'cube': 'кубик', 'ball': 'мяч'}[prompt])
+    team.command('принеси ' + {'cookie': 'печенье', 'cube': 'кубик', 'ball': 'мяч'}[prompt], executor='geometric_baseline')
     while team.thread.is_alive() and time.time() - started < 600:
         time.sleep(1)
     st = team.status()

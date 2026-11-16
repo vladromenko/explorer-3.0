@@ -98,7 +98,7 @@ def episode(seed, condition, prompt, deadline_s=600):
     started = time.monotonic()
     timed_out = False
     try:
-        team.command('принеси ' + OBJECTS[prompt], robots)
+        team.command('принеси ' + OBJECTS[prompt], robots, executor='geometric_baseline')
         team.thread.join(timeout=deadline_s)
         timed_out = team.thread.is_alive()
         elapsed = time.monotonic() - started

@@ -336,9 +336,11 @@ def test_solo_run_uses_one_robot_and_is_marked_for_the_article():
     assert 'condition' in csv.splitlines()[0] and ',solo,' in csv
 
 
-def test_missing_skill_waits_without_starting_any_robot():
+@pytest.mark.parametrize('domain', ['real', 'sim'])
+def test_missing_skill_waits_without_starting_any_robot(domain):
     arms = []
     s, ros, tank = make(arms)
+    s.agents.domain = lambda: domain
     s.command('принеси кубик')
     wait(s)
     assert s.state['stage'] == 'awaiting_skill', s.state

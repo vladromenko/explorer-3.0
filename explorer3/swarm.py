@@ -404,8 +404,6 @@ class Swarm:
         from . import knowledge
         domain = self.agents.domain()
         executor = getattr(self, 'pick_executor', None)
-        if domain == 'sim' and executor is None:
-            executor = 'geometric_baseline'  # existing K protocol, explicitly journaled below
         context = getattr(self, 'task_context', {})
         gaps = knowledge.assess('rosmaster', prompt, domain, context=context, executor=executor)
         self.agents.gaps(gaps, self.mobile())

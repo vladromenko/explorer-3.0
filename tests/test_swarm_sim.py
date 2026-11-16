@@ -111,7 +111,7 @@ def test_knowledge_gap_calls_the_so101_station_and_the_recipient_uses_it(real):
     recipient grasps with that knowledge; the help case is verified by the recipient's result."""
     from explorer3 import knowledge
     team = swarm_sim.enter(seed=3)
-    team.command('принеси печенье')
+    team.command('принеси печенье', executor='geometric_baseline')
     end = time.monotonic() + 300
     while team.thread.is_alive() and time.monotonic() < end:
         time.sleep(.5)

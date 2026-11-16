@@ -31,6 +31,8 @@ async def main(base):
             await page.get_by_role('button', name='Симуляция без роботов').click()
             await page.get_by_text('СИМУЛЯЦИЯ:', exact=False).wait_for(timeout=30000)
             report['steps'].append('симуляция включена')
+            await page.get_by_label('Способ захвата', exact=True).click()
+            await page.get_by_role('option', name='Геометрический эксперимент', exact=True).click()
             await page.get_by_role('button', name='принеси печенье').click()
             await page.get_by_text('Координатор задачи', exact=True).wait_for()
             await page.wait_for_timeout(15000)
