@@ -116,7 +116,7 @@ def install_collection():
         with ui.row():
             ui.link('Explorer','/');ui.link('Готовность парка','/recording/readiness');ui.link('Инструкция','/datasets/guide')
         ui.label('Сбор датасета').style('font-size:30px;font-weight:650')
-        ui.label('10 расстановок × 5 успешных показов на задачу. Повтор прежней расстановки остаётся в той же группе.').style('color:#a6b6c6')
+        ui.label('Полный сравнительный набор: 10 расстановок × 5 показов. Для переноса сначала нужны три диагностических показа; бюджет обучения задаётся отдельно. Повтор расстановки остаётся в той же группе.').style('color:#a6b6c6')
         selected=[None];last_report=[None];loading=[False]
         with ui.column().classes('ready-card'):
             task=ui.select({k:v[0] for k,v in collection.TASKS.items()},value='tank_dock',label='Задача').classes('w-full')
@@ -160,6 +160,14 @@ def install_collection():
                 except Exception as exc:
                     ui.notify(str(exc), type='negative')
             ui.button('Сохранить подготовку', on_click=save_geometry).props('no-caps')
+            def prepare_donor_series():
+                task.set_value('so101_pick_place')
+                description.set_value('донорский захват: кубик — подход, захват, подъём, удержание')
+                instruction.set_value('Grasp the cube, lift it at least 5 cm, hold for 2 seconds, then put it back on the table.')
+                ui.notify('Поля серии заполнены. Проверьте размеры и создайте новую серию; запись ещё не начата.')
+            ui.button('Заполнить серию пробных захватов', on_click=prepare_donor_series).props('no-caps outline')
+            ui.label('Каждый показ: подведите захват, возьмите кубик, поднимите не меньше чем на 5 см, удержите 2 секунды и верните на стол. Затем отметьте исход. Это отдельная команда захвата, не передача человеку и не прежнее «в коробку».')
+
             ui.label('Это исходные измерения. Перед созданием пакета отдельно проверяются положение камеры, погрешность геометрии, метрическое раскрытие губок и удержание предмета. Закрытие захвата само по себе успех не подтверждает.').classes('ready-action')
         counters=ui.label('').style('font-size:18px')
         progress=ui.label('')

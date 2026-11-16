@@ -63,6 +63,13 @@ def test_preparation_and_guides_without_execution(tmp_path):
                 geometry = json.loads((tmp_path/'configs/so101_donor_capture.json').read_text())
                 assert geometry['enabled'] and not geometry['physical_verified']
                 assert geometry['instance_id'] == 'browser-fixture-cube'
+                page.get_by_role('button', name='Заполнить серию пробных захватов', exact=True).click()
+                expect(page.get_by_label('Команда для робота (англ.; подставится из описания)', exact=True)).to_have_value(
+                    'Grasp the cube, lift it at least 5 cm, hold for 2 seconds, then put it back on the table.')
+                assert 'series=tank_dock-s01' not in page.locator('#collection-control').get_attribute('src')
+                page.get_by_role('button', name='Новая серия', exact=True).click()
+                expect(page.locator('#collection-control')).to_have_attribute('src', __import__('re').compile('.*series=so101_pick_place-s01.*'))
+
                 page.goto('http://127.0.0.1:8037/recording/check/tank')
                 expect(page.get_by_text('Проверка «всё ездит» · Tank',exact=True)).to_be_visible()
                 assert page.locator('#physical-control').get_attribute('src')=='/?robot=tank'

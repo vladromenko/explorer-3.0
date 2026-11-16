@@ -48,7 +48,7 @@ def steps(s):
         out.append(('blocked', f'Мало места на диске: {s["disk_gb"]} ГБ (запись запрещена ниже 8 ГБ).', '/recording/readiness'))
     for name, label, block in (('rosmaster_pick_place', 'ROSMASTER · взять с пола', 3), ('so101_pick_place', 'SO-101 · передача человеку', 4)):
         n = s['blocks'][name]
-        out.append(('done' if n >= TARGET else 'next', f'Блок {block} «{label}»: {n} из {TARGET} годных показов этого навыка', '/recording/collect'))
+        out.append(('done' if n >= TARGET else 'next', f'Полный сравнительный набор, блок {block} «{label}»: {n} из {TARGET} показов (не входное требование пилота переноса)', '/recording/collect'))
     for name, sim, label in (('rosmaster_pick_place', 'rosmaster_floor_pick_sim', 'ROSMASTER'), ('so101_pick_place', 'so101_handover_sim', 'SO-101')):
         sim_done = any(k[0] == sim for k in s['trained'])
         real = {k[1]: v for k, v in s['trained'].items() if k[0] == name}
