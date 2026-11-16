@@ -77,6 +77,7 @@ def test_verified_skill_is_pinned_reused_and_rejects_changed_conditions(isolated
     assert not out['readiness']['skill_missing'] and 'skill' not in out['gaps']
     assert out['registered_skill']['job_id'] == 'job'
     assert registry.get(record['skill_id']).real_admission == 'blocked'
+    assert registry.cards()[record['skill_id']].kind == 'learned'
     context['size_m'] = [.07] * 3
     assert knowledge.assess('rosmaster', 'cube', 'sim', context=context)['readiness']['skill_uncertain']
     context['size_m'] = [.032] * 3
@@ -84,3 +85,29 @@ def test_verified_skill_is_pinned_reused_and_rejects_changed_conditions(isolated
     assert knowledge.assess('rosmaster', 'cube', 'sim', context=context)['readiness']['skill_uncertain']
     assert knowledge.assess('rosmaster', 'cube', 'real', context=context)['readiness']['skill_missing']
     assert len(catalog.rows('jobs')) == 1  # repeated lookup/registration never creates training
+
+
+def test_pending_acquisition_survives_restart_and_is_not_duplicate_training(isolated):
+    from explorer3.cognitive.broker import prepare_acquisition, acquisition_requests, cancel_acquisition
+    assessed = knowledge.assess('rosmaster', 'cube')
+    first = prepare_acquisition('mission-1', 'принеси кубик', 'rosmaster', 'cube', assessed, domain='real')
+    second = prepare_acquisition('mission-2', 'принеси кубик', 'rosmaster', 'cube', assessed, domain='real')
+    assert first['id'] == second['id'] and first['state'] == 'needs_demonstration'
+    assert not first['training_started'] and not first['motion_authorized']
+    assert catalog.rows('jobs') == []
+    store.recover_interrupted()
+    assert acquisition_requests()[0]['id'] == first['id']
+    assert store.mission('mission-2')['auto_resume_motion'] is False
+    cancel_acquisition(first['id'])
+    assert acquisition_requests()[0]['state'] == 'cancelled'
+    assert store.mission('mission-1')['phase'] == 'cancelled'
+    assert store.mission('mission-2')['phase'] == 'cancelled'
+
+
+def test_infeasibility_cannot_be_overridden_by_a_stored_skill(isolated):
+    from explorer3.cognitive.broker import prepare_acquisition
+    assessed = {'registered_skill': {'state': 'available', 'skill_id': 'fixture'},
+                'readiness': {'physically_infeasible': True},
+                'reasons': {'physically_infeasible': 'Новая сцена недостижима'}}
+    request = prepare_acquisition('mission', 'принеси кубик', 'rosmaster', 'cube', assessed, domain='real')
+    assert request['state'] == 'rejected' and request['jobs'] == []

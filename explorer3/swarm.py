@@ -162,13 +162,17 @@ class Swarm:
         stems = {english: stem for stem, english in STEMS}
         return self.command('найдите ' + stems.get(prompt, prompt), robots)
 
-    def command(self, text, robots=None):
+    def command(self, text, robots=None, *, executor=None, task_context=None):
         """robots: subset of mobile robots that take part (solo vs team runs for the article)."""
         if self.thread is not None and self.thread.is_alive():
             raise RuntimeError('Рой уже выполняет задание: ' + (self.state['task'] or ''))
         kind, prompt = parse(text)
         if kind != 'explore' and not prompt:
             raise ValueError('Не понял, что искать')
+        if executor not in (None, 'geometric_baseline'):
+            raise ValueError('Unknown grasp executor')
+        self.pick_executor = executor
+        self.task_context = task_context or {}
         self.only = set(robots) if robots else None
         self.agents.start(kind, prompt, self.mobile())      # plan of registered skills, or a clear refusal
         self.stop_event.clear()
@@ -399,8 +403,20 @@ class Swarm:
         # 0. what does ROSMASTER not know? (knowledge gaps -> who can fill them)
         from . import knowledge
         domain = self.agents.domain()
-        gaps = knowledge.assess('rosmaster', prompt, domain)
+        executor = getattr(self, 'pick_executor', None)
+        if domain == 'sim' and executor is None:
+            executor = 'geometric_baseline'  # existing K protocol, explicitly journaled below
+        context = getattr(self, 'task_context', {})
+        gaps = knowledge.assess('rosmaster', prompt, domain, context=context, executor=executor)
         self.agents.gaps(gaps, self.mobile())
+        stages.append({'stage': 'skill_readiness', 'executor': executor, 'readiness': gaps['readiness'],
+                       'registered_skill': gaps['registered_skill'].get('skill_id')})
+        if gaps['readiness']['physically_infeasible'] or 'skill' in gaps['gaps']:
+            from .cognitive.broker import prepare_acquisition
+            request = prepare_acquisition(self.agents.mission, text, 'rosmaster', prompt, gaps, domain=domain, context=context)
+            self.state['acquisition'] = request
+            self.agents.role('LearningAndExperimentCurator').note(request['state'], request['title'], request_id=request['id'])
+            return 'awaiting_skill', request['title'] + '. ' + request['operator_next']
         advisor = getattr(self, 'advisor', 'off')       # 'off' | 'decide': the language model chooses the gaps (validated)
         if advisor == 'decide':
             from .cognitive.gap_advisor import advise
@@ -411,14 +427,14 @@ class Swarm:
                            'ok': 'error' not in advice, 'note': json.dumps({'rules': gaps['gaps'], 'model': advice}, ensure_ascii=False)[:600]})
             self.agents.role('MissionCoordinator').note('модель', f'правила: {gaps["gaps"]}; модель: {advice.get("gaps", advice.get("error"))}')
             if 'error' not in advice:
-                gaps = {**gaps, 'gaps': [g for g in advice['gaps'] if g in ('where', 'how')]}
+                gaps = {**gaps, 'gaps': list(dict.fromkeys(gaps['gaps'] + [g for g in advice['gaps'] if g in ('where', 'how')]))}
         grasp_knowledge = gaps['how']
         knowledge_case = None
         allowed = getattr(self, 'helpers', None)          # experiment conditions: which helpers may be called
         learning = None
         if 'how' in gaps['gaps'] and (allowed is None or 'so101' in allowed):
             # the SO-101 station studies the object on its table WHILE the mobile robots search
-            self.say('learn', f'ROSMASTER не знает, как брать «{prompt}»: SO-101 пробует и измеряет (параллельно с поиском)')
+            self.say('learn', f'ROSMASTER не знает, как брать «{prompt}»: SO-101 измеряет; проверенный опыт захвата учитывается отдельно')
             station = self.station_factory(lambda m: self.say('learn', m)) if self.station_factory else None
             if station is None:
                 from .so101_station import SO101Station
@@ -480,6 +496,8 @@ class Swarm:
                             from .rosmaster_arm import ArmSkills
                             arm = ArmSkills(log=lambda m: self.say('pick', m))
                     self.skill = arm
+                    arm.execution_selection = ('geometric_baseline' if executor == 'geometric_baseline'
+                                               else gaps['registered_skill'].get('job_id'))
                     picked = arm.pick(prompt, knowledge=grasp_knowledge)
                     if grasp_knowledge:
                         knowledge.record_use(grasp_knowledge['id'], 'rosmaster', picked['ok'], picked.get('reason', ''))

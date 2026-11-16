@@ -15,6 +15,8 @@ def state():
     from .datasets import eligible
     from .deploy_gate import latest
     s = {}
+    from .cognitive.broker import acquisition_requests
+    s['acquisitions'] = acquisition_requests()
     s['disk_gb'] = round(shutil.disk_usage(DATA).free / 1e9, 1)
     s['blocks'] = {name: len(eligible(name)) for name in ('rosmaster_pick_place', 'so101_pick_place', 'rosmaster_dock_rgbd_lidar', 'tank_dock_rgbd_lidar')}
     jobs = catalog.rows('jobs')
@@ -38,6 +40,10 @@ def state():
 def steps(s):
     """Ordered (state, text, link) — 'done' / 'next' / 'later' / 'blocked'."""
     out = []
+    for request in s.get('acquisitions', []):
+        if request['state'] != 'cancelled':
+            label = 'done' if request['state'] == 'accepted' else 'blocked' if request['state'] == 'rejected' else 'next'
+            out.append((label, request['title'] + '. ' + request.get('operator_next', ''), '/swarm'))
     if s['disk_gb'] < 10:
         out.append(('blocked', f'Мало места на диске: {s["disk_gb"]} ГБ (запись запрещена ниже 8 ГБ).', '/recording/readiness'))
     for name, label, block in (('rosmaster_pick_place', 'ROSMASTER · взять с пола', 3), ('so101_pick_place', 'SO-101 · передача человеку', 4)):

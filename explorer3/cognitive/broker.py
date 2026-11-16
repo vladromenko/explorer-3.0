@@ -240,3 +240,106 @@ def record_model_steps(mission_id,generation,steps):
         current['model_steps']=steps
         db.execute('UPDATE cognitive_missions SET body=? WHERE id=?',(store.encoded(current),mission_id))
         store.event(mission_id,'model_usage',{'decision_id':current['decision_id'],'steps':steps},db)
+
+
+ACQUISITION_TITLES = {
+    'needs_demonstration': 'нужен пример захвата SO-101 с измеренной геометрией',
+    'transfer_preparation': 'опыт SO-101 найден; перенос проверяется',
+    'data_preparation': 'готовятся собственные показы ROSMASTER',
+    'awaiting_training_budget': 'данные готовы; нужен согласованный бюджет обучения',
+    'training': 'ROSMASTER обучается',
+    'validation': 'проверяется собственная политика ROSMASTER',
+    'awaiting_physical_trial': 'ждёт разрешения испытания',
+    'accepted': 'новый навык принят',
+    'rejected': 'перенос недоступен в этих условиях',
+    'cancelled': 'запрос навыка отменён',
+}
+
+
+def prepare_acquisition(mission_id, task, robot, object_class, assessed, *, domain, context=None):
+    """Persist the existing fleet mission's nonmoving wait, deduplicated across requests.
+
+    Preparation only: no new worker, trainer, hardware lease or permission. Existing
+    Jobs and prepared training drafts execute later stages after a concrete budget.
+    """
+    from explorer3 import knowledge
+    context = context or {}
+    if domain not in ('real', 'sim') or robot != 'rosmaster':
+        raise ValueError('Unsupported acquisition recipient')
+    if assessed.get('registered_skill', {}).get('state') == 'available' and not assessed.get('readiness', {}).get('physically_infeasible'):
+        return {'state': 'accepted', 'skill_id': assessed['registered_skill']['skill_id'], 'training_started': False}
+    source_domain = context.get('source_domain', 'real')
+    if source_domain not in ('real', 'sim') or (domain == 'real' and source_domain != 'real'):
+        raise ValueError('A simulated donor cannot become a physically verified source')
+    candidates = []
+    for item in knowledge._load():
+        sha = item.get('skill_packet_sha256')
+        if sha and item.get('object_class') == object_class and item.get('domain') == source_domain:
+            packet = knowledge.load_packet(sha)
+            from explorer3.skill_packets import admission
+            if admission(packet, domain=source_domain)['eligible']:
+                candidates.append(sha)
+    infeasible = assessed.get('readiness', {}).get('physically_infeasible', False)
+    state = 'rejected' if infeasible else 'transfer_preparation' if candidates else 'needs_demonstration'
+    fingerprint = store.digest({'kind': 'skill_acquisition', 'recipient': robot, 'object_class': object_class,
+                                'domain': domain, 'context': context, 'source_domain': source_domain})
+    store.initialize()
+    with catalog.connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        old = db.execute("SELECT * FROM cognitive_requests WHERE fingerprint=? AND state != 'cancelled' ORDER BY created LIMIT 1", (fingerprint,)).fetchone()
+        if old:
+            value = json.loads(old['result'])
+            if value['state'] == 'needs_demonstration' and candidates:
+                value.update(state='transfer_preparation', title=ACQUISITION_TITLES['transfer_preparation'], candidate_packets=candidates,
+                             operator_next='Опыт найден; сначала проверяется перенос, обучение ещё не запускается.')
+                db.execute('UPDATE cognitive_requests SET state=?,result=? WHERE id=?', (value['state'], store.encoded(value), old['id']))
+            store.event(mission_id, 'acquisition_reused', {'request_id': old['id']}, db)
+        else:
+            value = {'kind': 'skill_acquisition', 'id': uuid.uuid4().hex, 'mission_id': mission_id,
+                'task': task, 'recipient': robot, 'object_class': object_class, 'domain': domain,
+                'source_domain': source_domain, 'context': context, 'state': state, 'title': ACQUISITION_TITLES[state],
+                'candidate_packets': candidates, 'selected_packet': None, 'jobs': [], 'assessed': assessed,
+                'training_started': False, 'motion_authorized': False, 'resume_requires_fresh_scene': True,
+                'operator_next': ('Три пробных показа SO-101: подход, захват, подъём и удержание; '
+                    'верхняя камера и геометрия TCP должны быть проверены. Мобильные роботы не нужны.') if not candidates else
+                    'Сначала проверить перенос одного выбранного пакета; обучение и движение ещё не начаты.',
+                'created_at': time.time()}
+            if infeasible:
+                value['operator_next'] = assessed['reasons'].get('physically_infeasible', 'Изменить сцену или исполнителя')
+            db.execute('INSERT INTO cognitive_requests VALUES(?,?,?,?,?,?,?)',
+                       (value['id'], mission_id, 'acquisition', fingerprint, state, store.encoded(value), time.time()))
+            store.event(mission_id, 'acquisition_prepared', value, db)
+        row = db.execute('SELECT body FROM cognitive_missions WHERE id=?', (mission_id,)).fetchone()
+        mission = json.loads(row['body']) if row else {'id': mission_id, 'task': task, 'domain': domain, 'generation': 0}
+        mission.update(phase='awaiting_skill', acquisition_request=value['id'], training_authorized=False,
+                       real_authorized=False, auto_resume_motion=False, resume_requires_fresh_scene=True)
+        db.execute('INSERT INTO cognitive_missions VALUES(?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body',
+                   (mission_id, store.encoded(mission)))
+    return value
+
+
+def acquisition_requests():
+    with catalog.connect() as db:
+        exists = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cognitive_requests'").fetchone()
+        rows = db.execute("SELECT result FROM cognitive_requests WHERE decision_id='acquisition' ORDER BY created DESC LIMIT 20").fetchall() if exists else []
+    return [json.loads(row['result']) for row in rows if row['result']]
+
+
+def cancel_acquisition(identifier):
+    with catalog.connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        row = db.execute("SELECT * FROM cognitive_requests WHERE id=? AND decision_id='acquisition'", (identifier,)).fetchone()
+        if row is None:
+            raise ValueError('Unknown acquisition request')
+        value = json.loads(row['result'])
+        if value.get('jobs'):
+            raise ValueError('Cancel linked training through its existing queue first')
+        value.update(state='cancelled', title=ACQUISITION_TITLES['cancelled'])
+        db.execute('UPDATE cognitive_requests SET state=?,result=? WHERE id=?', ('cancelled', store.encoded(value), identifier))
+        for linked in db.execute("SELECT id,body FROM cognitive_missions WHERE json_extract(body,'$.acquisition_request')=?", (identifier,)).fetchall():
+            mission = json.loads(linked['body'])
+            mission.update(phase='cancelled', generation=mission.get('generation', 0) + 1, auto_resume_motion=False)
+            db.execute('UPDATE cognitive_missions SET body=? WHERE id=?', (store.encoded(mission), linked['id']))
+            db.execute('DELETE FROM cognitive_claims WHERE mission_id=?', (linked['id'],))
+        store.event(row['mission_id'], 'acquisition_cancelled', {'request_id': identifier}, db)
+    return value

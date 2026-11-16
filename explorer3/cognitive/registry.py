@@ -73,7 +73,13 @@ def cards():
     result[ident]=base.model_copy(update={'skill_id':ident,
         'version':digest({'parent':base.version,'admission_source':sha}),
         'preconditions':[*base.preconditions,'target_observed_by_helper']})
-    return {**result,**real_cards()}
+    from explorer3 import catalog
+    with catalog.connect() as db:
+        exists = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cognitive_skills'").fetchone()
+        rows = db.execute('SELECT body FROM cognitive_skills').fetchall() if exists else []
+    accepted = {record['skill_id']: SkillCard.model_validate(record['card'])
+                for row in rows for record in [json.loads(row['body'])]}
+    return {**result, **real_cards(), **accepted}
 
 
 def get(identifier):

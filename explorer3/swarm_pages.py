@@ -209,12 +209,12 @@ def install(app, ui, control, notify_error, css=''):
         return request.client is not None and request.client.host in ('127.0.0.1', '::1')
 
     @app.post('/api/swarm/command')
-    def swarm_command(request: Request, text: str, robots: str = ''):
+    def swarm_command(request: Request, text: str, robots: str = '', executor: str = ''):
         from . import swarm
         if not _local(request):
             return Response(status_code=403)
         try:
-            kind, prompt = swarm.SWARM.command(text, [r for r in robots.split(',') if r] or None)
+            kind, prompt = swarm.SWARM.command(text, [r for r in robots.split(',') if r] or None, executor=executor or None)
         except Exception as exc:
             return {'ok': False, 'error': str(exc)}
         return {'ok': True, 'kind': kind, 'prompt': prompt}
@@ -231,7 +231,8 @@ def install(app, ui, control, notify_error, css=''):
         if not _local(request):
             return Response(status_code=403)
         st = swarm.SWARM.status()
-        return {k: st.get(k) for k in ('task', 'stage', 'message', 'active', 'robots')} | {'log': st.get('log', [])[-25:]}
+        from .cognitive.broker import acquisition_requests
+        return {k: st.get(k) for k in ('task', 'stage', 'message', 'active', 'robots')} | {'log': st.get('log', [])[-25:], 'acquisitions': acquisition_requests()}
 
     @app.get('/research/search_trials.csv')
     def search_trials_csv():
@@ -275,12 +276,16 @@ def install(app, ui, control, notify_error, css=''):
                 text = ui.input(placeholder='принеси печеньку · найдите носок · осмотрите комнату · подъедь к кубику').props('dense outlined dark').style('flex:1;min-width:320px')
                 who = ui.select(['Оба робота', 'Только ROSMASTER', 'Только Tank'], value='Оба робота').props('dense outlined dark').style('min-width:170px')
 
+                executor_choice = ui.select({'skill': 'Проверенный захват или запрос навыка', 'geometric_baseline': 'Геометрический эксперимент'},
+                                            value='skill', label='Способ захвата').props('dense outlined dark')
+
                 def go(value=None):
                     try:
                         v = (value or text.value or '').strip()
                         if not v:
                             raise ValueError('Напишите команду')
-                        team().command(v, {'Оба робота': None, 'Только ROSMASTER': ['rosmaster'], 'Только Tank': ['tank']}[who.value])
+                        team().command(v, {'Оба робота': None, 'Только ROSMASTER': ['rosmaster'], 'Только Tank': ['tank']}[who.value],
+                                       executor='geometric_baseline' if executor_choice.value == 'geometric_baseline' else None)
                         ui.notify('Рой: ' + v)
                     except Exception as exc:
                         notify_error(exc)
@@ -382,11 +387,40 @@ def install(app, ui, control, notify_error, css=''):
         stage_names = {'learn': 'SO-101 изучает', 'help': 'помощь', 'search': 'поиск', 'explore': 'осмотр', 'approach': 'подъезд', 'pick': 'захват', 'deliver': 'доставка',
                        'place': 'на площадку', 'handoff': 'SO-101 передаёт', 'goto': 'подъезд'}
         last_found = [None]
+        with ui.element('div').classes('sw-card').style('margin:0 6px 12px'):
+            ui.label('Приобретение захвата').style('font-weight:700;font-size:17px')
+            ui.label('Измерение предмета, опыт донора и самостоятельный навык получателя проверяются отдельно.').classes('sw-muted')
+            acquisition_box = ui.column().style('width:100%')
+        last_acquisitions = [None]
+
         last_agents, last_memory, last_trials = [None], [None], [None]
 
         async def refresh():
             import asyncio
             t = time.time()
+            from .cognitive.broker import acquisition_requests, cancel_acquisition
+            requests = acquisition_requests()
+            request_key = json.dumps(requests, sort_keys=True)
+            if request_key != last_acquisitions[0]:
+                last_acquisitions[0] = request_key
+                acquisition_box.clear()
+                with acquisition_box:
+                    if not requests:
+                        ui.label('Запросов навыка пока нет. Команда «принеси» сначала проверит готовность захвата.').classes('sw-muted')
+                    for request in requests[:6]:
+                        with ui.column().style('gap:3px;margin-bottom:8px'):
+                            ui.label(request['title']).style('font-weight:650')
+                            ui.label(request.get('operator_next', '')).classes('sw-muted')
+                            if request.get('candidate_packets'):
+                                ui.label(f"Подходящих исходных пакетов: {len(request['candidate_packets'])}").classes('sw-muted')
+                            if request['state'] not in ('accepted', 'cancelled', 'rejected') and not request.get('jobs'):
+                                def cancel_request(ident=request['id']):
+                                    try:
+                                        cancel_acquisition(ident)
+                                        last_acquisitions[0] = None
+                                    except Exception as exc:
+                                        notify_error(exc)
+                                ui.button('Отменить запрос навыка', on_click=cancel_request).props('flat dense no-caps')
             checks = await asyncio.to_thread(readiness, control)
             map_img.set_source(f'/api/swarm/map.png?t={t:.1f}')
             st = FLEET.status()

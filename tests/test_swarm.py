@@ -159,7 +159,7 @@ def test_fetch_known_object_runs_every_stage():
     world_memory.record('tank', 'к печенью', 'cookie', 1.0, 0.)          # Tank saw it earlier
     arms = []
     s, ros, tank = make(arms)
-    s.command('принеси печеньку')
+    s.command('принеси печеньку', executor='geometric_baseline')
     wait(s)
     assert s.state['stage'] == 'done', s.state
     stages = [x[1] for x in s.state['log']]
@@ -170,8 +170,8 @@ def test_fetch_known_object_runs_every_stage():
     ep = episodes.load()[0]
     # ROSMASTER had no grasp knowledge for the cookie: it asked the SO-101 station first ('learn');
     # (fake station here) and picked with that knowledge
-    assert ep['kind'] == 'fetch' and ep['success'] and [x['stage'] for x in ep['stages']] == ['learn', 'approach', 'pick', 'deliver', 'place', 'handoff']
-    assert ep['stages'][0]['ok'] is True
+    assert ep['kind'] == 'fetch' and ep['success'] and [x['stage'] for x in ep['stages']] == ['skill_readiness', 'learn', 'approach', 'pick', 'deliver', 'place', 'handoff']
+    assert ep['stages'][1]['ok'] is True
 
 
 def test_fetch_unknown_object_team_search_stops_both():
@@ -183,12 +183,12 @@ def test_fetch_unknown_object_team_search_stops_both():
             world_memory.record('rosmaster', 'к печенью', 'cookie', .8, .2)
     arms = []
     s, ros, tank = make(arms, scout)
-    s.command('принеси печенье')
+    s.command('принеси печенье', executor='geometric_baseline')
     wait(s)
     assert s.state['stage'] == 'done', s.state
     searches = [g for g in ros.started + tank.started if g.outcome == 'explored']
     assert len(searches) == 2 and all(g.state == 'cancelled' for g in searches)   # first sighting ended both
-    assert [x['stage'] for x in episodes.load()[0]['stages']][0] == 'search'
+    assert [x['stage'] for x in episodes.load()[0]['stages']][:2] == ['skill_readiness', 'search']
 
 
 def test_fetch_without_taught_handover_ends_with_rosmaster_holding():
@@ -196,7 +196,7 @@ def test_fetch_without_taught_handover_ends_with_rosmaster_holding():
     world_memory.record('tank', 'к печенью', 'cookie', 1.0, 0.)
     arms = []
     s, _, _ = make(arms)
-    s.command('принеси печенье')
+    s.command('принеси печенье', executor='geometric_baseline')
     wait(s)
     assert s.state['stage'] == 'done' and 'держит' in s.state['message'], s.state
     assert not any(c[0] == 'place' for c in arms[0].calls)
@@ -334,3 +334,14 @@ def test_solo_run_uses_one_robot_and_is_marked_for_the_article():
     assert ep['condition'] == 'solo' and ep['robots'] == ['rosmaster']
     csv = episodes.to_csv()
     assert 'condition' in csv.splitlines()[0] and ',solo,' in csv
+
+
+def test_missing_skill_waits_without_starting_any_robot():
+    arms = []
+    s, ros, tank = make(arms)
+    s.command('принеси кубик')
+    wait(s)
+    assert s.state['stage'] == 'awaiting_skill', s.state
+    assert not ros.started and not tank.started and arms == []
+    assert s.state['acquisition']['state'] == 'needs_demonstration'
+    assert ros.released == tank.released == 1

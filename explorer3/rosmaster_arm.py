@@ -270,7 +270,10 @@ class ArmSkills:
         object knowledge from the shared store (e.g. measured by the SO-101 station): its width and
         grasp height replace the single-view estimates. Returns a result dict."""
         self.knowledge = (knowledge or {}).get('params') or {}
-        job = learned_pick_job()
+        selection = getattr(self, 'execution_selection', 'legacy')
+        if selection is None:
+            return {'ok': False, 'reason': 'проверенный исполнитель не выбран'}
+        job = learned_pick_job() if selection == 'legacy' else None if selection == 'geometric_baseline' else selection
         if job is not None:
             return self.policy_pick(prompt, job)
         return self.geometric_pick(prompt, attempts)
@@ -283,6 +286,9 @@ class ArmSkills:
         from .policy_runtime import PolicyCore
         from .profiles import profile
         report = deploy_gate.latest(job)
+        from .training_drafts import checkpoint_hash
+        if not report or report.get('verdict') != 'ready' or checkpoint_hash(report['checkpoint']) != report.get('checkpoint_bundle_sha256'):
+            return {'ok': False, 'reason': 'выбранная модель изменилась или её допуск не пройден'}
         cfg = profile('rosmaster_pick_place')
         obj = self.look(prompt)
         if obj is None:
