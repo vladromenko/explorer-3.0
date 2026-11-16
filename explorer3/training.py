@@ -233,9 +233,12 @@ def run_job(path: Path):
                         f'--config_path={resume}/train_config.json', '--resume=true'] if resume else
                        train_command(work/'train', output, cfg['policy'], steps, batch, cfg['seed'],cfg.get('device','cuda'),cfg.get('initial_checkpoint')))
             if profile(cfg['profile']).get('domain') == 'sim' and not resume:
-                # simulation pre-training keeps only the final weights (~1.3 GB each for SmolVLA):
-                # the disk must stay above the 8 GB recording limit
-                command = [a if not a.startswith('--save_freq=') else f'--save_freq={steps}' for a in command]
+                # Long runs need optimizer checkpoints before the final step. The
+                # checkpoint volume is external; raw recordings remain on DATA.
+                interval = int(cfg.get('checkpoint_interval', 1000))
+                if interval < 1:
+                    raise ValueError('Checkpoint interval must be positive')
+                command = [a if not a.startswith('--save_freq=') else f'--save_freq={min(steps, interval)}' for a in command]
             (work/f'command-b{batch}.json').write_text(json.dumps(command, indent=2))
             log_path = work/f'trainer-b{batch}.log'
             with log_path.open('a') as log:

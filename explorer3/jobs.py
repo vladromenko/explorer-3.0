@@ -35,6 +35,7 @@ class Jobs:
     def __init__(self, control):
         self.control = control
         self.process = None
+        self.compute_unit = None
         self.thread = None
         self.active_id = None
         self.cancel_requested = threading.Event()
@@ -388,9 +389,14 @@ class Jobs:
                     with self.lock:
                         if self.cancel_requested.is_set():
                             return
+                        from .compute_process import command
+                        args, self.compute_unit = command(ident,
+                            [sys.executable, '-m', 'explorer3.training', '--job', str(path)], cfg)
                         with catalog.connect() as db:
-                            db.execute("UPDATE jobs SET status='running',error=NULL WHERE id=?", (ident,))
-                        self.process = subprocess.Popen([sys.executable, '-m', 'explorer3.training', '--job', str(path)],
+                            claimed = db.execute("UPDATE jobs SET status='running',error=NULL WHERE id=? AND status='queued'", (ident,))
+                            if claimed.rowcount != 1:
+                                return  # another worker/cancellation changed this queued snapshot
+                        self.process = subprocess.Popen(args,
                             cwd=ROOT, env=offline_environment(), stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
                     code = self.process.wait()
                 result_path = DATA/'jobs'/ident/'result.json'
@@ -411,6 +417,7 @@ class Jobs:
         finally:
             with self.lock:
                 self.process = None
+                self.compute_unit = None
                 self.active_id = None
 
     def cancel(self, ident=None):
@@ -424,6 +431,8 @@ class Jobs:
                 broker.cancel(json.loads(mission_file.read_text())['mission_id'],'Job cancelled')
             if ident == self.active_id:
                 self.cancel_requested.set()
+                from .compute_process import stop
+                stop(self.compute_unit)
                 if self.process and self.process.poll() is None:
                     try:
                         os.killpg(self.process.pid, signal.SIGTERM)
