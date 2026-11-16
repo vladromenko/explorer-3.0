@@ -160,7 +160,8 @@ def run_job(path: Path):
         return
     if cfg.get('kind') == 'sim_evaluate':
         subprocess.run([str(ROOT/'.venv-sim/bin/python'),'-m','explorer3.sim.evaluate',cfg['checkpoint'],
-            str(work/'result.json'),'--profile',cfg['profile'],'--count',str(cfg['episodes'])]+
+            str(work/'result.json'),'--profile',cfg['profile'],'--count',str(cfg['episodes']),
+            '--inference-seed',str(cfg.get('inference_seed',1000))]+
             (['--expected-model-sha256',cfg['expected_model_hash']] if cfg.get('expected_model_hash') else [])+
             (['--verify-grasp'] if cfg.get('verify_grasp') else []),
             check=True,env={**offline_environment(),'MUJOCO_GL':'egl'})

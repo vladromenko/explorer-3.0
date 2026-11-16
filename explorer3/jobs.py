@@ -199,7 +199,7 @@ class Jobs:
             if target is None:raise ValueError('Для этой реальной задачи нет выровненной сцены MuJoCo')
             return self._insert(source['profile'],source['policy'],{'kind':'sim_evaluate','profile':target,
                 'source_job':job_id,'checkpoint':source['checkpoint'],'device':'cuda','expected_model_hash':None,
-                'episodes':3 if json.loads(source['config']).get('smoke') else 20})
+                'inference_seed':1000,'episodes':3 if json.loads(source['config']).get('smoke') else 20})
         from .datasets import load_plan,select_simulation_revision
         config=json.loads(source['config'])
         if config.get('plan_id'):
@@ -210,7 +210,7 @@ class Jobs:
         if model_hash is None:raise ValueError('Нет версии физики обучающего набора')
         return self._insert(source['profile'],source['policy'],{'kind':'sim_evaluate','profile':source['profile'],
             'source_job':job_id,'checkpoint':source['checkpoint'],'device':'cuda',
-            'expected_model_hash':model_hash,
+            'expected_model_hash':model_hash,'inference_seed':1000,
             'verify_grasp':bool(config.get('donor_packet_shas')),
             'episodes':3 if json.loads(source['config']).get('smoke') else 20})
 

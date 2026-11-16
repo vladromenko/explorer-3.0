@@ -29,7 +29,7 @@ def main(checkpoint,device):
     for line in sys.stdin:
         req=json.loads(line)
         if req['command']=='reset':
-            policy.reset();result={'reset':True}
+            result={'reset':True, **core.reset(req.get('seed'))}
         elif req['command']=='snapshot':
             ensemble=getattr(policy,'temporal_ensembler',None)
             result={'policy_id':fingerprint,'queue':[tensor_state(x) for x in getattr(policy,'_action_queue',[])],

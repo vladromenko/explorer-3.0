@@ -82,8 +82,9 @@ def test_existing_policy_evaluator_attaches_independent_physics_measurements(tmp
         ready = {'policy_type':'scripted_fixture'}
         def __init__(self, *a, **kw):
             self.expert = None
-        def request(self, command):
+        def request(self, command, *, seed):
             self.expert = ScriptedFloorPick(env)
+            return {'seed': seed}
         def action(self, obs, cfg):
             return self.expert.action()
         def close(self):

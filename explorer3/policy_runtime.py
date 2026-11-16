@@ -39,8 +39,21 @@ class PolicyCore:
         self.image_keys = [k for k in cfg.input_features if k.startswith('observation.images.')]
         self.policy.reset()
 
-    def reset(self):
+    def reset(self, seed=None):
+        if seed is not None and (type(seed) is not int or not 0 <= seed < 2**32):
+            raise ValueError('Policy sampling seed must be an integer in [0, 2**32)')
+        if seed is not None:
+            self.torch.manual_seed(seed)  # CPU and CUDA default generators, including flow-matching noise
         self.policy.reset()
+        metadata = {'seed': seed}
+        if seed is not None:
+            def digest(state):
+                return hashlib.sha256(state.cpu().numpy().tobytes()).hexdigest()
+            metadata.update(torch_version=str(self.torch.__version__),
+                            cpu_rng_sha256=digest(self.torch.get_rng_state()),
+                            cuda_rng_sha256=([digest(s) for s in self.torch.cuda.get_rng_state_all()]
+                                             if str(self.device).startswith('cuda') else []))
+        return metadata
 
     def needs_inference(self):
         queue = getattr(self.policy, '_action_queue', getattr(self.policy, '_queues', {}).get('action'))
