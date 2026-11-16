@@ -55,16 +55,30 @@ def eligible(name):
             and in_task_block(e, texts)]
 
 
+def lineage_tokens(episode):
+    tokens = {('episode', episode['id']), ('session', episode['session']), ('scene', episode['scene'])}
+    sources = list(episode.get('lineage_sources', []))
+    path = Path(episode['dataset']) / 'provenance.json' if episode.get('dataset') else None
+    if path is not None and path.is_file():
+        meta = json.loads(path.read_text()).get('hardware', {})
+        transfer = meta.get('transfer_lineage', {})
+        sources.extend(entry['id'] for entry in transfer.get('source_episodes', []))
+        sources.extend(transfer.get('ancestor_episode_ids', []))
+    tokens.update(('episode', value) for value in sources)
+    return tokens
+
+
 def connected_groups(episodes):
-    # Connected components: sharing EITHER a session OR a scene prevents leakage,
-    # including transitive connections between several recording sessions.
+    # Transitive connected components: sessions, scenes AND donor ancestors.
+    # Two generated scenes with one donor must not straddle train and evaluation.
     groups = []
     for episode in sorted(episodes, key=lambda e: e['id']):
-        linked = [g for g in groups if any(
-            episode['session'] == e['session'] or episode['scene'] == e['scene'] for e in g)]
-        merged = [episode] + [e for g in linked for e in g]
+        tokens = lineage_tokens(episode)
+        linked = [g for g in groups if tokens & g['tokens']]
+        merged = {'entries': [episode] + [e for g in linked for e in g['entries']],
+                  'tokens': tokens | set().union(*(g['tokens'] for g in linked))}
         groups = [g for g in groups if g not in linked] + [merged]
-    return groups
+    return [g['entries'] for g in groups]
 
 
 def grouped_split(episodes, seed=1000):

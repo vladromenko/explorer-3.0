@@ -34,3 +34,27 @@ def test_control_derivative_preserves_pixels_actions_and_pairing(tmp_path):
     assert json.loads((source / 'manifest.json').read_text()) == meta
     with pytest.raises(ValueError):
         control_copy(target)
+
+
+def test_donor_lineage_is_grouped_transitively_across_generated_scenes():
+    from explorer3.datasets import connected_groups
+    episodes = [dict(id='a', session='s1', scene='c1', lineage_sources=['donor-1']),
+                dict(id='b', session='s2', scene='c2', lineage_sources=['donor-1', 'donor-2']),
+                dict(id='c', session='s3', scene='c3', lineage_sources=['donor-2']),
+                dict(id='independent', session='s4', scene='c4')]
+    assert {frozenset(e['id'] for e in group) for group in connected_groups(episodes)} == {
+        frozenset(('a', 'b', 'c')), frozenset(('independent',))}
+    with pytest.raises(ValueError, match='3'):
+        grouped_split(episodes)
+
+
+def test_donor_lineage_is_read_from_immutable_recording_provenance(tmp_path):
+    from explorer3.datasets import connected_groups
+    rows = []
+    for index in range(2):
+        root = tmp_path / str(index)
+        root.mkdir()
+        (root / 'provenance.json').write_text(json.dumps({'hardware': {'transfer_lineage': {
+            'source_episodes': [{'id': 'shared-donor', 'sha256': 'a' * 64}]}}}))
+        rows.append(dict(id=str(index), session='session-' + str(index), scene='scene-' + str(index), dataset=str(root)))
+    assert len(connected_groups(rows)) == 1

@@ -1,0 +1,429 @@
+{
+  "scope": "engineering preflight only; simulated geometric SO-101 donor, not real donor or learned policy",
+  "packet_sha256": "32442693c33c0f138e3d8493ffba4a8f570d9aeac3ea10a30b83253ca8d5ac54",
+  "source_episode": "875c1a1ab1b248c7b1de029bb138383c",
+  "recipient_profile": "rosmaster_floor_pick_sim",
+  "persistent_request": "9eb086058a9f4b909773f29c58b67b95",
+  "attempts": [
+    {
+      "attempt": "preflight-v1",
+      "recipient_seed": 42000,
+      "outcome": "success",
+      "termination_reason": "held_in_carry_pose",
+      "verification": null,
+      "recipient_import": {
+        "episode_id": "5bd48be6b8594907bc4f1d0b556f5849",
+        "outcome": "success",
+        "frames": 277,
+        "readback": "PASS",
+        "synthetic": true,
+        "domain": "sim",
+        "observation_action_availability_order": "PASS",
+        "observation_action_causality": "PASS",
+        "video_sampled_first_middle_last": "PASS",
+        "duration_seconds": 13.8,
+        "actual_hz": 20.0,
+        "interval_ms_p50_p95_max": [
+          50.0,
+          50.0,
+          50.0
+        ],
+        "reused_camera_frames": 0,
+        "camera_age_ms_p95": 0.0,
+        "units": [
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees"
+        ],
+        "channels": [
+          "base_rotation",
+          "shoulder",
+          "elbow",
+          "wrist_pitch",
+          "wrist_roll",
+          "gripper"
+        ],
+        "physical_policy_skill_verified": false,
+        "dataset_sha256": "367152c6d148d132e0bf74eb0ba34e612d283e7e7c2cdd6a8e3171eba3be7b98"
+      },
+      "report_path": "/home/jetsonnx/.local/share/explorer3/simlab/skill-transfer/preflight-v1/recipient.json",
+      "report_sha256": "c1d8658a307e2d48a1a6db570482a7f82c1068f18cdf851566b601fe3db3e093",
+      "implementation_sha256": null
+    },
+    {
+      "attempt": "preflight-v2",
+      "recipient_seed": 42000,
+      "outcome": "success",
+      "termination_reason": "held_in_carry_pose",
+      "verification": {
+        "method": "every MuJoCo physics substep; independent object lift and TCP proximity",
+        "lift_m": 0.24203046967084807,
+        "held_s": 6.811999999998944,
+        "max_arm_penetration_m": 0.0,
+        "forbidden_contact_pairs": [],
+        "numerical_contact_tolerance_m": 0.002,
+        "accepted": true,
+        "not_a_physical_safety_certificate": true
+      },
+      "recipient_import": {
+        "episode_id": "b06edda1285e460787d34685ea44d43d",
+        "outcome": "success",
+        "frames": 277,
+        "readback": "PASS",
+        "synthetic": true,
+        "domain": "sim",
+        "observation_action_availability_order": "PASS",
+        "observation_action_causality": "PASS",
+        "video_sampled_first_middle_last": "PASS",
+        "duration_seconds": 13.8,
+        "actual_hz": 20.0,
+        "interval_ms_p50_p95_max": [
+          50.0,
+          50.0,
+          50.0
+        ],
+        "reused_camera_frames": 0,
+        "camera_age_ms_p95": 0.0,
+        "units": [
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees"
+        ],
+        "channels": [
+          "base_rotation",
+          "shoulder",
+          "elbow",
+          "wrist_pitch",
+          "wrist_roll",
+          "gripper"
+        ],
+        "physical_policy_skill_verified": false,
+        "dataset_sha256": "26e9bf61f06a4e06290192c1d1f0cc0e30d3ad0fd159f10b02211bb0599d78d0"
+      },
+      "report_path": "/home/jetsonnx/.local/share/explorer3/simlab/skill-transfer/preflight-v2/recipient.json",
+      "report_sha256": "357aa8c0c7097712d1d64bba81ba8614d2b33e9dd1f4d19c075fb94fcdcf351d",
+      "implementation_sha256": null
+    },
+    {
+      "attempt": "preflight-seed42001",
+      "recipient_seed": 42001,
+      "outcome": "failure",
+      "termination_reason": "task_deadline",
+      "verification": {
+        "method": "every MuJoCo physics substep; independent object lift and TCP proximity",
+        "lift_m": 0.0,
+        "held_s": 0.0,
+        "max_arm_penetration_m": 2.8459990841649824e-05,
+        "forbidden_contact_pairs": [],
+        "numerical_contact_tolerance_m": 0.002,
+        "accepted": false,
+        "not_a_physical_safety_certificate": true
+      },
+      "recipient_import": {
+        "episode_id": "5a52cb969a1642338757a80a620e09eb",
+        "outcome": "failure",
+        "frames": 500,
+        "readback": "PASS",
+        "synthetic": true,
+        "domain": "sim",
+        "observation_action_availability_order": "PASS",
+        "observation_action_causality": "PASS",
+        "video_sampled_first_middle_last": "PASS",
+        "duration_seconds": 24.95,
+        "actual_hz": 20.0,
+        "interval_ms_p50_p95_max": [
+          50.0,
+          50.0,
+          50.0
+        ],
+        "reused_camera_frames": 0,
+        "camera_age_ms_p95": 0.0,
+        "units": [
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees"
+        ],
+        "channels": [
+          "base_rotation",
+          "shoulder",
+          "elbow",
+          "wrist_pitch",
+          "wrist_roll",
+          "gripper"
+        ],
+        "physical_policy_skill_verified": false,
+        "dataset_sha256": "392762344d39e85cae40ad68ef8e33b0bc4b9947a218ba64a5489f8632ea17b2"
+      },
+      "report_path": "/home/jetsonnx/.local/share/explorer3/simlab/skill-transfer/preflight-seed42001/recipient.json",
+      "report_sha256": "4d9843c294dd9328c15699841e81d900ad3b6ef51bc0da123300ae996c5dfea4",
+      "implementation_sha256": null
+    },
+    {
+      "attempt": "preflight-tracking42001",
+      "recipient_seed": 42001,
+      "outcome": "failure",
+      "termination_reason": "task_deadline",
+      "verification": {
+        "method": "every MuJoCo physics substep; independent object lift and TCP proximity",
+        "lift_m": 0.0,
+        "held_s": 0.0,
+        "max_arm_penetration_m": 0.0,
+        "forbidden_contact_pairs": [],
+        "numerical_contact_tolerance_m": 0.002,
+        "accepted": false,
+        "not_a_physical_safety_certificate": true
+      },
+      "recipient_import": {
+        "episode_id": "7b5daae793f642878c657129e661ddc9",
+        "outcome": "failure",
+        "frames": 500,
+        "readback": "PASS",
+        "synthetic": true,
+        "domain": "sim",
+        "observation_action_availability_order": "PASS",
+        "observation_action_causality": "PASS",
+        "video_sampled_first_middle_last": "PASS",
+        "duration_seconds": 24.95,
+        "actual_hz": 20.0,
+        "interval_ms_p50_p95_max": [
+          50.0,
+          50.0,
+          50.0
+        ],
+        "reused_camera_frames": 0,
+        "camera_age_ms_p95": 0.0,
+        "units": [
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees"
+        ],
+        "channels": [
+          "base_rotation",
+          "shoulder",
+          "elbow",
+          "wrist_pitch",
+          "wrist_roll",
+          "gripper"
+        ],
+        "physical_policy_skill_verified": false,
+        "dataset_sha256": "a1b647ad4dc26c95cfb77342e0b9a27b3524f94851d78c2a57cf822f5637b7e0"
+      },
+      "report_path": "/home/jetsonnx/.local/share/explorer3/simlab/skill-transfer/preflight-tracking42001/recipient.json",
+      "report_sha256": "757fd6fdfcc52dd79148a345abde54d71a905020cbe1f958b1be50647b8fe579",
+      "implementation_sha256": null
+    },
+    {
+      "attempt": "preflight-feedback42001",
+      "recipient_seed": 42001,
+      "outcome": "failure",
+      "termination_reason": "task_deadline",
+      "verification": {
+        "method": "every MuJoCo physics substep; independent object lift and TCP proximity",
+        "lift_m": 0.0,
+        "held_s": 0.0,
+        "max_arm_penetration_m": 1.1259158483385712e-05,
+        "forbidden_contact_pairs": [],
+        "numerical_contact_tolerance_m": 0.002,
+        "accepted": false,
+        "not_a_physical_safety_certificate": true
+      },
+      "recipient_import": {
+        "episode_id": "da0a104f1518480788b21fa0cfe73746",
+        "outcome": "failure",
+        "frames": 500,
+        "readback": "PASS",
+        "synthetic": true,
+        "domain": "sim",
+        "observation_action_availability_order": "PASS",
+        "observation_action_causality": "PASS",
+        "video_sampled_first_middle_last": "PASS",
+        "duration_seconds": 24.95,
+        "actual_hz": 20.0,
+        "interval_ms_p50_p95_max": [
+          50.0,
+          50.0,
+          50.0
+        ],
+        "reused_camera_frames": 0,
+        "camera_age_ms_p95": 0.0,
+        "units": [
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees"
+        ],
+        "channels": [
+          "base_rotation",
+          "shoulder",
+          "elbow",
+          "wrist_pitch",
+          "wrist_roll",
+          "gripper"
+        ],
+        "physical_policy_skill_verified": false,
+        "dataset_sha256": "4c55c0a28a3d430c057da442e645411389794ce384b695ff2f0a22399581460e"
+      },
+      "report_path": "/home/jetsonnx/.local/share/explorer3/simlab/skill-transfer/preflight-feedback42001/recipient.json",
+      "report_sha256": "25ecf0794ada944d6b59df68861aeb6434a8073d24e0b83dd1832e18972b545e",
+      "implementation_sha256": null
+    },
+    {
+      "attempt": "bounded-egl-42000",
+      "recipient_seed": 42000,
+      "outcome": "success",
+      "termination_reason": "held_in_carry_pose",
+      "verification": {
+        "method": "every MuJoCo physics substep; independent object lift and TCP proximity",
+        "lift_m": 0.2422797070017405,
+        "held_s": 14.151000000005803,
+        "max_arm_penetration_m": 0.0,
+        "forbidden_contact_pairs": [],
+        "numerical_contact_tolerance_m": 0.002,
+        "accepted": true,
+        "not_a_physical_safety_certificate": true
+      },
+      "recipient_import": {
+        "episode_id": "590d98d7dfee4e3c8168e48f312c8b86",
+        "outcome": "success",
+        "frames": 441,
+        "readback": "PASS",
+        "synthetic": true,
+        "domain": "sim",
+        "observation_action_availability_order": "PASS",
+        "observation_action_causality": "PASS",
+        "video_sampled_first_middle_last": "PASS",
+        "duration_seconds": 22.0,
+        "actual_hz": 20.0,
+        "interval_ms_p50_p95_max": [
+          50.0,
+          50.0,
+          50.0
+        ],
+        "reused_camera_frames": 0,
+        "camera_age_ms_p95": 0.0,
+        "units": [
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees"
+        ],
+        "channels": [
+          "base_rotation",
+          "shoulder",
+          "elbow",
+          "wrist_pitch",
+          "wrist_roll",
+          "gripper"
+        ],
+        "physical_policy_skill_verified": false,
+        "dataset_sha256": "d8f099372394ded7b7b12ab1793b7d05f58c4f6992f594eaab2a415551f9c4ff"
+      },
+      "report_path": "/home/jetsonnx/.local/share/explorer3/simlab/skill-transfer/bounded-egl-42000/recipient.json",
+      "report_sha256": "e884175eb8a65ce9814ec05f093fb4636c336932939f7e8fa6574dede5df6bb8",
+      "implementation_sha256": {
+        "explorer3/sim/skill_transfer.py": "5bc92f283008acc228b2984d988a146412b9eaa00669616dfb5e3a6604c39b28",
+        "explorer3/sim/aligned.py": "6034342783605a4ab00550a6be90f8ead2adc65f0814c23303e62460018387dc",
+        "scripts/skill_transfer_preflight.py": "1371b7533c5fd2e6cde94185304d4ee3f9cad15028f8940ff834dba679e9f6cf"
+      }
+    },
+    {
+      "attempt": "bounded-egl-42002",
+      "recipient_seed": 42002,
+      "outcome": "failure",
+      "termination_reason": "Transferred path tracking stalled; variant rejected",
+      "verification": {
+        "method": "every MuJoCo physics substep; independent object lift and TCP proximity",
+        "lift_m": 0.0,
+        "held_s": 0.0,
+        "max_arm_penetration_m": 0.0,
+        "forbidden_contact_pairs": [],
+        "numerical_contact_tolerance_m": 0.002,
+        "accepted": false,
+        "not_a_physical_safety_certificate": true
+      },
+      "recipient_import": {
+        "episode_id": "d5b464cbdbb54859afd6e4b052cb23e8",
+        "outcome": "failure",
+        "frames": 114,
+        "readback": "PASS",
+        "synthetic": true,
+        "domain": "sim",
+        "observation_action_availability_order": "PASS",
+        "observation_action_causality": "PASS",
+        "video_sampled_first_middle_last": "PASS",
+        "duration_seconds": 5.65,
+        "actual_hz": 20.0,
+        "interval_ms_p50_p95_max": [
+          50.0,
+          50.0,
+          50.0
+        ],
+        "reused_camera_frames": 0,
+        "camera_age_ms_p95": 0.0,
+        "units": [
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees",
+          "native_servo_degrees"
+        ],
+        "channels": [
+          "base_rotation",
+          "shoulder",
+          "elbow",
+          "wrist_pitch",
+          "wrist_roll",
+          "gripper"
+        ],
+        "physical_policy_skill_verified": false,
+        "dataset_sha256": "a9eca1ca6de9be2ac57d225facd8540ee757af89eb83bb6dc04a6fda969d0cc2"
+      },
+      "report_path": "/home/jetsonnx/.local/share/explorer3/simlab/skill-transfer/bounded-egl-42002/recipient.json",
+      "report_sha256": "ed226be2850b0c854a4a5bf0d88d50341b9c8a43c5ca052d08a7d7c583419b7b",
+      "implementation_sha256": {
+        "explorer3/sim/skill_transfer.py": "5bc92f283008acc228b2984d988a146412b9eaa00669616dfb5e3a6604c39b28",
+        "explorer3/sim/aligned.py": "6034342783605a4ab00550a6be90f8ead2adc65f0814c23303e62460018387dc",
+        "scripts/skill_transfer_preflight.py": "94caf763cc59d9f0ece20f3c1bae5bce51aaf53014ddd7f4c57643a13b6ca591"
+      }
+    }
+  ],
+  "technical_failures": [
+    {
+      "attempt": "bounded-42000",
+      "reason": "missing headless EGL setup; no imported demonstration; corrected explicitly"
+    }
+  ],
+  "interpretation": "Development seeds were reused while diagnosing tracking/contact. No pooled success-rate estimate or T1/T2 benefit claim. New seed 42002 failed the final bounded variant.",
+  "observed_failure": "Approach contacts displaced the object; the source-relative path no longer grasps it. Reject incompatible variants without object-truth correction.",
+  "final_behavior": "Measured TCP tracking; reject 2 s stall; unchanged 25 s task deadline; native joint/rate bounds; independent physics-step lift/hold/contact verifier.",
+  "removed_experiment": "Bounded FK servo-bias compensation failed and was removed; no adapted hardware controller.",
+  "split_rule": "All derivatives of this sole donor form one connected group, transitively. No independent train/validation/test set exists yet.",
+  "remaining": "Real SO-101 geometry stream and independent lift evidence; accepted real donor; own policy training, independent verification and physical trials.",
+  "algorithm": {
+    "name": "MimicGen-adapted",
+    "upstream": "https://github.com/NVlabs/mimicgen",
+    "commit": "c0fbff22ba40060f05a917a80817f3f5c20731e7",
+    "documentation": "https://mimicgen.github.io/docs/tutorials/datagen_custom.html",
+    "upstream_code_copied": false,
+    "license_review": "NVIDIA research/evaluation non-commercial license; independent narrow implementation, no upstream package or code copied"
+  },
+  "physical_commands_sent": 0,
+  "learned_recipient_skill": false
+}
