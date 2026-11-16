@@ -75,7 +75,11 @@ class NativeControls:
         # (.544 m). It prevented returning upward after any downward jog.
         # Native joint limits, reachability and floor/chassis geometry bound XYZ.
         self.jog.WORKSPACE=((-math.inf,math.inf),)*3
-        self.mirror = MirrorMapper(arm_model, cfg['arm'], mirror_cfg, io.arm_command())
+        # gripper_close is where the fingers touch when EMPTY; on a 29 mm cube they meet it ~25 deg
+        # earlier, so a Leader fully closed gave almost no clamp force. The mirror closes up to
+        # gripper_hold_max instead, the same overdrive bound the native grasp uses while holding.
+        self.mirror_arm = {**cfg['arm'], 'gripper_close': cfg['arm'].get('gripper_hold_max', cfg['arm']['gripper_close'])}
+        self.mirror = MirrorMapper(arm_model, self.mirror_arm, mirror_cfg, io.arm_command())
         self.original_scale = list(mirror_cfg['scale'])
         self.input = dict(drive=[0,0,0], arm=[0,0,0], pitch=0, roll=0, grip=0, slow=False)
         self.last_input = -float('inf')
@@ -150,7 +154,7 @@ class NativeControls:
         if self.ref_pair is None or self.last_leader is None:return None
         leader_ref,servo_ref=self.ref_pair;sign=self.mirror.m['sign']
         pose=[servo_ref[i]+sign[i]*(float(self.last_leader[name])-leader_ref[i]) for i,name in enumerate(self.JOINTS)]
-        a=self.cfg['arm']
+        a=self.mirror_arm
         if self.gripper_map is not None:
             opened,closed=self.gripper_map
             g=min(1.,max(0.,(float(self.last_leader['gripper'])-opened)/(closed-opened)))
