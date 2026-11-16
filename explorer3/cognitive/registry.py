@@ -201,6 +201,7 @@ def register_acquired_pick(job_id, packet_shas, scope, evidence_ids, *, domain):
         gate = deploy_gate.latest(job_id)
         if not gate or gate.get('verdict') != 'ready' or gate.get('checkpoint_bundle_sha256') != sha:
             raise ValueError('Current deploy gate required before physical skill registration')
+        deploy_gate.require({'source_id':job_id,'checkpoint':job['checkpoint'],'profile':'rosmaster_pick_place'})
     required = ('object_class', 'camera_sha256', 'calibration_sha256', 'surface', 'size_bounds_m')
     if any(not scope.get(k) for k in required):
         raise ValueError('Complete accepted scope required')

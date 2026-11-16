@@ -34,7 +34,7 @@ def test_trial_needs_a_passed_gate_for_the_same_weights(tmp_path, monkeypatch):
     monkeypatch.setattr(deploy_gate, 'GATES', tmp_path)
     import explorer3.training_drafts as td
     monkeypatch.setattr(td, 'checkpoint_hash', lambda path: 'h-' + path)
-    plan = {'source_id': 'job1', 'checkpoint': 'ck'}
+    plan = {'source_id': 'job1', 'checkpoint': 'ck', 'profile':'so101_pick_place'}
     with pytest.raises(PermissionError, match='не проверена'):
         deploy_gate.require(plan)
     (tmp_path / 'job1.json').write_text(json.dumps({'checkpoint_bundle_sha256': 'h-ck', 'verdict': 'blocked', 'meaning': 'Не допущена: x'}))
@@ -44,6 +44,11 @@ def test_trial_needs_a_passed_gate_for_the_same_weights(tmp_path, monkeypatch):
     with pytest.raises(PermissionError, match='изменились'):
         deploy_gate.require(plan)
     (tmp_path / 'job1.json').write_text(json.dumps({'checkpoint_bundle_sha256': 'h-ck', 'verdict': 'ready', 'meaning': ''}))
+    with pytest.raises(PermissionError,match='Задача изменилась'):
+        deploy_gate.require(plan)
+    report={'checkpoint_bundle_sha256':'h-ck','verdict':'ready','meaning':'',
+            'task_contract_sha256':deploy_gate.task_contract_hash('so101_pick_place')}
+    (tmp_path/'job1.json').write_text(json.dumps(report))
     assert deploy_gate.require(plan)['verdict'] == 'ready'
 
 
@@ -74,3 +79,31 @@ def test_cotraining_adds_sim_only_to_train_and_caps_frames(monkeypatch, tmp_path
     assert info['splits_with_sim'] == ['train']
     with pytest.raises(ValueError):
         datasets.cotraining_episodes('tank_dock', 100, 1.0)
+
+
+def test_old_box_model_cannot_pass_current_grasp_task_gate(monkeypatch):
+    import copy
+    from explorer3 import datasets
+    from explorer3.profiles import profile
+    cfg=copy.deepcopy(profile('rosmaster_pick_place'))
+    plan={'domain':'real','profile':'rosmaster_pick_place','profile_contract':cfg}
+    monkeypatch.setattr(datasets,'load_plan',lambda ident:plan)
+    job={'profile':'rosmaster_pick_place','config':json.dumps({'plan_id':'fixture'})}
+    deploy_gate.require_training_task(job,'rosmaster_pick_place')
+    cfg.pop('task_template');cfg.pop('task_variant');cfg['task']='Pick up the cube, place it in the box, and withdraw the arm.'
+    with pytest.raises(ValueError,match='другой задаче'):
+        deploy_gate.require_training_task(job,'rosmaster_pick_place')
+
+
+def test_sim_task_gate_checks_recorded_units_as_well_as_task_name(monkeypatch):
+    import copy
+    from explorer3 import datasets
+    from explorer3.profiles import profile
+    cfg=copy.deepcopy(profile('rosmaster_floor_pick_sim'))
+    plan={'domain':'sim','profile':'rosmaster_floor_pick_sim','profile_contract':cfg}
+    monkeypatch.setattr(datasets,'load_plan',lambda ident:plan)
+    job={'profile':'rosmaster_floor_pick_sim','config':json.dumps({'plan_id':'fixture'})}
+    deploy_gate.require_training_task(job,'rosmaster_pick_place')
+    cfg['units'][0]='radians'
+    with pytest.raises(ValueError,match='другой задаче'):
+        deploy_gate.require_training_task(job,'rosmaster_pick_place')

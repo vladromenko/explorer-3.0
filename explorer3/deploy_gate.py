@@ -57,6 +57,34 @@ def holdout_episodes(job, real):
             and in_task_block(e, texts)]
 
 
+def task_contract_hash(real):
+    from .training_drafts import semantic_contract
+    from .cognitive.store import digest
+    return digest(semantic_contract(profile(real)))
+
+
+def require_training_task(job, real):
+    from . import datasets
+    from .training_drafts import semantic_contract
+    config = json.loads(job['config'])
+    if not config.get('plan_id'):
+        raise ValueError('Нет замороженного плана задачи обучения')
+    plan = datasets.load_plan(config['plan_id'])
+    expected = profile(real)
+    if plan['domain'] == 'real':
+        matched = plan['profile'] == real and semantic_contract(plan.get('profile_contract')) == semantic_contract(expected)
+    else:
+        mirrored = datasets.SIM_FOR_REAL.get(real)
+        captured = plan.get('profile_contract') or {}
+        source_channels, target_channels = semantic_contract(captured) or {}, semantic_contract(expected)
+        source_channels.pop('task', None);target_channels.pop('task', None)
+        matched = (job['profile'] == mirrored and plan['profile'] == mirrored
+                   and captured.get('real_profile') == real and captured.get('task') == expected['task']
+                   and source_channels == target_channels)
+    if not matched:
+        raise ValueError('Веса обучались другой задаче или другой текстовой инструкции; требуется явная подготовка переноса')
+
+
 def check_contract(core, real, job_id):
     cfg = profile(real)
     problems = []
@@ -124,6 +152,7 @@ def run(job_id, out_dir=None):
         raise ValueError('Нужна завершённая тренировка с checkpoint')
     real = real_profile_of(job['profile'])
     cfg = profile(real)
+    require_training_task(job, real)
     checks = {}
     core = PolicyCore(job['checkpoint'], 'cuda')
     checks['contract'] = check_contract(core, real, job_id)
@@ -163,6 +192,7 @@ def run(job_id, out_dir=None):
 
     ready = all(c['status'] == 'pass' for c in checks.values())
     report = {'job': job_id, 'checkpoint': job['checkpoint'], 'checkpoint_bundle_sha256': checkpoint_hash(job['checkpoint']),
+              'task_contract_sha256': task_contract_hash(real),
               'trained_on': job['profile'], 'robot_task': real, 'policy': core.type, 'checked_at': time.time(),
               'verdict': 'ready' if ready else 'blocked', 'checks': checks, 'thresholds': limits,
               'motor_commands_sent': 0,
@@ -191,4 +221,7 @@ def require(plan):
         raise PermissionError('Веса изменились после «Допуска к роботу»: проверьте заново')
     if report['verdict'] != 'ready':
         raise PermissionError(report['meaning'])
+    real = plan.get('profile') or report.get('robot_task')
+    if not real or report.get('task_contract_sha256') != task_contract_hash(real_profile_of(real)):
+        raise PermissionError('Задача изменилась или не была закреплена в допуске: проверьте модель заново')
     return report

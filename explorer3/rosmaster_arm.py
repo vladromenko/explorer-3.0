@@ -289,6 +289,10 @@ class ArmSkills:
         from .training_drafts import checkpoint_hash
         if not report or report.get('verdict') != 'ready' or checkpoint_hash(report['checkpoint']) != report.get('checkpoint_bundle_sha256'):
             return {'ok': False, 'reason': 'выбранная модель изменилась или её допуск не пройден'}
+        try:
+            deploy_gate.require({'source_id':job, 'checkpoint':report['checkpoint'], 'profile':'rosmaster_pick_place'})
+        except PermissionError as exc:
+            return {'ok':False, 'reason':str(exc)}
         cfg = profile('rosmaster_pick_place')
         obj = self.look(prompt)
         if obj is None:
