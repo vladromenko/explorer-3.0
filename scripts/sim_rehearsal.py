@@ -13,6 +13,7 @@ Writes DATA/simlab/rehearsal/<time>/report.json. Run with the main env; MuJoCo r
   .venv/bin/python scripts/sim_rehearsal.py --smoke    # pipeline check in minutes
 """
 import argparse
+import contextlib
 import json
 import math
 import os
@@ -51,7 +52,7 @@ def successes(name, model=None):
             and simulation_model_hash(e) == model]
 
 
-def collect(name, need, workers=2):          # 3 MuJoCo renderers + a model hit the 16 GB OOM limit
+def collect(name, need, workers=2, log_dir=None):          # 3 renderers + a model hit the 16 GB OOM limit
     # Read today's physics, not the most recently recorded (possibly obsolete) episode.
     probe = subprocess.run([str(ROOT / '.venv-sim/bin/python'), '-c',
                             'import sys; from explorer3.sim.factory import make; '
@@ -66,6 +67,8 @@ def collect(name, need, workers=2):          # 3 MuJoCo renderers + a model hit 
         log(name, f'показов уже {have}')
         return have
     env = {**offline_environment(), 'MUJOCO_GL': 'egl'}
+    log_dir = Path(log_dir) if log_dir is not None else DATA / 'simlab' / 'collection' / time.strftime('%Y%m%d-%H%M%S')
+    log_dir.mkdir(parents=True, exist_ok=True)
     for round_ in range(4):                       # the scripted expert fails some scenes: try until enough
         missing = need - have
         if missing <= 0:
@@ -73,12 +76,16 @@ def collect(name, need, workers=2):          # 3 MuJoCo renderers + a model hit 
         tries = math.ceil(missing * (1.3 if round_ == 0 else 2.2))
         per = math.ceil(tries / workers)
         start = 2000 + (int(time.time()) + round_ * 7919) % 100000          # fresh seeds every run
-        procs = [subprocess.Popen([str(ROOT / '.venv-sim/bin/python'), '-m', 'explorer3.sim.collect', '--start', str(start + i * per),
-                                   '--count', str(per), '--profile', name], cwd=ROOT, env=env,
-                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) for i in range(workers)]
-        log(name, f'не хватает {missing} показов: {tries} попыток эксперта в MuJoCo ({workers} процесса)')
-        for p in procs:
-            p.wait()
+        with contextlib.ExitStack() as stack:
+            logs = [log_dir / f'{name}-round{round_}-worker{i}.log' for i in range(workers)]
+            procs = [subprocess.Popen([str(ROOT / '.venv-sim/bin/python'), '-m', 'explorer3.sim.collect', '--start', str(start + i * per),
+                                       '--count', str(per), '--profile', name], cwd=ROOT, env=env,
+                                      stdout=stack.enter_context(path.open('w')), stderr=subprocess.STDOUT)
+                     for i, path in enumerate(logs)]
+            log(name, f'не хватает {missing} показов: {tries} попыток эксперта в MuJoCo ({workers} процесса)')
+            codes = [p.wait() for p in procs]
+        if any(codes):
+            raise RuntimeError(f'{name}: ошибка процесса сбора {codes}; обучение не запускается; журналы: {log_dir}')
         have = len(successes(name, model))
         log(name, f'показов теперь {have}')
     if have < need:
@@ -191,7 +198,7 @@ def main():
     if need < (3 if a.collect_only or a.smoke else 50):
         ap.error('At least 3 demonstrations for collection/smoke; at least 50 for training')
     for name in a.skills.split(','):
-        collect(name, need, workers=a.workers)
+        collect(name, need, workers=a.workers, log_dir=out / 'capture-logs')
     if a.collect_only:
         return
     for name in a.skills.split(','):
