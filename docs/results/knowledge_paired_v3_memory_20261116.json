@@ -1,0 +1,88 @@
+{
+  "probe": {
+    "purpose": "actual trainer memory probe; not learned skill result",
+    "job": "e92164d9969241968ab9b45d85ce9cb0",
+    "draft": "4d727ca64ac9971357e2a96a629d08224f4b4196f41139809b0c7c500cf96e58",
+    "started": 1794794768.124912,
+    "steps": 50,
+    "batch": 8,
+    "seed": 1000,
+    "status": "completed",
+    "cgroup_sampled_peak_bytes": 6442450944,
+    "swap_sampled_peak_bytes": 479621120,
+    "min_system_available_kib": 7387148,
+    "samples": 174,
+    "physical_commands_sent": 0,
+    "updated": 1794794944.6324773,
+    "memory_events": {
+      "low": "0",
+      "high": "0",
+      "max": "29333",
+      "oom": "0",
+      "oom_kill": "0",
+      "oom_group_kill": "0"
+    },
+    "checkpoint": "/home/jetsonnx/.local/share/explorer3/checkpoints/e92164d9969241968ab9b45d85ce9cb0-b8/checkpoints/last/pretrained_model",
+    "error": null,
+    "finished": 1794794944.641647
+  },
+  "training_result": {
+    "checkpoint": "/home/jetsonnx/.local/share/explorer3/checkpoints/e92164d9969241968ab9b45d85ce9cb0-b8/checkpoints/last/pretrained_model",
+    "effective_batch": 8,
+    "seed": 1000,
+    "smoke": false,
+    "steps": 50,
+    "plan_id": "30bc90ece5d18282829a6b49758578dcd8c264b20bd24ff90bb34f676c519392",
+    "physical_skill_verified": false,
+    "test_used": false,
+    "domain": "sim",
+    "initial_checkpoint": null,
+    "resume_checkpoint": null,
+    "draft_id": "4d727ca64ac9971357e2a96a629d08224f4b4196f41139809b0c7c500cf96e58",
+    "mixture": {
+      "new_train_frames": 865,
+      "old_train_frames": 0
+    },
+    "normalization": "new train partition only; official LeRobot non-resume statistics override",
+    "training_started": true
+  },
+  "paired_plans": {
+    "rosmaster_floor_pick_knowledge_sim": {
+      "id": "30bc90ece5d18282829a6b49758578dcd8c264b20bd24ff90bb34f676c519392",
+      "scenes": {
+        "test": [
+          "knowledge-pair-50002-0e44d9f93c8dd4b9a6452e009097b205209f509ebe0653dc78a339783e5925dc"
+        ],
+        "validation": [
+          "knowledge-pair-50004-0e44d9f93c8dd4b9a6452e009097b205209f509ebe0653dc78a339783e5925dc"
+        ],
+        "train": [
+          "knowledge-pair-50000-0e44d9f93c8dd4b9a6452e009097b205209f509ebe0653dc78a339783e5925dc",
+          "knowledge-pair-50001-0e44d9f93c8dd4b9a6452e009097b205209f509ebe0653dc78a339783e5925dc",
+          "knowledge-pair-50003-0e44d9f93c8dd4b9a6452e009097b205209f509ebe0653dc78a339783e5925dc",
+          "knowledge-pair-50005-0e44d9f93c8dd4b9a6452e009097b205209f509ebe0653dc78a339783e5925dc"
+        ]
+      }
+    },
+    "rosmaster_floor_pick_noknowledge_sim": {
+      "id": "8f8f09a130f05e16fb84a9b0159655dc99e97e38bf72d515931f11092b721b0f",
+      "scenes": {
+        "test": [
+          "knowledge-pair-50002-0e44d9f93c8dd4b9a6452e009097b205209f509ebe0653dc78a339783e5925dc"
+        ],
+        "validation": [
+          "knowledge-pair-50004-0e44d9f93c8dd4b9a6452e009097b205209f509ebe0653dc78a339783e5925dc"
+        ],
+        "train": [
+          "knowledge-pair-50000-0e44d9f93c8dd4b9a6452e009097b205209f509ebe0653dc78a339783e5925dc",
+          "knowledge-pair-50001-0e44d9f93c8dd4b9a6452e009097b205209f509ebe0653dc78a339783e5925dc",
+          "knowledge-pair-50003-0e44d9f93c8dd4b9a6452e009097b205209f509ebe0653dc78a339783e5925dc",
+          "knowledge-pair-50005-0e44d9f93c8dd4b9a6452e009097b205209f509ebe0653dc78a339783e5925dc"
+        ]
+      }
+    }
+  },
+  "pairs": 6,
+  "physical_skill_verified": false,
+  "scope": "technical memory/reload/readback only; these pairs and weights are excluded from full comparison"
+}

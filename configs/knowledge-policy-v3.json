@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "scope": "K: instruction-size assistance; not motor skill transfer",
+  "profiles": [
+    "rosmaster_floor_pick_knowledge_sim",
+    "rosmaster_floor_pick_noknowledge_sim"
+  ],
+  "geometry_version": 3,
+  "model_sha256": "0e44d9f93c8dd4b9a6452e009097b205209f509ebe0653dc78a339783e5925dc",
+  "successful_pairs": 200,
+  "start_seed": 50006,
+  "max_attempts": 300,
+  "technical_probe": {
+    "seeds": [
+      50000,
+      50005
+    ],
+    "pairs": 6,
+    "updates": 50,
+    "weights_reused": false,
+    "in_full_corpus": false
+  },
+  "objects": [
+    "cube",
+    "bottle",
+    "block",
+    "ball"
+  ],
+  "size_scale": [
+    0.8,
+    1.2
+  ],
+  "size_text_noise_sigma_m": 0.0015,
+  "policy": "smolvla",
+  "steps": 12000,
+  "batch": 8,
+  "seed": 1000,
+  "device": "cuda",
+  "normalization": "train only; same paired scenes and pixels/actions; language differs",
+  "checkpoint": "final at prescribed update, not selected by test success",
+  "evaluation_seeds": [
+    10000,
+    10019
+  ],
+  "evaluation_episodes": 20,
+  "failures": "preserve all captures and technical failures; stop on technical error",
+  "costs": "all generation attempts, six extra technical pairs, trainer probe and two full jobs counted separately",
+  "memory_limit_mib": 6144,
+  "swap_limit_mib": 2048,
+  "physical_commands": 0
+}
