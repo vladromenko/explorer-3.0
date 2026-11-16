@@ -21,6 +21,7 @@ def digest(value):return hashlib.sha256(encoded(value).encode()).hexdigest()
 def initialize():
     with catalog.connect() as db:
         db.executescript('''
+        CREATE TABLE IF NOT EXISTS cognitive_skills(id TEXT PRIMARY KEY, body TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS cognitive_migrations(version INTEGER PRIMARY KEY, applied REAL NOT NULL);
         CREATE TABLE IF NOT EXISTS cognitive_evidence(id TEXT PRIMARY KEY, body TEXT NOT NULL, expires REAL NOT NULL);
         CREATE TABLE IF NOT EXISTS cognitive_facts(id TEXT PRIMARY KEY, body TEXT NOT NULL, expires REAL NOT NULL);

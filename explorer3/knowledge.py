@@ -16,6 +16,7 @@ where to close the fingers relative to the object); each robot converts it to it
 (rosmaster_arm.grip_command / grasp_target). Every entry keeps its source, evidence and outcomes.
 """
 import json
+import math
 import time
 import uuid
 
@@ -43,10 +44,12 @@ def _save(items):
     tmp.replace(STORE)
 
 
-def add(prompt, source, params, evidence=None, success=None, domain='real'):
+def add(prompt, source, params, evidence=None, success=None, domain='real', *, object_instance=None, applicability=None):
     """params: metric, robot-independent, e.g. {'width_m': .04, 'height_m': .04, 'grasp_height_m': .02}."""
     item = {'id': uuid.uuid4().hex[:12], 'at': time.time(), 'prompt': prompt, 'source': source, 'domain': domain,
-            'params': params, 'evidence': evidence or {}, 'success': success, 'uses': []}
+            'params': params, 'evidence': evidence or {}, 'success': success, 'uses': [],
+            'object_instance': object_instance, 'object_class': prompt, 'applicability': applicability or {},
+            'verification_status': 'measured' if success is None else 'legacy_outcome_requires_evidence'}
     items = _load()
     items.append(item)
     _save(items)
@@ -78,30 +81,61 @@ def best(prompt, domain='real'):
     return None
 
 
-def assess(robot, prompt, domain='real'):
-    """What the robot does not know before acting on `prompt`. Returns
-    {'gaps': [...], 'where': item|None, 'how': knowledge|None, 'skill': str, 'reasons': {...}}."""
+def assess(robot, prompt, domain='real', *, context=None, executor=None):
+    """Explicit readiness facts; proposals from a language model cannot remove them.
+
+    Legacy where/how keys remain for the K experiments. A missing motor skill is
+    separate from missing object measurements. A Python function is not evidence.
+    """
     from . import world_memory
-    out = {'gaps': [], 'reasons': {}}
+    from .cognitive.registry import acquired_pick
+    context = context or {}
+    out = {'gaps': [], 'reasons': {}, 'readiness': {}, 'executor': executor}
     item = world_memory.target_for(None, prompt, WHERE_MAX_AGE_S)
-    if item is None:
+    uncertainty = item.get('uncertainty_m') if item else None
+    unknown_location = item is None or type(uncertainty) not in (int, float) or not math.isfinite(uncertainty)
+    poor_location = not unknown_location and uncertainty > WHERE_MAX_UNCERTAINTY_M
+    if unknown_location or poor_location:
         out['gaps'].append('where')
-        out['reasons']['where'] = f'нет свежего места «{prompt}» на общей карте (моложе {int(WHERE_MAX_AGE_S / 60)} мин)'
-    elif (item.get('uncertainty_m') or 0) > WHERE_MAX_UNCERTAINTY_M:
-        out['gaps'].append('where')
-        out['reasons']['where'] = f'место «{prompt}» известно с погрешностью {item["uncertainty_m"]:.2f} м'
+        out['reasons']['where'] = 'не знает где: нет свежего положения с известной допустимой погрешностью'
     out['where'] = item
-    k = best(prompt, domain)
-    out['how'] = k
-    if robot == 'rosmaster' and k is None:
+    out['readiness']['where_missing'] = unknown_location or poor_location
+    measured = best(prompt, domain)
+    if measured is not None and context.get('object_instance') and measured.get('object_instance') != context['object_instance']:
+        measured = None
+    out['how'] = measured
+    properties = measured.get('params', {}) if measured else {}
+    properties_missing = any(type(properties.get(key)) not in (int, float) or not math.isfinite(properties[key]) or properties[key] <= 0
+                             for key in ('width_m', 'height_m'))
+    if robot == 'rosmaster' and properties_missing:
         out['gaps'].append('how')
-        out['reasons']['how'] = f'нет проверенного знания, как брать «{prompt}» (размер, высота захвата)'
-    if robot == 'rosmaster':
-        from .rosmaster_arm import learned_pick_job
-        job = learned_pick_job()
-        out['skill'] = f'обученная модель {job[:8]}' if job else 'геометрический захват'
+        out['reasons']['how'] = f'не хватает измерений подходящего экземпляра «{prompt}»'
+    out['readiness']['object_properties_missing'] = properties_missing
+    out['property_uncertainty_m'] = (measured or {}).get('evidence', {}).get('size_sigma_m')
+    out['readiness']['object_identity_unknown'] = not context.get('object_instance')
+    # Only a proved constraint can establish infeasibility. Unknown mechanics
+    # produces uncertainty, not a fabricated impossibility or success.
+    feasibility = context.get('feasibility') or {}
+    infeasible = feasibility.get('reachable') is False and bool(feasibility.get('evidence_ref'))
+    out['readiness']['physically_infeasible'] = infeasible
+    if infeasible:
+        out['reasons']['physically_infeasible'] = feasibility.get('reason', 'задача не допускается механикой или сценой')
+    candidate = acquired_pick(robot, prompt, domain, context)
+    out['registered_skill'] = candidate
+    available = candidate.get('state') == 'available'
+    uncertain = candidate.get('state') == 'uncertain'
+    out['readiness'].update(skill_missing=not available and not uncertain, skill_uncertain=uncertain)
+    out['baseline'] = {'name': 'geometric_baseline', 'selected': executor == 'geometric_baseline',
+                       'learned_skill': False, 'physical_success_verified': False}
+    if available:
+        out['skill'] = candidate['skill_id']
+    elif executor == 'geometric_baseline':
+        out['skill'] = 'явно выбран геометрический baseline; приобретение навыка не подтверждено'
     else:
-        out['skill'] = 'нет руки'
+        out['skill'] = 'навык вне проверенных условий' if uncertain else 'нет проверенного захвата'
+        if robot == 'rosmaster':
+            out['gaps'].append('skill')
+            out['reasons']['skill'] = out['skill']
     return out
 
 
@@ -109,3 +143,66 @@ def helpers_for(gap, available):
     """Robots (and the person) able to fill `gap`, among the available ones; the person last."""
     robots = [r for r in available if gap in HELPERS.get(r, [])]
     return robots + ['human']
+
+
+def add_packet(packet):
+    """Accept a traced artifact; its donor success never grants recipient admission."""
+    import hashlib
+    from pathlib import Path
+    from . import catalog
+    from .datasets import fingerprint
+    from .skill_packets import admission
+    from .cognitive.store import digest
+    decision = admission(packet)
+    if not decision['eligible']:
+        raise ValueError('Incomplete donor packet: ' + ', '.join(decision['reasons']))
+    rows = {e['id']: e for e in catalog.rows('episodes')}
+    for source in packet['donor']['episodes']:
+        entry = rows.get(source['id'])
+        if entry is None or entry['profile'] not in ('so101_pick_place', 'so101_pick_place_sim', 'so101_handover_sim'):
+            raise ValueError('Donor source is not a catalogued SO-101 episode')
+        if entry['outcome'] != 'success' or fingerprint(entry['dataset']) != source['sha256']:
+            raise ValueError('Donor episode is unsuccessful or has changed')
+        provenance = json.loads((Path(entry['dataset']) / 'provenance.json').read_text())
+        if provenance.get('domain', 'real') != packet['donor']['domain']:
+            raise ValueError('Donor source domain mismatch')
+    verification = packet['donor_verification']
+    evidence = (DATA / verification['evidence_ref']).resolve()
+    if not evidence.is_relative_to(DATA.resolve()) or not evidence.is_file():
+        raise ValueError('Donor verification artifact missing')
+    if hashlib.sha256(evidence.read_bytes()).hexdigest() != verification['evidence_sha256']:
+        raise ValueError('Donor verification artifact changed')
+    sha = digest(packet)
+    path = DATA / 'world' / 'skill_packets' / (sha + '.json')
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and json.loads(path.read_text()) != packet:
+        raise ValueError('Skill packet identity collision')
+    if not path.exists():
+        path.write_text(json.dumps(packet, ensure_ascii=False, indent=2, allow_nan=False))
+    matches = [it for it in _load() if it.get('skill_packet_sha256') == sha]
+    if matches:
+        return matches[0]
+    obj = packet['object']
+    item = {'id': 'packet-' + sha[:20], 'at': time.time(), 'prompt': obj['class'],
+            'source': 'so101_skill_packet', 'domain': packet['donor']['domain'],
+            'object_instance': obj['instance_id'], 'object_class': obj['class'],
+            'params': dict(zip(('width_m', 'length_m', 'height_m'), obj['size_m'])),
+            'evidence': verification, 'success': True, 'uses': [],
+            'skill_packet_sha256': sha, 'skill_packet_ref': str(path.relative_to(DATA)),
+            'verification_status': 'donor_grasp_verified', 'recipient_verified': False,
+            'recipient_policy_trained': False, 'applicability': packet.get('applicability', {})}
+    items = _load()
+    items.append(item)
+    _save(items)
+    return item
+
+
+def load_packet(sha):
+    from .cognitive.store import digest
+    from .skill_packets import validate
+    if not isinstance(sha, str) or len(sha) != 64 or any(c not in '0123456789abcdef' for c in sha):
+        raise ValueError('Invalid packet identifier')
+    packet = json.loads((DATA / 'world' / 'skill_packets' / (sha + '.json')).read_text())
+    if digest(packet) != sha:
+        raise ValueError('Skill packet changed')
+    return validate(packet)

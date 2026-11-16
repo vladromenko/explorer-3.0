@@ -33,9 +33,10 @@ def situation(robot, prompt, assessed, available):
                                   for h in list(available) + ['human'] if h != robot]}
 
 
-def validate(advice, available):
+def validate(advice, available, required_gaps=()):
     from explorer3.knowledge import HELPERS
-    gaps = [g for g in advice.get('gaps', []) if g in GAPS]
+    gaps = list(dict.fromkeys([g for g in advice.get('gaps', []) if g in GAPS] +
+                              [g for g in required_gaps if g in GAPS]))
     raw = advice.get('helpers') or {}
     if raw and all(k not in GAPS for k in raw):            # the small model sometimes answers helper -> gaps
         inverted = {}
@@ -68,7 +69,7 @@ def advise(robot, prompt, assessed, available, timeout=150):
         raw = json.loads((work / 'out.json').read_text())
     except Exception as exc:
         return {'error': f'{type(exc).__name__}: {exc}', 'dir': str(work)}
-    out = validate(raw['advice'], available)
+    out = validate(raw['advice'], available, assessed.get('gaps', ()))
     out.update(seconds=raw['total_s'], dir=str(work), model=raw['model'])
     (work / 'validated.json').write_text(json.dumps(out, ensure_ascii=False, indent=1))
     return out

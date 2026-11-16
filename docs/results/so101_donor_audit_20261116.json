@@ -1,0 +1,115 @@
+{
+  "domain": "real",
+  "source": "existing Explorer catalog",
+  "episodes": [
+    {
+      "episode_id": "47c74f2756df42edb42514658a43e04a",
+      "task": "Pick up the cube, place it in the box, and withdraw the arm.",
+      "outcome": "success",
+      "frames": 597,
+      "eligible_for_packet": false,
+      "missing": [
+        "camera_geometry_not_verified",
+        "object_to_robot_calibration_missing",
+        "synchronized_object_and_tcp_poses_missing",
+        "metric_jaw_calibration_missing",
+        "grasp_subskill_boundaries_missing",
+        "independent_lift_hold_evidence_missing",
+        "object_instance_and_dimensions_missing",
+        "source_use_permission_not_recorded"
+      ],
+      "raw_data_unchanged": true,
+      "research_sha256": "398db068fb0558b9a15130e7d7bfd6994feac8d678ccb66c80d33e2cd8ed9599",
+      "provenance_sha256": "7642887878334988c281586ce5cb1321c04bc99a7af580bc1192946db9df8b9b",
+      "note": "A pickup fragment may be used only after its geometry and independent retention evidence are supplied."
+    },
+    {
+      "episode_id": "cc209320e3af486b83e74791977dd913",
+      "task": "Pick up the cube, place it in the box, and withdraw the arm.",
+      "outcome": "success",
+      "frames": 922,
+      "eligible_for_packet": false,
+      "missing": [
+        "camera_geometry_not_verified",
+        "object_to_robot_calibration_missing",
+        "synchronized_object_and_tcp_poses_missing",
+        "metric_jaw_calibration_missing",
+        "grasp_subskill_boundaries_missing",
+        "independent_lift_hold_evidence_missing",
+        "object_instance_and_dimensions_missing",
+        "source_use_permission_not_recorded"
+      ],
+      "raw_data_unchanged": true,
+      "research_sha256": "e18474c22756224a1c62bb69d14339d1413826379355611b6f695f64a2156089",
+      "provenance_sha256": "5194908943b64914721e95142ba2075f69de80bf82b324ccfcd670cbf7c391da",
+      "note": "A pickup fragment may be used only after its geometry and independent retention evidence are supplied."
+    },
+    {
+      "episode_id": "dd9b4139e42f4895b67f683b0ce84a03",
+      "task": "Pick up the cube, place it in the box, and withdraw the arm.",
+      "outcome": "aborted",
+      "frames": 87,
+      "eligible_for_packet": false,
+      "missing": [
+        "source_task_not_successful",
+        "camera_geometry_not_verified",
+        "object_to_robot_calibration_missing",
+        "synchronized_object_and_tcp_poses_missing",
+        "metric_jaw_calibration_missing",
+        "grasp_subskill_boundaries_missing",
+        "independent_lift_hold_evidence_missing",
+        "object_instance_and_dimensions_missing",
+        "source_use_permission_not_recorded"
+      ],
+      "raw_data_unchanged": true,
+      "research_sha256": "999ea44895835ec0f6b4f6468cfe1fc5ea92d6e5c049ccd8f59c9e08c3de721a",
+      "provenance_sha256": "78f6614b3779fe2d82def8ed05ac156ef068681974bd86153e63841921618c7b",
+      "note": "A pickup fragment may be used only after its geometry and independent retention evidence are supplied."
+    },
+    {
+      "episode_id": "3455b038595e439baa67aa91f5443c0d",
+      "task": "Pick up the cube, place it in the box, and withdraw the arm.",
+      "outcome": "aborted",
+      "frames": 202,
+      "eligible_for_packet": false,
+      "missing": [
+        "source_task_not_successful",
+        "camera_geometry_not_verified",
+        "object_to_robot_calibration_missing",
+        "synchronized_object_and_tcp_poses_missing",
+        "metric_jaw_calibration_missing",
+        "grasp_subskill_boundaries_missing",
+        "independent_lift_hold_evidence_missing",
+        "object_instance_and_dimensions_missing",
+        "source_use_permission_not_recorded"
+      ],
+      "raw_data_unchanged": true,
+      "research_sha256": "1e42dade98b3f1d3938ab40b965d0dcb7fc896590c1af8a5041a60a251cc8086",
+      "provenance_sha256": "bb01845f6b72e4a938653b1cd4fdfc7b6ee612fb4848fc3db5ba85084f7020c2",
+      "note": "A pickup fragment may be used only after its geometry and independent retention evidence are supplied."
+    },
+    {
+      "episode_id": "451048674bfe4b579bcf3c6ea800c3aa",
+      "task": "Pick up the cube, place it in the box, and withdraw the arm.",
+      "outcome": "success",
+      "frames": 1117,
+      "eligible_for_packet": false,
+      "missing": [
+        "camera_geometry_not_verified",
+        "object_to_robot_calibration_missing",
+        "synchronized_object_and_tcp_poses_missing",
+        "metric_jaw_calibration_missing",
+        "grasp_subskill_boundaries_missing",
+        "independent_lift_hold_evidence_missing",
+        "object_instance_and_dimensions_missing",
+        "source_use_permission_not_recorded"
+      ],
+      "raw_data_unchanged": true,
+      "research_sha256": "d36b1ec3819907bc27543b76168e0b31e10d8146e1340005317a838f01751fe1",
+      "provenance_sha256": "cdedf526c31b2b0f03516524d4dcf44f860b76ce7839d1a41a587c87bb22100e",
+      "note": "A pickup fragment may be used only after its geometry and independent retention evidence are supplied."
+    }
+  ],
+  "accepted_packets": 0,
+  "physical_commands_sent": 0
+}
