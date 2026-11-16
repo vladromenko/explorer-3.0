@@ -1,0 +1,34 @@
+{
+  "version": 2,
+  "rooms": 10,
+  "conditions": [
+    "K0",
+    "K1",
+    "K2",
+    "K3"
+  ],
+  "start_seed": 7000,
+  "deadline_s": 600,
+  "objects": [
+    "cookie",
+    "sock",
+    "cube",
+    "ball"
+  ],
+  "sources": {
+    "scripts/knowledge_gap_experiment.py": "74f85ce8c1a5cd422991e5eae14176bd9dafd7c268db44d57598ea6d9c3d8b2a",
+    "explorer3/swarm_sim.py": "cfef3b140a4e78e6dbe87617dbe800fd4aedb575ad48ba3b32a10a3bdc4a0687",
+    "explorer3/swarm.py": "af63ff3a96d5cc3f4233cfefd2a7ce2e061fe960441c96f059c9a4c9b7733663",
+    "explorer3/so101_station.py": "de8a5590422b78008a34020a76f29bb57ec541cb5fb82061bd6de62c7dc7c51b",
+    "explorer3/knowledge.py": "020ab79b95e8642fa192e9c78cb05e7597067c72e2a528c1cd56c69f2ab77b48",
+    "explorer3/fleet_agents.py": "39873afca331fa661a21a01625da4b37da9dadcde4de2bdfcb09816b7c19108f",
+    "explorer3/explore.py": "9ca8a10bbac723139c1f8b3fb33b89e84879d045acfbd1b23241f15c540b43e1",
+    "explorer3/drive.py": "84208da6a6d94c5ff0a0438668acb9692b03b46992c736b8aa7a0a1cd48dd48f",
+    "explorer3/fleet_map.py": "17885904f5330e20c6d336b7c21a74878eba6da4c1a82835a62978f09cf85c6d",
+    "explorer3/navigation.py": "9953479de554a4a4206300cd772482af192df9705e748b10217436f308e88b61",
+    "explorer3/sim2d.py": "84343fc41ce4272b7207f877301b53beb3542087f45948baece283d51579268f",
+    "explorer3/world_memory.py": "bb199ad6987417b0741bcfaf50a314dd8d73440ee888bcbe7c349e9949f58f58",
+    "explorer3/cognitive/gap_advisor.py": "993a95fb2bf8e4ba6003ae5cb1f0a005dcc8cce8d060356c507d9f354c7bae84",
+    "configs/cognitive-assets.lock.json": "4c440ed5e0bf37df6af4b7f56dfc9f784549ad84be99aa74932a878889125d5e"
+  }
+}
