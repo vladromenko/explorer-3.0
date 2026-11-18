@@ -16,9 +16,16 @@ TASKS={
  'rosmaster_dock':('ROSMASTER · подъезд к цели',('rosmaster_dock_rgbd_lidar','rosmaster_dock')),
 }
 _pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='recording-readback')
+_progress_pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='recording-progress')
 
+
+_initialized=[False]
 
 def initialize():
+    # Schema setup is a write transaction: do it once per process. Calling it on every page refresh
+    # (summary/overview, 1 Hz) competed for the database lock with the recorder's progress update.
+    if _initialized[0]:return
+    _initialized[0]=True
     with catalog.connect() as db:
         db.executescript('''
         CREATE TABLE IF NOT EXISTS collection_series (

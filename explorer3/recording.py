@@ -63,6 +63,7 @@ class EpisodeWriter:
         from . import collection
         self.collection_context=collection.context(name,session,scene) if domain!='sim' else None
         self.collection_progress_at=0.
+        self.progress_future=None
         self.collection_streams={}
         self.collection_origins={}
         self.collection_camera_last=None
@@ -168,12 +169,17 @@ class EpisodeWriter:
                         self.collection_streams[key]=max(0,count-origin+1)
                     else:self.collection_streams[key]=None
             if time.monotonic()-self.collection_progress_at>=.5:
+                # Off the recording thread: a database lock wait here delayed frames by 0.5-2.5 s.
                 from . import collection
-                collection.progress(self.id,self.frames,self.collection_streams)
                 self.collection_progress_at=time.monotonic()
+                if self.progress_future is None or self.progress_future.done():
+                    self.progress_future=collection._progress_pool.submit(collection.progress,self.id,self.frames,dict(self.collection_streams))
 
     def finish(self, outcome: str, provenance: dict):
         from . import collection
+        if self.progress_future is not None:   # never let a late progress update overwrite the final state
+            try:self.progress_future.result(timeout=20)
+            except Exception:pass
         if self.domain=='sim' and not all(key in provenance for key in ('model','seed','controller','lineage')):
             raise ValueError('Simulation provenance incomplete')
         if outcome not in {'success','failure','aborted'}:

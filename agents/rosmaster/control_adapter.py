@@ -81,6 +81,9 @@ class NativeControls:
         self.mirror_arm = {**cfg['arm'], 'gripper_close': cfg['arm'].get('gripper_hold_max', cfg['arm']['gripper_close'])}
         self.mirror = MirrorMapper(arm_model, self.mirror_arm, mirror_cfg, io.arm_command())
         self.original_scale = list(mirror_cfg['scale'])
+        # Homebrain may pause the Leader stream ~0.5 s (seen while finalising an episode); 1 s, still well
+        # inside the 240 ms controller lease + 1 s operator rules that stop the motors.
+        self.mirror.m['timeout_s'] = max(float(self.mirror.m.get('timeout_s', .5)), 1.0)
         self.input = dict(drive=[0,0,0], arm=[0,0,0], pitch=0, roll=0, grip=0, slow=False)
         self.last_input = -float('inf')
         self._arm_input_active = False

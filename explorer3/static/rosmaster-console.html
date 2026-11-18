@@ -166,7 +166,7 @@ function setSimple(on){document.body.classList.toggle('simple',on);$('allbtn').c
 function armMode(mode){clearControls();send({action:'arm_mode',mode});}
 function act(a,n){clearControls();send({action:a,name:n});}
 // The MJPEG stream ends when the robot agent restarts; reconnect instead of staying blank.
-let videoTimer=null;function videoRetry(){if(videoTimer)return;videoTimer=setTimeout(()=>{videoTimer=null;const v=$('video');v.src=v.src.replace(/&t=\d+/,'')+'&t='+Date.now();},2000);}
+let videoTimer=null,everConnected=false,lastOffline=false;function videoRetry(){if(videoTimer)return;videoTimer=setTimeout(()=>{videoTimer=null;const v=$('video');v.src=v.src.replace(/&t=\d+/,'')+'&t='+Date.now();},2000);}
 setInterval(()=>{const v=$('video');if(v.complete&&v.naturalWidth===0)videoRetry();},5000);
 function light(level){try{localStorage.setItem('rosmasterLight2',level)}catch(e){}$('video').src='/api/rosmaster/camera.mjpg?light='+level+'&t='+Date.now();$('lightv').textContent=['Как есть','Авто','Ярче','Максимум'][level];this&&this.blur&&this.blur();document.activeElement&&document.activeElement.blur();}
 if(window.top!==window){document.querySelector('header').style.display='none';const back=document.querySelector('nav a[href="/"]');if(back)back.style.display='none';}
@@ -186,12 +186,13 @@ function reconnect(){
  reconnectTimer=setTimeout(()=>{reconnectTimer=null;connect()},500);
 }
 function connect(){lastReply=Date.now();const current=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/rosmaster/console/ws');ws=current;
- current.onopen=()=>{$('link').textContent='связь есть';$('link').style.background='#1f3a2c'};
+ current.onopen=()=>{$('link').textContent='связь есть';$('link').style.background='#1f3a2c';if(everConnected)videoRetry();everConnected=true};
  current.onclose=()=>{if(ws===current)reconnect()};
  current.onmessage=e=>{if(ws!==current)return;lastReply=Date.now();render(JSON.parse(e.data));flushQueued();};}
 setInterval(()=>{if(!document.hidden&&Date.now()-lastReply>2000&&!reconnectTimer){stopHttp();reconnect();}},500);
 function render(s){
  activeProfile=s.enabled?s.session_profile:null;
+ const offlineNow=!!(s.notice&&String(s.notice).startsWith('Нет связи'));if(lastOffline&&!offlineNow)videoRetry();lastOffline=offlineNow;
  $('link').textContent=s.offline?'локальная подготовка':'связь с Homebrain';$('link').style.background=s.offline?'#32313a':'#1f3a2c';
  $('armmode').textContent=s.arm_mode==='joint'?'Суставы':'Захват XYZ';$('armhelp').textContent=s.arm_mode==='joint'?'←/→ (J/L) — основание; ↑/↓ (I/K) — плечо; R/F — локоть; ,/. — кисть.':'↑/↓ (I/K) — вперёд/назад; ←/→ (J/L) — влево/вправо; R/F — вверх/вниз.';
  $('dry').style.display=s.dry_run?'block':'none';$('mode').textContent=s.enabled?'● управление включено':'остановлено';$('mode').style.background=s.enabled?'#1f3a2c':'#222a36';$('notice').textContent=s.notice||'';
