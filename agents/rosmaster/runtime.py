@@ -310,13 +310,20 @@ class Runtime:
     DEFAULT_SIGN=[1,-1,-1,-1,1]
     DEFAULT_PAIR={'leader':[-4.4,2.0,-83.5,-1.5,2.2],'servo':[90.,90.,90.,90.,90.]}
 
+    # Cartesian mirror (2026-11-18): the 1:1 joint mapping could not reach the floor; Leader gripper
+    # position above its table -> ROSMASTER gripper above the floor. Override file key 'cartesian':
+    # a settings dict, or false for the old joint mirror.
+    DEFAULT_CARTESIAN={}
+
     def load_mirror_overrides(self):
         path=self.root/self.MIRROR_OVERRIDES
+        value=json.loads(path.read_text()) if path.exists() else {}
         if path.exists():
-            value=json.loads(path.read_text())
             self.controls.configure_mirror(value['sign'],value.get('gripper_map'),value.get('ref_pair'))
         else:
             self.controls.configure_mirror(self.DEFAULT_SIGN,self.DEFAULT_GRIPPER_MAP,self.DEFAULT_PAIR)
+        cart=value.get('cartesian',self.DEFAULT_CARTESIAN)
+        self.controls.configure_cartesian(cart if isinstance(cart,dict) else None)
 
     def set_mirror_config(self,sign,gripper_map=None,ref_pair=None):
         if type(sign) is not list or len(sign)!=5 or any(v not in (1,-1) for v in sign):raise ValueError('Пять знаков ±1')

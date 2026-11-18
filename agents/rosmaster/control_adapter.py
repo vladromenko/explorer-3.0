@@ -93,6 +93,7 @@ class NativeControls:
         self.gripper_map = None
         self.ref_pair = None        # (leader 5 joints deg, robot servo 5 joints) captured in the same physical pose
         self.last_leader = None
+        self.cartesian = None       # CartesianMirror: Leader gripper position -> ROSMASTER IK (floor reach)
 
     def enable(self, profile, now):
         if self.armed:raise ValueError('Stop the previous control session first')
@@ -135,7 +136,27 @@ class NativeControls:
             try:value=float(positions['gripper'])
             except (KeyError,TypeError,ValueError):return False
             positions={**positions,'gripper':min(100.,max(0.,(value-opened)/(closed-opened)*100.))}
-        return self.mirror.update(positions,now)
+        if self.cartesian is None:return self.mirror.update(positions,now)
+        try:grip=float(positions['gripper'])
+        except (KeyError,TypeError,ValueError):return False
+        if not math.isfinite(grip):return False
+        seed=list(self.mirror.servo)
+        try:arm5=self.cartesian.solve(positions,seed,now)
+        except (KeyError,TypeError,ValueError):return False
+        if arm5 is None:return False
+        a=self.mirror_arm
+        if self.gripper_map is not None:g=a['gripper_open']+(a['gripper_close']-a['gripper_open'])*min(max(grip,0.),100.)/100.
+        else:g=float(self.mirror.target[5])
+        sm=self.mirror.m['smoothing']
+        self.mirror.target=(1-sm)*self.mirror.target+sm*np.array([*arm5,g],float)
+        self.mirror.last_msg=now
+        return True
+
+    def configure_cartesian(self, settings):
+        """settings: dict (enable Cartesian mirroring with these parameters) or None (joint mirroring)."""
+        if self.mode=='mirror':raise PermissionError('Сначала выключите зеркало')
+        from cartesian_mirror import CartesianMirror
+        self.cartesian=CartesianMirror(self.arm,self.mirror_arm,settings) if settings is not None else None
 
     def configure_mirror(self, sign, gripper_map, ref_pair=None):
         """Operator-checked joint directions, gripper endpoints and pose pair; only while the mirror is off."""
@@ -151,9 +172,16 @@ class NativeControls:
     def mapped_pose(self, measured):
         """Robot servo pose that corresponds to the latest Leader frame (needs the pose pair)."""
         from cubebot.arm_model import SERVO_LIMITS
-        if self.ref_pair is None or self.last_leader is None:return None
-        leader_ref,servo_ref=self.ref_pair;sign=self.mirror.m['sign']
-        pose=[servo_ref[i]+sign[i]*(float(self.last_leader[name])-leader_ref[i]) for i,name in enumerate(self.JOINTS)]
+        if self.last_leader is None:return None
+        if self.cartesian is not None:
+            import time as _t
+            arm5=self.cartesian.solve(self.last_leader,list(measured),_t.monotonic(),full=True)
+            if arm5 is None:return None
+            pose=list(arm5)
+        elif self.ref_pair is None:return None
+        else:
+            leader_ref,servo_ref=self.ref_pair;sign=self.mirror.m['sign']
+            pose=[servo_ref[i]+sign[i]*(float(self.last_leader[name])-leader_ref[i]) for i,name in enumerate(self.JOINTS)]
         a=self.mirror_arm
         if self.gripper_map is not None:
             opened,closed=self.gripper_map
@@ -172,6 +200,7 @@ class NativeControls:
         self.mirror.rebase()
         self.io._arm_cmd=list(measured)
         self.mode='mirror'
+        if self.cartesian is not None:self.cartesian.reset()
         if self.ref_pair is not None and self.last_leader is not None:
             # Absolute mode: the stored pair is the reference instead of 'wherever both are now'.
             leader_ref,servo_ref=self.ref_pair
