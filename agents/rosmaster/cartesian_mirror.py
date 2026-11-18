@@ -46,6 +46,63 @@ class LeaderFK:
         return t @ self.tip
 
 
+def _worker(conn, settings):
+    """Separate process: IK takes 20-350 ms and must never run inside the 33 ms control loop."""
+    from cubebot.arm_model import ArmModel
+    solver = CartesianMirror(ArmModel(), {}, {**settings, 'min_interval_s': 0.0})
+    while True:
+        job = conn.recv()
+        if job is None:
+            return
+        leader, seed, full = job
+        try:
+            sol = solver.solve(leader, seed, 1.0, full=full)
+            conn.send((sol, solver.blocked))
+        except Exception as exc:  # report, keep serving
+            conn.send((None, 'IK: ' + str(exc)))
+
+
+class AsyncCartesianMirror:
+    """Non-blocking front end used by the control loop: submit the newest Leader frame, read the newest solution."""
+
+    def __init__(self, settings=None):
+        import multiprocessing as mp
+        self.settings = {**DEFAULT, **(settings or {})}
+        ctx = mp.get_context('spawn')   # not fork: the agent process has ROS/uvicorn threads
+        self.conn, child = ctx.Pipe()
+        self.proc = ctx.Process(target=_worker, args=(child, self.settings), daemon=True)
+        self.proc.start()
+        self.busy = False
+        self.last = None
+        self.blocked = None
+        self.pending = None
+
+    def submit(self, leader, seed):
+        """Returns the newest solution (5 servos) or None; never blocks."""
+        try:
+            if self.busy and self.conn.poll():
+                sol, self.blocked = self.conn.recv()
+                self.busy = False
+                if sol is not None:
+                    self.last = list(sol)
+            if not self.busy:
+                seed = [*self.last, 90.0] if self.last is not None else list(seed)
+                self.conn.send(({k: float(v) for k, v in leader.items()}, seed, self.last is None))
+                self.busy = True
+        except (EOFError, OSError) as exc:
+            self.blocked = 'IK процесс остановился: ' + str(exc)   # the arm keeps its last target
+        return self.last
+
+    def reset(self):
+        self.last = None
+
+    def close(self):
+        try:
+            self.conn.send(None)
+        except Exception:
+            pass
+
+
 class CartesianMirror:
     def __init__(self, arm_model, arm_cfg, settings=None):
         from cubebot.arm_model import CHAIN

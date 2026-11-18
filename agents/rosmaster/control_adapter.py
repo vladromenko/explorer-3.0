@@ -143,10 +143,10 @@ class NativeControls:
         from cubebot.arm_model import SERVO_LIMITS
         # Seed inside the joint limits (the folded rest pose reads outside them, e.g. shoulder 193).
         seed=[min(hi-1.,max(lo+1.,float(v))) for v,(lo,hi) in zip(self.mirror.servo,SERVO_LIMITS)]
-        try:arm5=self.cartesian.solve(positions,seed,now,full=self.cartesian.last is None)
+        try:arm5=self.cartesian.submit({k:positions[k] for k in self.JOINTS},seed)
         except (KeyError,TypeError,ValueError):return False
         self.mirror.last_msg=now     # a valid frame keeps the stream alive even if the pose is unreachable
-        if arm5 is None:return True  # unreachable: the arm keeps its last target
+        if arm5 is None:return True  # not solved yet / unreachable: the arm keeps its last target
         a=self.mirror_arm
         if self.gripper_map is not None:g=a['gripper_open']+(a['gripper_close']-a['gripper_open'])*min(max(grip,0.),100.)/100.
         else:g=float(self.mirror.target[5])
@@ -158,8 +158,9 @@ class NativeControls:
     def configure_cartesian(self, settings):
         """settings: dict (enable Cartesian mirroring with these parameters) or None (joint mirroring)."""
         if self.mode=='mirror':raise PermissionError('Сначала выключите зеркало')
-        from cartesian_mirror import CartesianMirror
-        self.cartesian=CartesianMirror(self.arm,self.mirror_arm,settings) if settings is not None else None
+        from cartesian_mirror import AsyncCartesianMirror
+        if self.cartesian is not None:self.cartesian.close()
+        self.cartesian=AsyncCartesianMirror(settings) if settings is not None else None
 
     def configure_mirror(self, sign, gripper_map, ref_pair=None):
         """Operator-checked joint directions, gripper endpoints and pose pair; only while the mirror is off."""
@@ -177,8 +178,7 @@ class NativeControls:
         from cubebot.arm_model import SERVO_LIMITS
         if self.last_leader is None:return None
         if self.cartesian is not None:
-            import time as _t
-            arm5=self.cartesian.solve(self.last_leader,list(measured),_t.monotonic(),full=True)
+            arm5=self.cartesian.last      # solved in the worker process from the latest Leader frames
             if arm5 is None:return None
             pose=list(arm5)
         elif self.ref_pair is None:return None
@@ -203,7 +203,6 @@ class NativeControls:
         self.mirror.rebase()
         self.io._arm_cmd=list(measured)
         self.mode='mirror'
-        if self.cartesian is not None:self.cartesian.reset()
         if self.ref_pair is not None and self.last_leader is not None:
             # Absolute mode: the stored pair is the reference instead of 'wherever both are now'.
             leader_ref,servo_ref=self.ref_pair
