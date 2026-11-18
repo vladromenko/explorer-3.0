@@ -78,7 +78,11 @@ class CartesianMirror:
         xyz, pitch, roll = self.target(leader)
         step = None if full else self.s['max_joint_step_deg']
         # Pitch is a weak preference: position first (with 0.15 the mid-height poses had no solution).
+        if self.last is not None:
+            seed = [*self.last, 90.0]       # continue from the previous solution, not the lagging servo
         sol, err = self.arm.ik(xyz, pitch, seed, pitch_weight=self.s['pitch_weight'], roll_servo=roll, quick=not full, max_step_deg=step)
+        if sol is None and not full:        # fast local step failed (big Leader jump): one global search
+            sol, err = self.arm.ik(xyz, pitch, seed, pitch_weight=self.s['pitch_weight'], roll_servo=roll)
         self.last_at = now
         if sol is None:
             self.blocked = f'вне досягаемости ROSMASTER: x {xyz[0]:.2f} z {xyz[2]:.2f} м'

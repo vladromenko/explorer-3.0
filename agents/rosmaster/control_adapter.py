@@ -140,10 +140,13 @@ class NativeControls:
         try:grip=float(positions['gripper'])
         except (KeyError,TypeError,ValueError):return False
         if not math.isfinite(grip):return False
-        seed=list(self.mirror.servo)
-        try:arm5=self.cartesian.solve(positions,seed,now)
+        from cubebot.arm_model import SERVO_LIMITS
+        # Seed inside the joint limits (the folded rest pose reads outside them, e.g. shoulder 193).
+        seed=[min(hi-1.,max(lo+1.,float(v))) for v,(lo,hi) in zip(self.mirror.servo,SERVO_LIMITS)]
+        try:arm5=self.cartesian.solve(positions,seed,now,full=self.cartesian.last is None)
         except (KeyError,TypeError,ValueError):return False
-        if arm5 is None:return False
+        self.mirror.last_msg=now     # a valid frame keeps the stream alive even if the pose is unreachable
+        if arm5 is None:return True  # unreachable: the arm keeps its last target
         a=self.mirror_arm
         if self.gripper_map is not None:g=a['gripper_open']+(a['gripper_close']-a['gripper_open'])*min(max(grip,0.),100.)/100.
         else:g=float(self.mirror.target[5])
