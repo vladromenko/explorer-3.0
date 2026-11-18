@@ -32,7 +32,7 @@ body.simple .adv{display:none!important}#simplebar{display:none;gap:10px;align-i
  <button class="go big adv" onclick="send({action:'enable',profile:$('control-profile').value,observing:true})" title="Нажимая, вы подтверждаете, что вы рядом и место свободно. Сложенная рука сначала поднимается автоматически.">▶ Я рядом — включить</button>
  <button class="stop big" onclick="send({action:'stop'})">■ STOP <small>(пробел)</small></button>
  <b id="notice" style="color:var(--warn)">Управление выключено</b><span class="grow"></span><label class="help"><input type="checkbox" id="allbtn" onchange="setSimple(!this.checked)"> все кнопки</label></nav>
-<div id="simplebar"><span class="num">1</span><button class="go step" id="smir" onclick="send({action:mirrorWanted?'mirror_off':'mirror_on',observing:true})">Включить зеркало</button><span class="num">2</span><button class="go step" id="srec" onclick="startRecording()">● Начать запись <small>F9</small></button><span id="sout" style="display:none;gap:10px"><button class="go step" onclick="send({action:'record_finish',outcome:'success'})">✓ Успех <small>F10</small></button><button class="step" onclick="send({action:'record_finish',outcome:'failure'})">✗ Неуспех <small>F11</small></button></span><b id="rstate2"></b></div>
+<div id="simplebar"><span class="num">1</span><button class="go step" id="smir" onclick="send({action:mirrorWanted?'mirror_off':'mirror_on',observing:true,profile:$('control-profile').value})">Включить зеркало</button><span class="num">2</span><button class="go step" id="srec" onclick="startRecording()">● Начать запись <small>F9</small></button><span id="sout" style="display:none;gap:10px"><button class="go step" onclick="send({action:'record_finish',outcome:'success'})">✓ Успех <small>F10</small></button><button class="step" onclick="send({action:'record_finish',outcome:'failure'})">✗ Неуспех <small>F11</small></button></span><b id="rstate2"></b></div>
 <div id="keyboardhint" class="help" style="padding:0 20px 8px;color:var(--warn)" role="status" hidden></div>
 <main>
 <section>
@@ -60,7 +60,7 @@ body.simple .adv{display:none!important}#simplebar{display:none;gap:10px;align-i
    <div class="help" style="margin-top:4px">Ограничение: <span id="blocked">—</span></div>
    <div class="row adv" style="margin-top:8px"><button onclick="send({action:'prepare',observing:true})">Поднять руку</button><button onclick="act('preset','look')">Обзор</button><button onclick="act('preset','home')">Домой</button></div></div>
   <div class="card adv"><h2>Зеркало: Leader SO-101 → рука</h2>
-   <div class="row"><button class="go" id="mirbtn" onclick="send({action:mirrorWanted?'mirror_off':'mirror_on',observing:true})">Включить зеркало</button><span id="mir" class="help">выкл</span></div>
+   <div class="row"><button class="go" id="mirbtn" onclick="send({action:mirrorWanted?'mirror_off':'mirror_on',observing:true,profile:$('control-profile').value})">Включить зеркало</button><span id="mir" class="help">выкл</span></div>
    <div class="help" style="margin-top:6px">Одна кнопка: управление включится само, рука встанет в позу Leader (держите Leader неподвижно), затем повторяет движения. <span id="pairstate"></span></div>
    <details style="margin-top:8px"><summary>Тонкая настройка зеркала (не обязательно)</summary>
     <div class="help" style="margin-top:6px"><b>1. Совпадение поз.</b> Нажмите «Поднять руку» (рука прямо вверх), поставьте Leader в ту же позу (прямо вверх, клешня как у робота), нажмите «Подключить Leader», затем «Запомнить совпадение поз».</div>
@@ -119,6 +119,7 @@ if(recordingQuery.has('series')){
  $('rscene').value=recordingQuery.get('layout')||'';
  $('rcollection').value=recordingQuery.get('series');
  for(const id of ['rprof','rscene','rcollection'])$(id).disabled=true;
+ const motor=$('rprof').value.replace(/_rgbd_lidar$/,'');if(motor!=='rosmaster_manual')$('control-profile').value=motor;
 }
 window.addEventListener('keydown',e=>{
  if(e.repeat)return;
@@ -138,7 +139,7 @@ function profileControls(){
  document.querySelectorAll('button.hold').forEach(b=>{b.disabled=p==='rosmaster_pick_place'});
  $('profilehelp').textContent=p==='rosmaster_pick_place'?'Только рука: кнопки колёс и W/A/S/D отключены.':p==='rosmaster_dock'?'Только шасси: стрелки клавиатуры и клавиши руки отключены.':'W/A/S/D — шасси; стрелки и R/F — рука.';
 }
-try{const p=localStorage.getItem('explorerManualProfile');if(['rosmaster_manual','rosmaster_pick_place','rosmaster_dock'].includes(p))$('control-profile').value=p}catch(e){}
+try{const p=localStorage.getItem('explorerManualProfile');if(!recordingQuery.has('series')&&['rosmaster_manual','rosmaster_pick_place','rosmaster_dock'].includes(p))$('control-profile').value=p}catch(e){}
 try{setSimple(localStorage.getItem('rosmasterSimple')!=='0')}catch(e){setSimple(true)}
 profileControls();
 function stopHttp(){

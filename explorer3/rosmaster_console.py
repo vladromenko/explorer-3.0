@@ -255,7 +255,10 @@ async def websocket(socket:WebSocket):
                         if operator.lease:await asyncio.to_thread(operator.stop,'Переход к зеркалу')
                         health=await asyncio.to_thread(lambda:(ensure_agent(),request('/health'))[1])
                         if not health.get('hardware_open'):await asyncio.to_thread(request,'/acquire',{},45)
-                        await asyncio.to_thread(operator.enable,owner,'rosmaster_manual',state['mode'],True)
+                        # Same motor profile as the recording task (arm only), so «Начать запись» keeps this
+                        # session and the mirror instead of restarting control (that dropped the mirror).
+                        prof=value.get('profile') if value.get('profile') in ('rosmaster_pick_place','rosmaster_manual') else 'rosmaster_manual'
+                        await asyncio.to_thread(operator.enable,owner,prof,state['mode'],True)
                     if operator.leader_sample is None or time.monotonic()-operator.leader_sample[0]>.2:
                         await asyncio.to_thread(operator.start_leader,owner)
                         end=time.monotonic()+5
