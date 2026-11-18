@@ -20,22 +20,24 @@ button.go{background:var(--ok);border-color:var(--ok);color:#06210f;font-weight:
 kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;font-size:12px}
 #log{height:150px;overflow:auto;font:12px/1.35 ui-monospace,Menlo,monospace;color:#b8c0cc;white-space:pre-wrap}
 .help{font-size:12.5px;color:var(--dim)}.angles{display:grid;grid-template-columns:repeat(6,1fr);text-align:center;font-size:11px;color:var(--dim)}.angles.nums{font:14px ui-monospace,Menlo,monospace;color:var(--text)}.bar1{display:flex;gap:10px;padding:10px 16px;align-items:center;flex-wrap:wrap}button.big{font-size:16px;padding:10px 18px;flex:0 0 auto}.near{font-size:14px}details>summary{cursor:pointer;color:var(--dim);font-size:13px}#tcp,#mirm,#mirt{font:12.5px/1.4 ui-monospace,Menlo,monospace;white-space:pre;overflow-x:auto;display:block}.help b{color:var(--text)}
+body.simple .adv{display:none!important}#simplebar{display:none;gap:10px;align-items:center;flex-wrap:wrap;padding:0 16px 10px}body.simple #simplebar{display:flex}#simplebar .step{font-size:18px;padding:14px 22px}#simplebar .num{color:var(--dim);font-size:13px}#rstate2{font-size:15px}
 </style></head><body>
 <div class="banner" id="dry">DRY-RUN: движение не отправляется</div>
 <div class="banner" id="pilotbar" style="background:#ff5d5d;color:#fff;font-size:18px"></div>
 <header><h1>ROSMASTER</h1><span class="pill" id="mode">остановлено</span><span class="pill" id="link">нет связи</span>
-<span class="grow"></span><span id="bat" class="pill">батарея …</span><button onclick="send({action:'use8090'});setTimeout(()=>window.open('http://192.168.0.177:8090','_blank'),8000)" title="Отдать робот старой консоли CubeBot">Консоль 8090 ↗</button><a href="/" style="color:var(--acc);font-size:13px">Explorer</a></header>
+<span class="grow"></span><span id="bat" class="pill">батарея …</span><button class="adv" onclick="send({action:'use8090'});setTimeout(()=>window.open('http://192.168.0.177:8090','_blank'),8000)" title="Отдать робот старой консоли CubeBot">Консоль 8090 ↗</button><a href="/" style="color:var(--acc);font-size:13px">Explorer</a></header>
 <nav class="bar1">
- <a href="/rosmaster/preparation" style="color:var(--acc)">Подготовка без робота</a>
- <label class="help">Управлять <select id="control-profile" aria-label="Что управляем" onchange="profileChanged()"><option value="rosmaster_manual">рукой и шасси</option><option value="rosmaster_pick_place">только рукой</option><option value="rosmaster_dock">только шасси</option></select></label>
- <button class="go big" onclick="send({action:'enable',profile:$('control-profile').value,observing:true})" title="Нажимая, вы подтверждаете, что вы рядом и место свободно. Сложенная рука сначала поднимается автоматически.">▶ Я рядом — включить</button>
+ <a class="adv" href="/rosmaster/preparation" style="color:var(--acc)">Подготовка без робота</a>
+ <label class="help adv">Управлять <select id="control-profile" aria-label="Что управляем" onchange="profileChanged()"><option value="rosmaster_manual">рукой и шасси</option><option value="rosmaster_pick_place">только рукой</option><option value="rosmaster_dock">только шасси</option></select></label>
+ <button class="go big adv" onclick="send({action:'enable',profile:$('control-profile').value,observing:true})" title="Нажимая, вы подтверждаете, что вы рядом и место свободно. Сложенная рука сначала поднимается автоматически.">▶ Я рядом — включить</button>
  <button class="stop big" onclick="send({action:'stop'})">■ STOP <small>(пробел)</small></button>
- <b id="notice" style="color:var(--warn)">Управление выключено</b></nav>
+ <b id="notice" style="color:var(--warn)">Управление выключено</b><span class="grow"></span><label class="help"><input type="checkbox" id="allbtn" onchange="setSimple(!this.checked)"> все кнопки</label></nav>
+<div id="simplebar"><span class="num">1</span><button class="go step" id="smir" onclick="send({action:mirrorWanted?'mirror_off':'mirror_on',observing:true})">Включить зеркало</button><span class="num">2</span><button class="go step" id="srec" onclick="startRecording()">● Начать запись <small>F9</small></button><span id="sout" style="display:none;gap:10px"><button class="go step" onclick="send({action:'record_finish',outcome:'success'})">✓ Успех <small>F10</small></button><button class="step" onclick="send({action:'record_finish',outcome:'failure'})">✗ Неуспех <small>F11</small></button></span><b id="rstate2"></b></div>
 <div id="keyboardhint" class="help" style="padding:0 20px 8px;color:var(--warn)" role="status" hidden></div>
 <main>
 <section>
   <div class="card"><img id="video" src="/api/rosmaster/camera.mjpg?light=0" alt="камера"></div>
-  <div class="card" style="margin-top:12px">
+  <div class="card adv" style="margin-top:12px">
    <div class="row" style="gap:16px;align-items:flex-start">
     <div><h2>Колёса</h2>
      <div style="display:grid;grid-template-columns:repeat(3,52px);gap:6px">
@@ -56,8 +58,8 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
    <div class="angles"><span>осн.</span><span>плечо</span><span>локоть</span><span>кисть</span><span>пов.</span><span>клешня</span></div>
    <div class="angles nums" id="arm"></div>
    <div class="help" style="margin-top:4px">Ограничение: <span id="blocked">—</span></div>
-   <div class="row" style="margin-top:8px"><button onclick="send({action:'prepare',observing:true})">Поднять руку</button><button onclick="act('preset','look')">Обзор</button><button onclick="act('preset','home')">Домой</button></div></div>
-  <div class="card"><h2>Зеркало: Leader SO-101 → рука</h2>
+   <div class="row adv" style="margin-top:8px"><button onclick="send({action:'prepare',observing:true})">Поднять руку</button><button onclick="act('preset','look')">Обзор</button><button onclick="act('preset','home')">Домой</button></div></div>
+  <div class="card adv"><h2>Зеркало: Leader SO-101 → рука</h2>
    <div class="row"><button class="go" id="mirbtn" onclick="send({action:mirrorWanted?'mirror_off':'mirror_on',observing:true})">Включить зеркало</button><span id="mir" class="help">выкл</span></div>
    <div class="help" style="margin-top:6px">Одна кнопка: управление включится само, рука встанет в позу Leader (держите Leader неподвижно), затем повторяет движения. <span id="pairstate"></span></div>
    <details style="margin-top:8px"><summary>Тонкая настройка зеркала (не обязательно)</summary>
@@ -71,7 +73,7 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
     <div class="kv" style="margin-top:6px"><span>Кадров</span><span id="mirn">0</span><span>Цель</span><span id="mirt">—</span><span>Измерено</span><span id="mirm">—</span></div>
     <div class="row" style="margin-top:6px"><button onclick="send({action:'leader_off'})">Отключить Leader</button></div>
    </details></div>
-  <div class="card"><h2>Запись показа</h2>
+  <div class="card adv"><h2>Запись показа</h2>
    <div class="row"><select id="rprof"><option value="rosmaster_pick_place">Взять с пола (рука) · блок 3</option><option value="rosmaster_dock">Подъезд к цели (база)</option><option value="rosmaster_pick_place_rgbd_lidar">Рука + глубина и лидары</option><option value="rosmaster_dock_rgbd_lidar">База + глубина и лидары</option></select>
     <input id="rscene" value="scene-01" size="8" title="Расстановка: меняйте при новой расстановке предметов"></div>
    <div class="row" style="margin-top:8px"><label for="rcollection">Сессия сбора</label><input id="rcollection" value="session-01" maxlength="80" title="Одна сессия для серии показов; новая независимая серия — новое имя"></div>
@@ -79,24 +81,24 @@ kbd{background:#222a36;border:1px solid var(--line);border-bottom-width:2px;bord
    <div class="row" style="margin-top:8px" id="recstart"><button class="go" onclick="startRecording()">● Начать запись</button></div>
    <div class="row" style="margin-top:8px;display:none" id="recout"><button class="go" onclick="send({action:'record_finish',outcome:'success'})">✓ Успех</button><button onclick="send({action:'record_finish',outcome:'failure'})">✗ Неуспех</button><button onclick="send({action:'record_finish',outcome:'aborted'})">Прервать</button></div>
    <div class="help" id="rstate" style="margin-top:6px">—</div></div>
-  <details class="card"><summary>Испытания и исследование</summary>
+  <details class="card adv"><summary>Испытания и исследование</summary>
    <div class="help" style="margin-top:6px">План готовится и разрешается во вкладке «Испытания» Explorer.</div>
    <div class="row" style="margin-top:8px"><select id="tplan"><option value="">нет планов</option></select><select id="tstudy"><option value="">без пилота</option></select>
     <button onclick="send({action:'trial_start',plan:$('tplan').value,study:$('tstudy').value,collection:$('rcollection').value,scene:$('rscene').value,observing:true})">Запустить</button></div>
    <div class="row" style="margin-top:8px"><button onclick="send({action:'correction_done'})">Коррекция готова</button><button class="stop" style="flex:0" onclick="send({action:'emergency'})">Аварийное вмешательство</button></div>
    <div class="row" style="margin-top:8px"><span class="help">Тип записи:</span><select id="rcat"><option value="demonstration">Показ</option><option value="correction">Коррекция</option></select></div></details>
-  <details class="card"><summary>Ещё: позы, камера, джойстик</summary>
+  <details class="card adv"><summary>Ещё: позы, камера, джойстик</summary>
    <div class="row" style="margin-top:8px"><button onclick="act('preset','near')">Поза: ближний</button><button onclick="act('preset','carry')">Поза: переноска</button></div>
    <div class="kv" style="margin-top:6px"><span>Кисть x,y,z</span><span id="tcp">—</span></div>
    <div class="row" style="margin-top:8px"><span class="help">Яркость показа:</span><button onclick="light(0)">как есть</button><button onclick="light(2)">ярче</button><b id="lightv" class="help">Как есть</b></div>
    <span class="help">В ручном управлении расстояние до препятствий контролирует оператор.</span>
    <div class="help">Джойстик: левый стик — езда, LB/RB — поворот, правый стик — рука, крестовина — высота/наклон, LT/RT — клешня, B — стоп.</div></details>
-  <details class="card"><summary>Подсветка робота</summary>
+  <details class="card adv"><summary>Подсветка робота</summary>
    <div class="help">Нижняя RGB-подсветка. Доступна после подключения робота к Explorer; двигатели эти кнопки не включают.</div>
    <div class="row"><button onclick="send({action:'rgb',rgb:[0,0,0]})">Выключить</button><button onclick="send({action:'rgb',rgb:[80,80,80]})">Белый</button><button onclick="send({action:'rgb',rgb:[0,70,50]})">Бирюзовый</button>
    <input type="color" aria-label="Цвет подсветки робота" value="#004632" onchange="send({action:'rgb',rgb:this.value.slice(1).match(/../g).map(v=>parseInt(v,16))})"></div>
   </details>
-  <details class="card"><summary>Журнал</summary><div id="log"></div></details>
+  <details class="card adv"><summary>Журнал</summary><div id="log"></div></details>
   <span hidden><i id="socbar"></i><span id="soc"></span><span id="volts"></span><span id="left"></span><span id="batnote"></span><span id="mstate"></span><span id="mres"></span></span>
 </aside></main>
 <script>
@@ -137,6 +139,7 @@ function profileControls(){
  $('profilehelp').textContent=p==='rosmaster_pick_place'?'Только рука: кнопки колёс и W/A/S/D отключены.':p==='rosmaster_dock'?'Только шасси: стрелки клавиатуры и клавиши руки отключены.':'W/A/S/D — шасси; стрелки и R/F — рука.';
 }
 try{const p=localStorage.getItem('explorerManualProfile');if(['rosmaster_manual','rosmaster_pick_place','rosmaster_dock'].includes(p))$('control-profile').value=p}catch(e){}
+try{setSimple(localStorage.getItem('rosmasterSimple')!=='0')}catch(e){setSimple(true)}
 profileControls();
 function stopHttp(){
  clearControls();if(stopPending)return;stopPending=true;
@@ -153,8 +156,12 @@ function send(o){
  if(o.action==='stop'){stopHttp();return;}
  if(o.action&&stopPending){$('notice').textContent='Дождитесь завершения STOP';return;}
  if(ws&&ws.readyState===1&&Date.now()-lastReply<2000)ws.send(JSON.stringify(o));
- else if(o.action){$('notice').textContent='Восстанавливаю связь. Затем нажмите «Включить» ещё раз.';reconnect();}
+ else if(o.action){queued={o,at:Date.now()};$('notice').textContent='Связь восстанавливается — команда уйдёт сама, повторно нажимать не нужно';reconnect();}
 }
+// A click made while the link is recovering is sent once the link answers again (within 4 s), not lost.
+let queued=null;
+function flushQueued(){if(!queued)return;const q=queued;queued=null;if(Date.now()-q.at<4000&&ws&&ws.readyState===1)ws.send(JSON.stringify(q.o));else $('notice').textContent='Связь не восстановилась вовремя — команда не отправлена';}
+function setSimple(on){document.body.classList.toggle('simple',on);$('allbtn').checked=!on;try{localStorage.setItem('rosmasterSimple',on?'1':'0')}catch(e){}}
 function armMode(mode){clearControls();send({action:'arm_mode',mode});}
 function act(a,n){clearControls();send({action:a,name:n});}
 function light(level){try{localStorage.setItem('rosmasterLight2',level)}catch(e){}$('video').src='/api/rosmaster/camera.mjpg?light='+level+'&t='+Date.now();$('lightv').textContent=['Как есть','Авто','Ярче','Максимум'][level];this&&this.blur&&this.blur();document.activeElement&&document.activeElement.blur();}
@@ -175,7 +182,7 @@ function reconnect(){
 function connect(){lastReply=Date.now();const current=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/rosmaster/console/ws');ws=current;
  current.onopen=()=>{$('link').textContent='связь есть';$('link').style.background='#1f3a2c'};
  current.onclose=()=>{if(ws===current)reconnect()};
- current.onmessage=e=>{if(ws!==current)return;lastReply=Date.now();render(JSON.parse(e.data));};}
+ current.onmessage=e=>{if(ws!==current)return;lastReply=Date.now();render(JSON.parse(e.data));flushQueued();};}
 setInterval(()=>{if(!document.hidden&&Date.now()-lastReply>2000&&!reconnectTimer){stopHttp();reconnect();}},500);
 function render(s){
  activeProfile=s.enabled?s.session_profile:null;
@@ -199,12 +206,13 @@ function render(s){
  $('recstart').style.display=rec?'none':'flex';$('recout').style.display=rec?'flex':'none';
  const canFinish=R.phase==='recording'&&R.frames>0;
  $('recout').querySelectorAll('button').forEach((b,i)=>{b.disabled=R.phase==='saving'||(i<2&&!canFinish);});
- mirrorWanted=!!(s.mirror.on||s.mirror.requested);$('mirbtn').textContent=mirrorWanted?'Выключить зеркало':'Включить зеркало';$('mirbtn').className=mirrorWanted?'':'go';const pb=$('pilotbar');
+ mirrorWanted=!!(s.mirror.on||s.mirror.requested);$('smir').textContent=mirrorWanted?(s.mirror.on?'Выключить зеркало':'Зеркало включается…'):'Включить зеркало';$('smir').className='step'+(mirrorWanted?'':' go');$('srec').style.display=rec?'none':'';$('sout').style.display=rec?'flex':'none';$('sout').querySelectorAll('button').forEach(b=>b.disabled=!canFinish||R.phase==='saving');$('mirbtn').textContent=mirrorWanted?'Выключить зеркало':'Включить зеркало';$('mirbtn').className=mirrorWanted?'':'go';const pb=$('pilotbar');
  if(R.phase==='recording'&&P.phase==='human'){pb.style.display='block';pb.textContent='ВАША КОРРЕКЦИЯ: управляйте клавишами/джойстиком · осталось '+Math.max(0,Math.round((P.until*1000-Date.now())/1000))+' с · затем «Коррекция готова»';}
  else if(R.phase==='recording'&&P.phase==='decided'&&P.assigned){pb.style.display='block';pb.textContent='Робот ждёт помощи (удержание '+P.delay_s+' с) — приготовьтесь';}
  else pb.style.display='none';
  const ts=$('tstudy'),sids=(s.studies||[]).map(p=>p.id).join(',');if(ts.dataset.ids!==sids){ts.dataset.ids=sids;ts.innerHTML='<option value="">без пилота</option>'+(s.studies||[]).map(p=>'<option value="'+p.id+'">'+p.label+'</option>').join('');}
  $('rstate').textContent=R.error?'Показ не завершён: '+R.error:R.phase==='preparing'||(R.phase==='recording'&&!R.frames)?'Подготовка записи… Пока не начинайте показ.':R.phase==='recording'?'● Запись идёт — можно начинать · кадров '+R.frames+(R.hz?' · '+R.hz+' Гц':''):R.phase==='saving'?'Сохранение показа…':R.episode?'Сохранён показ '+R.episode.slice(0,8)+' · кадров '+R.frames+' · '+({success:'успех',failure:'неуспех',aborted:'прерван'}[R.outcome]||R.outcome):'Нет сохранённого показа';
+ $('rstate2').textContent=$('rstate').textContent;
  const tp=$('tplan'),ids=(s.plans||[]).map(p=>p.id).join(',');if(tp.dataset.ids!==ids){tp.dataset.ids=ids;tp.innerHTML=(s.plans||[]).length?(s.plans.map(p=>'<option value="'+p.id+'">'+p.label+'</option>').join('')):'<option value="">нет планов</option>';}
  const L=$('log');const atEnd=L.scrollTop+L.clientHeight>=L.scrollHeight-8;L.textContent=s.log.join('\n');if(atEnd)L.scrollTop=L.scrollHeight;}
 const map={w:['d',0,1],s:['d',0,-1],a:['d',1,1],d:['d',1,-1],q:['d',2,1],e:['d',2,-1],i:['a',0,1],k:['a',0,-1],j:['a',1,1],l:['a',1,-1],r:['a',2,1],f:['a',2,-1]};
