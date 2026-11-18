@@ -110,133 +110,231 @@ def install_collection():
         if path is None or not path.is_file():raise HTTPException(404)
         return FileResponse(path)
 
-    @ui.page('/recording/collect')
-    async def collection_page():
-        ui.add_css(STYLE);ui.dark_mode().enable();ui.colors(primary='#2b9c8f',negative='#d45050')
-        with ui.row():
-            ui.link('Explorer','/');ui.link('Готовность парка','/recording/readiness');ui.link('Инструкция','/datasets/guide')
-        ui.label('Сбор датасета').style('font-size:30px;font-weight:650')
-        ui.label('Полный сравнительный набор: 10 расстановок × 5 показов. Для переноса сначала нужны три диагностических показа; бюджет обучения задаётся отдельно. Повтор расстановки остаётся в той же группе.').style('color:#a6b6c6')
-        selected=[None];last_report=[None];loading=[False]
-        with ui.column().classes('ready-card'):
-            task=ui.select({k:v[0] for k,v in collection.TASKS.items()},value='tank_dock',label='Задача').classes('w-full')
-            variant=ui.select({},label='Вариант потоков').classes('w-full')
-            operator=ui.input('Оператор',value='operator').classes('w-full')
-            description=ui.input('Что изменилось в расстановке').classes('w-full')
-            instruction=ui.input('Команда для робота (англ.; подставится из описания)').classes('w-full')
-            def suggest(_=None):
-                if not instruction.value or instruction.value==getattr(instruction,'_auto',''):
-                    value=collection.suggest_instruction(task.value,description.value) or ''
-                    instruction._auto=value;instruction.set_value(value)
-            description.on_value_change(suggest)
-            repeat=ui.select({'':'Новая расстановка'},value='',label='Расстановка').classes('w-full')
-            choice=ui.select({},label='Продолжить серию').classes('w-full')
-            notice=ui.label('Выберите серию или создайте новую')
-            async def create():
-                try:
-                    record=await asyncio.to_thread(collection.create_series,task.value,variant.value,operator.value,description.value,repeat.value or None,instruction.value)
-                    setup();choice.set_value(record['id']);open_series()
-                except Exception as exc:ui.notify(str(exc),type='negative')
-            new_button=ui.button('Новая серия',on_click=create)
-        with ui.expansion('Опыт SO-101 для переноса захвата').classes('ready-card'):
-            from . import so101_geometry
-            from .paths import ROOT
-            cfg = so101_geometry.configuration()
-            ui.label('Для трёх пробных показов используйте Leader/Follower, камеру запястья и верхнюю C920. Tank и ROSMASTER здесь не нужны.')
-            ui.label('Расположите метку №7 по центру верхней грани твёрдого кубика. Измерьте её чёрный квадрат после печати. Верхнюю камеру и основание SO-101 не перемещайте.')
-            ui.button('Скачать метку №7 · чёрный квадрат 20 мм',
-                      on_click=lambda: ui.download.file(ROOT/'assets/so101_donor_marker_7.svg')).props('outline no-caps')
-            marker_kind = ui.select({'DICT_APRILTAG_36h11:1': 'AprilTag 36h11 №1 (уже на кубике)', 'DICT_4X4_50:7': 'ArUco 4×4 №7 (распечатать)'},
-                value=f"{cfg.get('marker_dictionary', 'DICT_APRILTAG_36h11')}:{cfg.get('marker_id', 1)}", label='Метка на кубике').classes('w-full')
-            geometry_enabled = ui.checkbox('Сохранять верхнюю камеру и геометрию в следующих показах SO-101', value=cfg.get('enabled', False))
-            instance = ui.input('Экземпляр кубика', value=cfg.get('instance_id', '')).classes('w-full')
-            dimensions = cfg.get('size_m', [.032] * 3)
-            sizes = [ui.number(label, value=dimensions[i]*1000, min=10, max=100).classes('w-full')
-                     for i, label in enumerate(('Ширина, мм', 'Длина, мм', 'Высота, мм'))]
-            marker_size = ui.number('Измеренная сторона чёрной метки, мм', value=cfg.get('marker_side_m', .020)*1000, min=5, max=100).classes('w-full')
-            def save_geometry():
-                try:
-                    so101_geometry.configure_capture(enabled=bool(geometry_enabled.value), instance_id=instance.value,
-                        marker_side_m=float(marker_size.value)/1000, size_m=[float(v.value)/1000 for v in sizes],
-                        marker_dictionary=marker_kind.value.split(':')[0], marker_id=int(marker_kind.value.split(':')[1]))
-                    ui.notify('Настройки следующего показа сохранены. Робот не включён.')
-                except Exception as exc:
-                    ui.notify(str(exc), type='negative')
-            ui.button('Сохранить подготовку', on_click=save_geometry).props('no-caps')
-            def prepare_donor_series():
-                task.set_value('so101_pick_place')
-                description.set_value('донорский захват: кубик — подход, захват, подъём, удержание')
-                instruction.set_value('Grasp the cube, lift it at least 5 cm, hold for 2 seconds, then put it back on the table.')
-                ui.notify('Поля серии заполнены. Проверьте размеры и создайте новую серию; запись ещё не начата.')
-            ui.button('Заполнить серию пробных захватов', on_click=prepare_donor_series).props('no-caps outline')
-            ui.label('Каждый показ: подведите захват, возьмите кубик, поднимите не меньше чем на 5 см, удержите 2 секунды и верните на стол. Затем отметьте исход. Это отдельная команда захвата, не передача человеку и не прежнее «в коробку».')
+    HOWTO={
+        'rosmaster_pick_place':('Ведущая рука SO-101 (Leader) → рука ROSMASTER: «Включить зеркало» в пульте.',[
+            'ROSMASTER на полу, колёсами не ездим. Предмет перед роботом в 16–26 см.',
+            'Начальная поза: клешня над предметом ~10 см, открыта; предмет внизу по центру картинки.',
+            'F9 → дождаться «Запись идёт» → опустить, сжать, поднять на 5+ см, держать 2 с → F10 (не взяли — F11).',
+            'Примерно каждый пятый показ нарочно мимо на 2–3 см, затем поправиться и взять.',
+            '5 успешных показов в расстановке → «Следующая расстановка»: другой предмет или место.']),
+        'so101_pick_place':('Leader → Follower на столе; камера запястья и верхняя C920.',[
+            'Стартовая поза одна и та же: рука сложена, захват открыт.',
+            'F9 → взять предмет, поднять на 5+ см, удержать 2 с (или протянуть человеку для «передачи») → F10.',
+            'Верхнюю камеру и основание руки не сдвигать.',
+            '5 успешных показов в расстановке → «Следующая расстановка».']),
+        'tank_dock':('Пульт Tank: клавиши или джойстик.',[
+            'Tank в 1–2 м от цели, цель видна камере.',
+            'F9 → подъехать к цели и остановиться в 20–30 см → F10.',
+            '5 успешных показов в расстановке → «Следующая расстановка»: другое место старта или цель.']),
+        'rosmaster_dock':('Пульт ROSMASTER: колёса W/A/S/D или джойстик.',[
+            'ROSMASTER в 1–2 м от цели, цель видна камере.',
+            'F9 → подъехать к цели и остановиться в 20–30 см → F10.',
+            '5 успешных показов в расстановке → «Следующая расстановка».']),
+    }
+    EXAMPLES={'rosmaster_pick_place':'взять с пола: флакон, слева','so101_pick_place':'передача: кубик',
+              'tank_dock':'подъехать: к коробке у двери','rosmaster_dock':'подъехать: к стулу'}
+    TARGET=50;PER_LAYOUT=5
+    COLLECT_CSS='''
+.task-card{cursor:pointer;background:#192331;border:2px solid #344253;border-radius:14px;padding:14px 16px;min-width:220px;flex:1}
+.task-card.on{border-color:#2b9c8f;background:#17302d}.task-card .t{font-size:16px;font-weight:600}.task-card .s{color:#a6b6c6;font-size:13px}
+.pbar{height:8px;background:#26313f;border-radius:5px;overflow:hidden;width:100%}.pbar>i{display:block;height:100%;background:#2b9c8f}
+.shot{background:#192331;border:1px solid #344253;border-radius:12px;padding:10px;width:230px}
+.chip{padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}.c-ok{background:#1f3a2c;color:#7dd3c7}.c-bad{background:#3a1f1f;color:#ffb5a7}.c-mid{background:#33301f;color:#ffe0a2}
+'''
 
-            ui.label('Это исходные измерения. Перед созданием пакета отдельно проверяются положение камеры, погрешность геометрии, метрическое раскрытие губок и удержание предмета. Закрытие захвата само по себе успех не подтверждает.').classes('ready-action')
-        counters=ui.label('').style('font-size:18px')
-        progress=ui.label('')
-        ui.label('В панели ниже: «Начать показ», затем «Успех», «Неуспех» или «Прервать». F9 — начать, F10 — успех, F11 — неуспех; пробел — STOP. Клавиши записи работают при фокусе в панели.').style('color:#a6b6c6')
-        frame=ui.element('iframe').props('id="collection-control" src="about:blank" allow="gamepad"').style('width:100%;height:1250px;border:1px solid #344253;border-radius:14px;background:#10161f')
+    @ui.page('/recording/collect')
+    async def collection_page(task:str='',series:str=''):
+        ui.add_css(STYLE+COLLECT_CSS)
+        ui.dark_mode().enable();ui.colors(primary='#2b9c8f',negative='#d45050')
+        with ui.row().classes('items-center'):
+            ui.link('Explorer','/');ui.link('Готовность парка','/recording/readiness');ui.link('Инструкция','/datasets/guide')
+        ui.label('Сбор датасета').style('font-size:28px;font-weight:650')
+        ui.label(f'Для каждой задачи: {TARGET//PER_LAYOUT} расстановок × {PER_LAYOUT} успешных показов = {TARGET}. '
+                 'Неудачи не удаляются — это тоже данные.').style('color:#a6b6c6')
+        overview={'v':await asyncio.to_thread(collection.overview)}
+        first=task if task in collection.TASKS else max(overview['v'],key=lambda k:overview['v'][k]['last_used'])
+        state={'task':first,'series':series or overview['v'][first]['latest']}
+        cards=ui.row().classes('w-full').style('gap:12px')
+        layout_card=ui.column().classes('ready-card').style('gap:8px')
+        howto=ui.expansion('Как записывать',value=True).classes('ready-card')
+        so101_box=ui.column().classes('w-full')
+        panel_hint=ui.label('').style('color:#a6b6c6')
+        frame=ui.element('iframe').props('id="collection-control" src="about:blank" allow="gamepad"').style(
+            'width:100%;height:1150px;border:1px solid #344253;border-radius:14px;background:#10161f')
         ui.add_body_html('''<script>window.addEventListener('keydown',e=>{
           if(e.code==='Space'){
             if(!['INPUT','TEXTAREA'].includes(e.target.tagName))e.preventDefault();document.getElementById('collection-control')?.contentWindow.postMessage({explorerRecordingStop:true},location.origin);
           }
         });</script>''')
-        review=ui.column().classes('ready-card')
-        review_key=[None]
-        def setup():
-            existing=collection.series(task.value)
-            variants=collection.TASKS[task.value][1]
-            chosen=existing[0]['profile'] if existing else variants[0]
-            variant.set_options({v:v for v in variants},value=chosen)
-            variant.set_enabled(not existing)
-            repeat.set_options({'':'Новая расстановка',**{s['layout']:s['layout']+' · общая группа' for s in existing}},value='')
-            choice.set_options({s['id']:s['id']+' · '+s['description']+(' · «'+s['instruction']+'»' if s.get('instruction') else '') for s in existing},value=None)
-        def open_series():
-            if not choice.value:return
-            record=next(s for s in collection.series(task.value) if s['id']==choice.value)
-            selected[0]=record['id'];review_key[0]=None
+        ui.label('Показы этой расстановки').style('font-size:20px;margin-top:8px')
+        shots=ui.row().classes('w-full').style('gap:12px')
+        shots_key=[None];busy=[False]
+
+        def draw_cards():
+            cards.clear()
+            with cards:
+                for key,(label,_) in collection.TASKS.items():
+                    o=overview['v'][key]
+                    card=ui.element('div').classes('task-card'+(' on' if key==state['task'] else ''))
+                    card.on('click',lambda k=key:select_task(k))
+                    with card:
+                        ui.label(label).classes('t')
+                        ui.label(f"годных успехов {o['usable']} из {TARGET} · расстановок {o['layouts']}").classes('s')
+                        ui.html(f'<div class="pbar"><i style="width:{min(100,100*o["usable"]/TARGET):.0f}%"></i></div>')
+
+        dialog=ui.dialog()
+        with dialog,ui.card().style('min-width:min(520px,92vw)'):
+            ui.label('Следующая расстановка').style('font-size:20px')
+            d_desc=ui.input('Что поставили (по-русски)').classes('w-full')
+            d_instr=ui.input('Команда для робота (англ., подставится сама)').classes('w-full')
+            d_desc.on_value_change(lambda _: d_instr.set_value(collection.suggest_instruction(state['task'],d_desc.value) or ''))
+            with ui.expansion('Дополнительно').classes('w-full'):
+                d_repeat=ui.select({'':'Нет — новая расстановка'},value='',label='Повтор прежней расстановки (та же группа)').classes('w-full')
+                d_variant=ui.select({},label='Вариант потоков').classes('w-full')
+                d_operator=ui.input('Оператор',value='operator').classes('w-full')
+            async def create():
+                try:
+                    record=await asyncio.to_thread(collection.create_series,state['task'],d_variant.value,d_operator.value,
+                                                   d_desc.value,d_repeat.value or None,d_instr.value)
+                    dialog.close();await reload();open_series(record['id'])
+                except Exception as exc:ui.notify(str(exc),type='negative')
+            with ui.row():
+                ui.button('Создать и открыть пульт',on_click=create).props('no-caps')
+                ui.button('Отмена',on_click=dialog.close).props('flat no-caps')
+
+        def open_dialog():
+            existing=overview['v'][state['task']]['series']
+            variants=collection.TASKS[state['task']][1]
+            d_variant.set_options({v:v for v in variants},value=existing[0]['profile'] if existing else variants[0])
+            d_variant.set_enabled(not existing)
+            d_repeat.set_options({'':'Нет — новая расстановка',**{r['layout']:r['layout'] for r in existing}},value='')
+            d_desc.set_value('');d_desc.props('placeholder="например: '+EXAMPLES.get(state['task'],'')+'"');d_instr.set_value('')
+            dialog.open()
+
+        def draw_layout(report=None):
+            layout_card.clear()
+            rows=overview['v'][state['task']]['series']
+            with layout_card:
+                if not rows:
+                    ui.label('В этой задаче ещё нет расстановок.').style('font-size:16px')
+                    ui.button('Создать первую расстановку',on_click=open_dialog).props('no-caps')
+                    return
+                current=next((r for r in rows if r['id']==state['series']),rows[-1])
+                index=[r['id'] for r in rows].index(current['id'])+1
+                c=(report or {}).get('current',{'success':0,'failure':0,'aborted':0})
+                with ui.row().classes('items-center w-full').style('gap:14px'):
+                    ui.label(f"Расстановка {index}: {current['description']}").style('font-size:18px;font-weight:600')
+                    if current.get('instruction'):ui.label('«'+current['instruction']+'»').style('color:#a6b6c6')
+                with ui.row().classes('items-center w-full').style('gap:14px'):
+                    ui.label(f"в ней: успех {c['success']} из {PER_LAYOUT} · неуспех {c['failure']} · прервано {c['aborted']}")
+                    if c['success']>=PER_LAYOUT:ui.label('Готово — переходите к следующей расстановке').classes('chip c-ok')
+                with ui.row().classes('items-center').style('gap:10px'):
+                    ui.button('Следующая расстановка',on_click=open_dialog).props('no-caps')
+                    sel=ui.select({r['id']:r['id'].rsplit('-',1)[-1]+' · '+r['description'] for r in rows},value=current['id'],
+                                  label='Открыть другую расстановку').style('min-width:300px')
+                    sel.on_value_change(lambda e:open_series(e.value) if e.value!=state['series'] else None)
+
+        def draw_howto():
+            howto.clear()
+            control,steps=HOWTO.get(state['task'],('',[]))
+            with howto:
+                ui.label(control).style('color:#a6b6c6')
+                for i,step in enumerate(steps,1):ui.label(f'{i}. {step}')
+                ui.label('Клавиши: F9 — начать, F10 — успех, F11 — неуспех, пробел — STOP. Клавиши работают, когда курсор в пульте.').style('color:#a6b6c6;font-size:13px')
+            so101_box.clear()
+            if state['task']=='so101_pick_place':
+                with so101_box:so101_setup()
+
+        def open_series(ident):
+            rows=overview['v'][state['task']]['series']
+            record=next((r for r in rows if r['id']==ident),None)
+            shots_key[0]=None;shots.clear()
+            if record is None:
+                state['series']=None;frame.props('src="about:blank"');frame.style('display:none')
+                panel_hint.set_text('Создайте расстановку — здесь появится пульт робота.');draw_layout();return
+            state['series']=record['id']
             robot=record['task'].split('_')[0]
             url=('/rosmaster/control' if robot=='rosmaster' else '/')+'?'+urlencode(
                 {'robot':robot,'series':record['id'],'profile':record['profile'],'layout':record['layout']})
-            frame.props('src='+json.dumps(url))
-            notice.set_text(record['id']+' · '+record['layout']+' · '+record['description'])
-        def task_changed():
-            selected[0]=None;frame.props('src="about:blank"');setup()
-        task.on_value_change(task_changed);choice.on_value_change(open_series);setup()
+            frame.props('src='+json.dumps(url));frame.style('display:block')
+            panel_hint.set_text('Пульт робота ниже. Перед записью включите управление (для руки ROSMASTER — «Включить зеркало»), затем F9.')
+            ui.run_javascript("history.replaceState(null,'','?'+"+json.dumps(urlencode({'task':state['task'],'series':record['id']}))+")")
+            draw_layout()
+
+        async def reload():
+            overview['v']=await asyncio.to_thread(collection.overview);draw_cards()
+
+        async def select_task(key):
+            if key==state['task']:return
+            state['task']=key;await reload();draw_howto();open_series(overview['v'][key]['latest'])
+
         async def refresh():
-            if loading[0] or not selected[0]:return
-            loading[0]=True
+            if busy[0] or not state['series']:return
+            busy[0]=True
             try:
-                report=await asyncio.to_thread(collection.summary,selected[0]);last_report[0]=report
-                c=report['current'];t=report['total']
-                counters.set_text(f"Серия: {c['success']} успех / {c['failure']} неуспех / {c['aborted']} прервано · всего: {t['success']} / {t['failure']} / {t['aborted']} · до 50: {report['to_50']} · групп с проверенными показами: {report['groups_with_accepted_data']} из {report['independent_groups']} расстановок")
-                active=any(a['phase'] in {'preparing','recording'} for a in report['attempts'])
-                for element in (task,choice,new_button):element.set_enabled(not active)
-                latest=report['attempts'][-1] if report['attempts'] else None
-                estimate=report['estimated_remaining_bytes']
-                space='оценка появится после первого показа' if estimate is None else f"на оставшиеся: {estimate/1024**3:.2f} ГБ"
-                progress.set_text((latest['phase']+' · '+latest['streams'] if latest else 'Записей пока нет')+
-                    f" · средняя длительность: {report['mean_duration_s']} с · {space}")
-                key=tuple((a['id'],a['phase'],a['quality']) for a in report['attempts'])
-                if key!=review_key[0]:
-                    review_key[0]=key;review.clear()
-                    with review:
-                        ui.label('Посмотрите 1–2 записи этой серии').style('font-size:20px')
-                        for attempt in reversed(report['attempts']):
-                            if attempt['phase']=='saved':
-                                quality=json.loads(attempt['quality'] or '{}')
-                                ui.label(attempt['outcome']+' · '+str(attempt['frames'])+' кадров')
-                                if quality.get('status')!='pass':
-                                    ui.label(' · '.join(quality.get('problems',[]))).classes('ready-action')
-                                if attempt['episode']:
-                                    episode=attempt['episode']
-                                    ui.button('Исключить из обучения',on_click=lambda e=episode:collection.exclude(e))
-                                    with ui.row():
-                                        for kind in quality.get('thumbnails',[]):ui.image(f'/recording/media/{episode}/{kind}').style('width:150px;max-width:100%')
-                                    with ui.expansion('Посмотреть запись').classes('w-full'):
-                                        ui.video(f'/recording/media/{episode}/video').props('preload="none"').style('width:100%;max-width:640px')
-            except Exception as exc:progress.set_text('Не удалось обновить серию: '+str(exc))
-            finally:loading[0]=False
+                report=await asyncio.to_thread(collection.summary,state['series'])
+                key=tuple((a['id'],a['phase'],a['quality'],a['user_excluded']) for a in report['attempts'])
+                if key==shots_key[0]:return
+                shots_key[0]=key;await reload();draw_layout(report);shots.clear()
+                with shots:
+                    if not report['attempts']:ui.label('Пока нет показов в этой расстановке.').style('color:#a6b6c6')
+                    for a in reversed(report['attempts']):
+                        q=json.loads(a['quality'] or '{}')
+                        with ui.column().classes('shot').style('gap:4px'):
+                            if a['phase']!='saved':
+                                ui.label('идёт запись' if a['phase'] in ('preparing','recording') else 'проверяется…').classes('chip c-mid')
+                                continue
+                            name={'success':'Успех','failure':'Неуспех','aborted':'Прервано'}.get(a['outcome'],a['outcome'])
+                            cls='c-ok' if a['outcome']=='success' and q.get('status')=='pass' else 'c-mid' if a['outcome']=='success' else 'c-bad'
+                            with ui.row().classes('items-center').style('gap:6px'):
+                                ui.label(name).classes('chip '+cls)
+                                ui.label(f"{a['frames']} кадров"+(f" · {a['duration']:.0f} с" if a['duration'] else '')).style('font-size:12px;color:#a6b6c6')
+                            if a['user_excluded']:ui.label('исключён из обучения').classes('chip c-bad')
+                            elif q.get('status')!='pass':
+                                ui.label('не пойдёт в обучение: '+'; '.join(q.get('problems',[])[:2])).style('font-size:12px;color:#ffe0a2')
+                            e=a['episode']
+                            if e and 'first' in q.get('thumbnails',[]):
+                                ui.image(f'/recording/media/{e}/first').style('width:100%;border-radius:8px')
+                            if e:
+                                with ui.row().style('gap:4px'):
+                                    def play(e=e):
+                                        with ui.dialog() as d,ui.card():
+                                            ui.video(f'/recording/media/{e}/video').style('width:min(640px,90vw)')
+                                        d.open()
+                                    ui.button('Видео',on_click=play).props('flat dense no-caps')
+                                    if not a['user_excluded']:
+                                        def drop(e=e):
+                                            collection.exclude(e);shots_key[0]=None
+                                        ui.button('Исключить',on_click=drop).props('flat dense no-caps color=negative')
+            except Exception as exc:panel_hint.set_text('Не удалось обновить: '+str(exc))
+            finally:busy[0]=False
+
+        def so101_setup():
+            from . import so101_geometry
+            from .paths import ROOT
+            cfg = so101_geometry.configuration()
+            with ui.expansion('Опыт SO-101 для переноса захвата: верхняя камера и метка').classes('ready-card'):
+                ui.label('Для донорских захватов: Leader/Follower, камера запястья и верхняя C920. Метка — по центру верхней грани кубика.')
+                ui.button('Скачать метку ArUco №7 · 20 мм',on_click=lambda: ui.download.file(ROOT/'assets/so101_donor_marker_7.svg')).props('outline no-caps')
+                marker_kind = ui.select({'DICT_APRILTAG_36h11:1': 'AprilTag 36h11 №1 (уже на кубике)', 'DICT_4X4_50:7': 'ArUco 4×4 №7 (распечатать)'},
+                    value=f"{cfg.get('marker_dictionary', 'DICT_APRILTAG_36h11')}:{cfg.get('marker_id', 1)}", label='Метка на кубике').classes('w-full')
+                geometry_enabled = ui.checkbox('Сохранять верхнюю камеру и геометрию в показах SO-101', value=cfg.get('enabled', False))
+                instance = ui.input('Экземпляр кубика', value=cfg.get('instance_id', '')).classes('w-full')
+                dimensions = cfg.get('size_m', [.032] * 3)
+                sizes = [ui.number(label, value=dimensions[i]*1000, min=10, max=100).classes('w-full')
+                         for i, label in enumerate(('Ширина, мм', 'Длина, мм', 'Высота, мм'))]
+                marker_size = ui.number('Сторона чёрной метки, мм', value=cfg.get('marker_side_m', .020)*1000, min=5, max=100).classes('w-full')
+                def save_geometry():
+                    try:
+                        so101_geometry.configure_capture(enabled=bool(geometry_enabled.value), instance_id=instance.value,
+                            marker_side_m=float(marker_size.value)/1000, size_m=[float(v.value)/1000 for v in sizes],
+                            marker_dictionary=marker_kind.value.split(':')[0], marker_id=int(marker_kind.value.split(':')[1]))
+                        ui.notify('Сохранено. Робот не включён.')
+                    except Exception as exc:
+                        ui.notify(str(exc), type='negative')
+                ui.button('Сохранить', on_click=save_geometry).props('no-caps')
+
+        draw_cards();draw_howto();open_series(state['series'])
         ui.timer(1,refresh)
 
 

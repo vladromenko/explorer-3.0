@@ -10,7 +10,7 @@ import traceback
 from .paths import DATA
 
 LOG = DATA / 'logs/stalls.log'
-THRESHOLD_S = 1.0
+THRESHOLD_S = 0.5
 _loop_beat = [time.monotonic()]
 _watched = {}
 _lock = threading.Lock()

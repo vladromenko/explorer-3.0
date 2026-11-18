@@ -29,9 +29,9 @@ body.simple .adv{display:none!important}#simplebar{display:none;gap:10px;align-i
 <nav class="bar1">
  <a class="adv" href="/rosmaster/preparation" style="color:var(--acc)">Подготовка без робота</a>
  <label class="help adv">Управлять <select id="control-profile" aria-label="Что управляем" onchange="profileChanged()"><option value="rosmaster_manual">рукой и шасси</option><option value="rosmaster_pick_place">только рукой</option><option value="rosmaster_dock">только шасси</option></select></label>
- <button class="go big adv" onclick="send({action:'enable',profile:$('control-profile').value,observing:true})" title="Нажимая, вы подтверждаете, что вы рядом и место свободно. Сложенная рука сначала поднимается автоматически.">▶ Я рядом — включить</button>
+ <button class="go big" onclick="send({action:'enable',profile:$('control-profile').value,observing:true})" title="Нажимая, вы подтверждаете, что вы рядом и место свободно. Сложенная рука сначала поднимается автоматически.">▶ Я рядом — включить</button>
  <button class="stop big" onclick="send({action:'stop'})">■ STOP <small>(пробел)</small></button>
- <b id="notice" style="color:var(--warn)">Управление выключено</b><span class="grow"></span><label class="help"><input type="checkbox" id="allbtn" onchange="setSimple(!this.checked)"> все кнопки</label></nav>
+ <b id="notice" style="color:var(--warn)">Управление выключено</b><span class="grow"></span><label class="help"><input type="checkbox" id="allbtn" onchange="setSimple(!this.checked)"> показать всё (колёса, клавиатура, испытания)</label></nav>
 <div id="simplebar"><span class="num">1</span><button class="go step" id="smir" onclick="mirrorClick()">Включить зеркало</button><span class="num">2</span><button class="go step" id="srec" onclick="startRecording()">● Начать запись <small>F9</small></button><span id="sout" style="display:none;gap:10px"><button class="go step" onclick="send({action:'record_finish',outcome:'success'})">✓ Успех <small>F10</small></button><button class="step" onclick="send({action:'record_finish',outcome:'failure'})">✗ Неуспех <small>F11</small></button></span><b id="rstate2"></b></div>
 <div id="keyboardhint" class="help" style="padding:0 20px 8px;color:var(--warn)" role="status" hidden></div>
 <main>
@@ -58,9 +58,9 @@ body.simple .adv{display:none!important}#simplebar{display:none;gap:10px;align-i
    <div class="angles"><span>осн.</span><span>плечо</span><span>локоть</span><span>кисть</span><span>пов.</span><span>клешня</span></div>
    <div class="angles nums" id="arm"></div>
    <div class="help" style="margin-top:4px">Ограничение: <span id="blocked">—</span></div>
-   <div class="row adv" style="margin-top:8px"><button onclick="send({action:'prepare',observing:true})">Поднять руку</button><button onclick="act('preset','look')">Обзор</button><button onclick="act('preset','home')">Домой</button></div></div>
-  <div class="card adv"><h2>Зеркало: Leader SO-101 → рука</h2>
-   <div class="row"><button class="go" id="mirbtn" onclick="mirrorClick()">Включить зеркало</button><span id="mir" class="help">выкл</span></div>
+   <div class="row" style="margin-top:8px"><button onclick="send({action:'prepare',observing:true})">Поднять руку</button><button onclick="act('preset','look')">Обзор</button><button onclick="act('preset','home')">Домой</button></div></div>
+  <div class="card"><h2>Зеркало: Leader SO-101 → рука</h2>
+   <div class="row adv"><button class="go" id="mirbtn" onclick="mirrorClick()">Включить зеркало</button></div><div class="help" style="margin-top:4px">Состояние: <span id="mir">выкл</span></div>
    <div class="help" style="margin-top:6px">Одна кнопка: управление включится само, рука встанет в позу Leader (держите Leader неподвижно), затем повторяет движения. <span id="pairstate"></span></div>
    <details style="margin-top:8px"><summary>Тонкая настройка зеркала (не обязательно)</summary>
     <div class="help" style="margin-top:6px"><b>1. Совпадение поз.</b> Нажмите «Поднять руку» (рука прямо вверх), поставьте Leader в ту же позу (прямо вверх, клешня как у робота), нажмите «Подключить Leader», затем «Запомнить совпадение поз».</div>
@@ -98,7 +98,7 @@ body.simple .adv{display:none!important}#simplebar{display:none;gap:10px;align-i
    <div class="row"><button onclick="send({action:'rgb',rgb:[0,0,0]})">Выключить</button><button onclick="send({action:'rgb',rgb:[80,80,80]})">Белый</button><button onclick="send({action:'rgb',rgb:[0,70,50]})">Бирюзовый</button>
    <input type="color" aria-label="Цвет подсветки робота" value="#004632" onchange="send({action:'rgb',rgb:this.value.slice(1).match(/../g).map(v=>parseInt(v,16))})"></div>
   </details>
-  <details class="card adv"><summary>Журнал</summary><div id="log"></div></details>
+  <details class="card"><summary>Журнал</summary><div id="log"></div></details>
   <span hidden><i id="socbar"></i><span id="soc"></span><span id="volts"></span><span id="left"></span><span id="batnote"></span><span id="mstate"></span><span id="mres"></span></span>
 </aside></main>
 <script>

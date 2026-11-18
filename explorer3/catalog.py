@@ -4,11 +4,17 @@ import sqlite3
 import time
 from .paths import DATA, prepare
 
+_wal=[False]
+
 def connect():
     prepare()
     db=sqlite3.connect(DATA/'catalog.sqlite3',timeout=15)
     db.row_factory=sqlite3.Row
-    db.execute('PRAGMA journal_mode=WAL')
+    # WAL is a persistent database property: set it once per process. Issuing the PRAGMA on every
+    # connection waits for the database lock, so a reader on the event loop (jobs.tick every 2 s)
+    # stalled 1-5 s whenever a recording was being finalised (stall dumps 2026-11-19).
+    if not _wal[0]:
+        db.execute('PRAGMA journal_mode=WAL');_wal[0]=True
     return db
 
 def initialize():

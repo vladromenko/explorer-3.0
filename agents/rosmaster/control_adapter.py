@@ -286,9 +286,9 @@ class NativeControls:
         # really cannot follow (35 deg: blocked/stalled joint).
         tracking = lag is not None and lag < 35.
         catching_up = lag is not None and lag >= 12.
-        if now - self.mirror.last_msg > self.mirror.m["timeout_s"] or not 0 < dt <= .15 or not tracking:
+        if now - self.mirror.last_msg > self.mirror.m["timeout_s"] or not 0 < dt <= self.MAX_DT or not tracking:
             why = ('Leader data %.2f s old' % (now - self.mirror.last_msg) if now - self.mirror.last_msg > self.mirror.m["timeout_s"]
-                   else 'control step %.3f s' % dt if not 0 < dt <= .15
+                   else 'control step %.3f s' % dt if not 0 < dt <= self.MAX_DT
                    else 'no arm feedback' if measured is None
                    else 'arm lags command by %.0f deg' % max(abs(a-b) for a,b in zip(self.io.arm_command()[:5], measured[:5])))
             self.stop_all()

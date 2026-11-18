@@ -226,6 +226,27 @@ def summary(series_id):
             'attempts':current,'free_bytes':shutil.disk_usage(DATA).free}
 
 
+def overview():
+    """Per task: series (layouts), attempt counts and usable successes, for the task picker."""
+    initialize()
+    with catalog.connect() as db:
+        series_rows=[dict(r) for r in db.execute('SELECT * FROM collection_series ORDER BY created')]
+        attempts=[dict(r) for r in db.execute('SELECT a.outcome,a.quality,a.user_excluded,a.phase,s.task,s.id AS series '
+                                              'FROM collection_attempts a JOIN collection_series s ON a.series=s.id')]
+    out={}
+    for task in TASKS:
+        mine=[r for r in attempts if r['task']==task]
+        usable=[r for r in mine if r['outcome']=='success' and not r['user_excluded']
+                and json.loads(r['quality'] or '{}').get('status')=='pass']
+        layouts=[r for r in series_rows if r['task']==task]
+        out[task]={'series':layouts,'latest':layouts[-1]['id'] if layouts else None,
+                   'layouts':len({r['layout'] for r in layouts}),
+                   'success':sum(r['outcome']=='success' for r in mine),'failure':sum(r['outcome']=='failure' for r in mine),
+                   'aborted':sum(r['outcome']=='aborted' for r in mine),'usable':len(usable),
+                   'last_used':max((r['created'] for r in layouts),default=0)}
+    return out
+
+
 def recover_after_restart():
     """No recording is resumed. Interrupted attempts remain aborted; finalized readbacks retry."""
     initialize()
