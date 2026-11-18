@@ -975,6 +975,10 @@ async def recover_recording_checks():
     from .collection import recover_after_restart
     await asyncio.to_thread(recover_after_restart)
 
+def _start_stall_watch():
+    from . import stall_watch
+    stall_watch.start()
+app.on_startup(_start_stall_watch)
 app.on_startup(prepare_recording_runtime)
 app.on_startup(recover_recording_checks)
 app.on_startup(scheduled_backup)

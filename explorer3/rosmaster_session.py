@@ -195,7 +195,7 @@ class RosmasterSession:
         decision = None
         session_id = collection or f'{time.strftime("%Y%m%d")}-{owner[:8]}'
         provenance = {}
-        timing = {'sample_ms_max': 0., 'write_ms_max': 0., 'lag_ms_max': 0., 'late_steps': 0}
+        timing = {'sample_ms_max': 0., 'write_ms_max': 0., 'lag_ms_max': 0., 'late_steps': 0, 'gaps': []}
         sensors=None
         base=control_profile(name)=='rosmaster_dock'
         try:
@@ -305,7 +305,9 @@ class RosmasterSession:
                     frame['trial_id'] = trial_id
                     frame['segment_index'] = len(segments)-1
                     write_started = time.monotonic()
-                    segment['writer'].add(frame)
+                    from . import stall_watch
+                    with stall_watch.watch('dataset writer add'):
+                        segment['writer'].add(frame)
                     write_ms = (time.monotonic()-write_started)*1000
                     timing['write_ms_max'] = max(timing['write_ms_max'], write_ms)
                     segment['frames'] += 1
@@ -326,7 +328,14 @@ class RosmasterSession:
                 timing['lag_ms_max'] = max(timing['lag_ms_max'], lag*1000)
                 if lag > 0:
                     timing['late_steps'] += 1
-                if lag > .5:
+                if lag > .5 and provider is None and not self.plan:
+                    # A human demonstration is not thrown away for one Homebrain stall (seen: 5 s inside
+                    # the dataset writer). The gap is recorded; such episodes are reviewed before training.
+                    timing['gaps'].append({'frame': self.state['frames'], 'lag_ms': round(lag*1000),
+                                           'sample_ms': round(sample_ms), 'write_ms': round(write_ms)})
+                    from . import stall_watch
+                    stall_watch.note('recording lag %.0f ms (write %.0f ms)' % (lag*1000, write_ms))
+                elif lag > .5:
                     raise RuntimeError(f'Запись не выдерживает частоту профиля: задержка {lag*1000:.0f} мс '
                                        f'(получение кадра {sample_ms:.0f} мс, запись {write_ms:.0f} мс)')
                 if lag > 0:

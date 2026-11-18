@@ -280,14 +280,25 @@ class NativeControls:
 
     def _mirror_step(self, dt, now):
         measured = self.io.measured_arm(max_age=.25)
-        tracking = measured is not None and max(abs(a-b) for a,b in
-            zip(self.io.arm_command()[:5], measured[:5])) < 12.
+        lag = None if measured is None else max(abs(a-b) for a,b in zip(self.io.arm_command()[:5], measured[:5]))
+        # The servos lag the Cartesian mirror's bigger joint moves by 12+ deg in normal use, which stopped
+        # the mirror every few seconds. Now: hold the command while the arm catches up; stop only when it
+        # really cannot follow (35 deg: blocked/stalled joint).
+        tracking = lag is not None and lag < 35.
+        catching_up = lag is not None and lag >= 12.
         if now - self.mirror.last_msg > self.mirror.m["timeout_s"] or not 0 < dt <= .15 or not tracking:
+            why = ('Leader data %.2f s old' % (now - self.mirror.last_msg) if now - self.mirror.last_msg > self.mirror.m["timeout_s"]
+                   else 'control step %.3f s' % dt if not 0 < dt <= .15
+                   else 'no arm feedback' if measured is None
+                   else 'arm lags command by %.0f deg' % max(abs(a-b) for a,b in zip(self.io.arm_command()[:5], measured[:5])))
             self.stop_all()
-            self.mirror.blocked = "stream/feedback lost; enable mirror again after recovery"
+            self.mirror.blocked = "stream/feedback lost (" + why + "); enable mirror again after recovery"
             self.log(self.mirror.blocked)
             return
         self.io.drive(0., 0., 0.)
+        if catching_up:
+            self.mirror.blocked = 'рука догоняет Leader (%.0f°)' % lag
+            return
         cmd = self.mirror.step(dt, now)
         if cmd:
             self.io.move_arm(cmd, duration_ms=110, wait=False, check=True)
