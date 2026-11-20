@@ -3,6 +3,7 @@ replay, shadow mode on a live robot, real trials and the swarm. The same code bu
 (state, camera images, language instruction), runs the official LeRobot pre/post-processors and
 returns the action — so «it works in MuJoCo» and «it runs on the robot» test the same thing."""
 import hashlib
+import os
 import math
 from pathlib import Path
 
@@ -28,6 +29,10 @@ class PolicyCore:
         if cfg.type == 'smolvla' and getattr(cfg, 'rtc_config', None) is not None:
             raise ValueError('RTC state is not supported')
         cfg.device = device
+        # Diagnostic override (E3): execute fewer steps of each predicted chunk, i.e. replan more often.
+        # Unset in normal runs; the trained chunk length (chunk_size) is untouched.
+        if os.environ.get('EXPLORER_N_ACTION_STEPS'):
+            cfg.n_action_steps = int(os.environ['EXPLORER_N_ACTION_STEPS'])
         self.cfg, self.device, self.type = cfg, device, cfg.type
         self.policy = get_policy_class(cfg.type).from_pretrained(self.checkpoint, config=cfg).eval()
         self.pre, self.post = make_pre_post_processors(

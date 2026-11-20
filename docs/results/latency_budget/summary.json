@@ -1,0 +1,561 @@
+{
+ "total": {
+  "episodes": 14,
+  "period_ms": {
+   "p50": 51.7,
+   "p95": 86.8,
+   "max": 2664.5
+  },
+  "camera_age_ms": {
+   "p50": 40.6,
+   "p95": 77.5,
+   "max": 148.9
+  },
+  "action_after_observation_ms": {
+   "p50": 66.1,
+   "p95": 109.3,
+   "max": 2688.5
+  },
+  "best_lag_steps": {
+   "p50": 5.0,
+   "p95": 5.0,
+   "max": 5.0
+  },
+  "tracking_err_deg_mean": {
+   "base": 0.32,
+   "shoulder": 1.91,
+   "elbow": 1.45,
+   "wrist_pitch": 0.89,
+   "wrist_roll": 0.52,
+   "gripper": 2.07
+  },
+  "tracking_err_deg_p95": {
+   "base": 0.91,
+   "shoulder": 4.03,
+   "elbow": 3.51,
+   "wrist_pitch": 2.73,
+   "wrist_roll": 1.28,
+   "gripper": 10.42
+  }
+ },
+ "episodes": [
+  {
+   "episode": "0cfaeae2ea164ced8ec8f01032ea7e95",
+   "frames": 470,
+   "period_ms": {
+    "p50": 50.6,
+    "p95": 76.7,
+    "max": 177.1
+   },
+   "gaps_over_200ms": 0,
+   "camera_age_ms": {
+    "p50": 40.6,
+    "p95": 77.8,
+    "max": 148.9
+   },
+   "action_after_observation_ms": {
+    "p50": 65.0,
+    "p95": 96.9,
+    "max": 189.5
+   },
+   "best_lag_steps": 5,
+   "tracking_err_deg_at_lag": {
+    "base": 0.26,
+    "shoulder": 2.04,
+    "elbow": 1.22,
+    "wrist_pitch": 0.59,
+    "wrist_roll": 0.44,
+    "gripper": 5.61
+   },
+   "tracking_err_deg_p95_at_lag": {
+    "base": 0.58,
+    "shoulder": 4.16,
+    "elbow": 2.15,
+    "wrist_pitch": 2.29,
+    "wrist_roll": 0.71,
+    "gripper": 10.5
+   }
+  },
+  {
+   "episode": "33110435a8924427b34ceee10d88091e",
+   "frames": 590,
+   "period_ms": {
+    "p50": 50.8,
+    "p95": 69.8,
+    "max": 585.4
+   },
+   "gaps_over_200ms": 1,
+   "camera_age_ms": {
+    "p50": 42.6,
+    "p95": 77.1,
+    "max": 103.7
+   },
+   "action_after_observation_ms": {
+    "p50": 67.1,
+    "p95": 96.9,
+    "max": 611.1
+   },
+   "best_lag_steps": 5,
+   "tracking_err_deg_at_lag": {
+    "base": 0.31,
+    "shoulder": 1.83,
+    "elbow": 1.04,
+    "wrist_pitch": 0.57,
+    "wrist_roll": 0.41,
+    "gripper": 2.09
+   },
+   "tracking_err_deg_p95_at_lag": {
+    "base": 0.83,
+    "shoulder": 3.37,
+    "elbow": 1.87,
+    "wrist_pitch": 1.68,
+    "wrist_roll": 0.7,
+    "gripper": 6.18
+   }
+  },
+  {
+   "episode": "628892f8e69849f3bfb6f165d1fb5bb7",
+   "frames": 629,
+   "period_ms": {
+    "p50": 51.0,
+    "p95": 68.0,
+    "max": 668.1
+   },
+   "gaps_over_200ms": 2,
+   "camera_age_ms": {
+    "p50": 39.2,
+    "p95": 74.6,
+    "max": 121.4
+   },
+   "action_after_observation_ms": {
+    "p50": 60.8,
+    "p95": 83.5,
+    "max": 684.1
+   },
+   "best_lag_steps": 5,
+   "tracking_err_deg_at_lag": {
+    "base": 0.35,
+    "shoulder": 1.91,
+    "elbow": 1.41,
+    "wrist_pitch": 1.35,
+    "wrist_roll": 0.44,
+    "gripper": 2.49
+   },
+   "tracking_err_deg_p95_at_lag": {
+    "base": 1.16,
+    "shoulder": 3.01,
+    "elbow": 3.23,
+    "wrist_pitch": 3.77,
+    "wrist_roll": 0.69,
+    "gripper": 7.87
+   }
+  },
+  {
+   "episode": "fdf92bad44ad4ff3b2d394c0818eef40",
+   "frames": 606,
+   "period_ms": {
+    "p50": 51.7,
+    "p95": 79.2,
+    "max": 173.1
+   },
+   "gaps_over_200ms": 0,
+   "camera_age_ms": {
+    "p50": 40.8,
+    "p95": 80.5,
+    "max": 111.9
+   },
+   "action_after_observation_ms": {
+    "p50": 68.2,
+    "p95": 105.4,
+    "max": 181.8
+   },
+   "best_lag_steps": 5,
+   "tracking_err_deg_at_lag": {
+    "base": 0.27,
+    "shoulder": 1.5,
+    "elbow": 1.24,
+    "wrist_pitch": 0.96,
+    "wrist_roll": 0.47,
+    "gripper": 6.85
+   },
+   "tracking_err_deg_p95_at_lag": {
+    "base": 0.5,
+    "shoulder": 3.16,
+    "elbow": 2.65,
+    "wrist_pitch": 2.97,
+    "wrist_roll": 0.81,
+    "gripper": 15.34
+   }
+  },
+  {
+   "episode": "8fb45a83acd141beb3ac4d63b4ac1e5a",
+   "frames": 831,
+   "period_ms": {
+    "p50": 51.3,
+    "p95": 92.6,
+    "max": 2632.0
+   },
+   "gaps_over_200ms": 2,
+   "camera_age_ms": {
+    "p50": 40.3,
+    "p95": 75.1,
+    "max": 109.6
+   },
+   "action_after_observation_ms": {
+    "p50": 68.6,
+    "p95": 116.7,
+    "max": 2661.8
+   },
+   "best_lag_steps": 4,
+   "tracking_err_deg_at_lag": {
+    "base": 0.31,
+    "shoulder": 1.73,
+    "elbow": 1.24,
+    "wrist_pitch": 0.84,
+    "wrist_roll": 0.58,
+    "gripper": 0.47
+   },
+   "tracking_err_deg_p95_at_lag": {
+    "base": 0.8,
+    "shoulder": 2.51,
+    "elbow": 2.81,
+    "wrist_pitch": 2.09,
+    "wrist_roll": 1.71,
+    "gripper": 1.08
+   }
+  },
+  {
+   "episode": "9fded49999604cfe981445364a921466",
+   "frames": 463,
+   "period_ms": {
+    "p50": 53.0,
+    "p95": 93.8,
+    "max": 195.7
+   },
+   "gaps_over_200ms": 0,
+   "camera_age_ms": {
+    "p50": 40.5,
+    "p95": 77.3,
+    "max": 109.8
+   },
+   "action_after_observation_ms": {
+    "p50": 68.8,
+    "p95": 127.1,
+    "max": 210.2
+   },
+   "best_lag_steps": 4,
+   "tracking_err_deg_at_lag": {
+    "base": 0.32,
+    "shoulder": 1.9,
+    "elbow": 1.58,
+    "wrist_pitch": 0.81,
+    "wrist_roll": 0.43,
+    "gripper": 0.47
+   },
+   "tracking_err_deg_p95_at_lag": {
+    "base": 0.97,
+    "shoulder": 4.33,
+    "elbow": 3.6,
+    "wrist_pitch": 2.78,
+    "wrist_roll": 0.69,
+    "gripper": 1.01
+   }
+  },
+  {
+   "episode": "f288e69f98e045fd809c870b711f5482",
+   "frames": 593,
+   "period_ms": {
+    "p50": 52.1,
+    "p95": 93.3,
+    "max": 160.5
+   },
+   "gaps_over_200ms": 0,
+   "camera_age_ms": {
+    "p50": 41.5,
+    "p95": 78.1,
+    "max": 103.3
+   },
+   "action_after_observation_ms": {
+    "p50": 65.7,
+    "p95": 119.2,
+    "max": 173.5
+   },
+   "best_lag_steps": 5,
+   "tracking_err_deg_at_lag": {
+    "base": 0.26,
+    "shoulder": 2.02,
+    "elbow": 1.45,
+    "wrist_pitch": 0.89,
+    "wrist_roll": 0.46,
+    "gripper": 0.88
+   },
+   "tracking_err_deg_p95_at_lag": {
+    "base": 0.85,
+    "shoulder": 4.32,
+    "elbow": 4.22,
+    "wrist_pitch": 3.22,
+    "wrist_roll": 1.16,
+    "gripper": 2.2
+   }
+  },
+  {
+   "episode": "9a10841cc920484c80e5bf0dbc7e00f0",
+   "frames": 532,
+   "period_ms": {
+    "p50": 52.7,
+    "p95": 92.1,
+    "max": 188.8
+   },
+   "gaps_over_200ms": 0,
+   "camera_age_ms": {
+    "p50": 40.7,
+    "p95": 79.5,
+    "max": 110.1
+   },
+   "action_after_observation_ms": {
+    "p50": 64.6,
+    "p95": 111.2,
+    "max": 218.8
+   },
+   "best_lag_steps": 5,
+   "tracking_err_deg_at_lag": {
+    "base": 0.32,
+    "shoulder": 1.66,
+    "elbow": 1.38,
+    "wrist_pitch": 0.95,
+    "wrist_roll": 0.49,
+    "gripper": 1.35
+   },
+   "tracking_err_deg_p95_at_lag": {
+    "base": 1.02,
+    "shoulder": 4.37,
+    "elbow": 4.2,
+    "wrist_pitch": 2.85,
+    "wrist_roll": 1.45,
+    "gripper": 3.29
+   }
+  },
+  {
+   "episode": "41d30eda75cf42c2b7182c093cb8be2a",
+   "frames": 638,
+   "period_ms": {
+    "p50": 51.5,
+    "p95": 85.0,
+    "max": 1860.9
+   },
+   "gaps_over_200ms": 2,
+   "camera_age_ms": {
+    "p50": 40.0,
+    "p95": 78.4,
+    "max": 113.4
+   },
+   "action_after_observation_ms": {
+    "p50": 66.4,
+    "p95": 106.6,
+    "max": 1874.5
+   },
+   "best_lag_steps": 5,
+   "tracking_err_deg_at_lag": {
+    "base": 0.3,
+    "shoulder": 1.7,
+    "elbow": 1.31,
+    "wrist_pitch": 0.9,
+    "wrist_roll": 0.67,
+    "gripper": 1.04
+   },
+   "tracking_err_deg_p95_at_lag": {
+    "base": 0.81,
+    "shoulder": 4.29,
+    "elbow": 2.95,
+    "wrist_pitch": 2.29,
+    "wrist_roll": 2.63,
+    "gripper": 2.96
+   }
+  },
+  {
+   "episode": "470602f395f9430eb624d836ab92e665",
+   "frames": 494,
+   "period_ms": {
+    "p50": 51.5,
+    "p95": 94.7,
+    "max": 2096.8
+   },
+   "gaps_over_200ms": 1,
+   "camera_age_ms": {
+    "p50": 40.0,
+    "p95": 74.8,
+    "max": 98.1
+   },
+   "action_after_observation_ms": {
+    "p50": 63.8,
+    "p95": 110.6,
+    "max": 2127.8
+   },
+   "best_lag_steps": 5,
+   "tracking_err_deg_at_lag": {
+    "base": 0.31,
+    "shoulder": 2.11,
+    "elbow": 1.41,
+    "wrist_pitch": 0.71,
+    "wrist_roll": 0.36,
+    "gripper": 1.25
+   },
+   "tracking_err_deg_p95_at_lag": {
+    "base": 0.82,
+    "shoulder": 3.72,
+    "elbow": 3.64,
+    "wrist_pitch": 1.76,
+    "wrist_roll": 0.62,
+    "gripper": 2.58
+   }
+  },
+  {
+   "episode": "8112732fe2614ec0840983e4e28f530a",
+   "frames": 524,
+   "period_ms": {
+    "p50": 52.4,
+    "p95": 93.9,
+    "max": 1678.1
+   },
+   "gaps_over_200ms": 2,
+   "camera_age_ms": {
+    "p50": 41.0,
+    "p95": 79.5,
+    "max": 104.7
+   },
+   "action_after_observation_ms": {
+    "p50": 63.6,
+    "p95": 116.6,
+    "max": 1686.9
+   },
+   "best_lag_steps": 4,
+   "tracking_err_deg_at_lag": {
+    "base": 0.37,
+    "shoulder": 2.22,
+    "elbow": 2.1,
+    "wrist_pitch": 1.12,
+    "wrist_roll": 0.65,
+    "gripper": 1.37
+   },
+   "tracking_err_deg_p95_at_lag": {
+    "base": 0.92,
+    "shoulder": 5.08,
+    "elbow": 5.71,
+    "wrist_pitch": 3.21,
+    "wrist_roll": 1.32,
+    "gripper": 2.96
+   }
+  },
+  {
+   "episode": "0a78755f5f344426864af34df6d36bf4",
+   "frames": 514,
+   "period_ms": {
+    "p50": 52.8,
+    "p95": 91.8,
+    "max": 2664.5
+   },
+   "gaps_over_200ms": 2,
+   "camera_age_ms": {
+    "p50": 41.3,
+    "p95": 78.8,
+    "max": 97.4
+   },
+   "action_after_observation_ms": {
+    "p50": 72.3,
+    "p95": 117.6,
+    "max": 2688.5
+   },
+   "best_lag_steps": 5,
+   "tracking_err_deg_at_lag": {
+    "base": 0.37,
+    "shoulder": 2.32,
+    "elbow": 1.7,
+    "wrist_pitch": 1.05,
+    "wrist_roll": 0.77,
+    "gripper": 2.49
+   },
+   "tracking_err_deg_p95_at_lag": {
+    "base": 1.1,
+    "shoulder": 5.36,
+    "elbow": 4.23,
+    "wrist_pitch": 4.08,
+    "wrist_roll": 2.9,
+    "gripper": 10.52
+   }
+  },
+  {
+   "episode": "8efad0865e38417aa21d2e0441086262",
+   "frames": 441,
+   "period_ms": {
+    "p50": 52.3,
+    "p95": 84.9,
+    "max": 1510.1
+   },
+   "gaps_over_200ms": 2,
+   "camera_age_ms": {
+    "p50": 41.4,
+    "p95": 78.8,
+    "max": 113.2
+   },
+   "action_after_observation_ms": {
+    "p50": 67.0,
+    "p95": 113.2,
+    "max": 1535.3
+   },
+   "best_lag_steps": 5,
+   "tracking_err_deg_at_lag": {
+    "base": 0.34,
+    "shoulder": 2.21,
+    "elbow": 2.08,
+    "wrist_pitch": 0.75,
+    "wrist_roll": 0.61,
+    "gripper": 1.86
+   },
+   "tracking_err_deg_p95_at_lag": {
+    "base": 0.92,
+    "shoulder": 4.19,
+    "elbow": 4.2,
+    "wrist_pitch": 2.74,
+    "wrist_roll": 2.08,
+    "gripper": 4.72
+   }
+  },
+  {
+   "episode": "1c87f4d5811841f0b8543def9681acbb",
+   "frames": 445,
+   "period_ms": {
+    "p50": 51.3,
+    "p95": 83.5,
+    "max": 146.6
+   },
+   "gaps_over_200ms": 0,
+   "camera_age_ms": {
+    "p50": 39.6,
+    "p95": 74.9,
+    "max": 101.0
+   },
+   "action_after_observation_ms": {
+    "p50": 64.7,
+    "p95": 100.8,
+    "max": 177.6
+   },
+   "best_lag_steps": 5,
+   "tracking_err_deg_at_lag": {
+    "base": 0.42,
+    "shoulder": 1.88,
+    "elbow": 1.46,
+    "wrist_pitch": 0.77,
+    "wrist_roll": 0.53,
+    "gripper": 1.21
+   },
+   "tracking_err_deg_p95_at_lag": {
+    "base": 1.24,
+    "shoulder": 4.58,
+    "elbow": 3.96,
+    "wrist_pitch": 2.57,
+    "wrist_roll": 1.53,
+    "gripper": 3.39
+   }
+  }
+ ]
+}

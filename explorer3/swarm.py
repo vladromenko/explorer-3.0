@@ -436,6 +436,8 @@ class Swarm:
             self.agents.role('MissionCoordinator').note('модель', f'правила: {gaps["gaps"]}; модель: {advice.get("gaps", advice.get("error"))}')
             if 'error' not in advice:
                 gaps = {**gaps, 'gaps': list(dict.fromkeys(gaps['gaps'] + [g for g in advice['gaps'] if g in ('where', 'how')]))}
+        if getattr(self, 'gap_policy', None) == 'always':   # experiment baseline: ask for everything, known or not
+            gaps = {**gaps, 'gaps': list(dict.fromkeys(gaps['gaps'] + ['where', 'how']))}
         grasp_knowledge = gaps['how']
         knowledge_case = None
         allowed = getattr(self, 'helpers', None)          # experiment conditions: which helpers may be called

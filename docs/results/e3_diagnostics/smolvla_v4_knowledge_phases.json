@@ -1,0 +1,222 @@
+[
+ {
+  "seed": 10000,
+  "task": "pick up the cube, 2.9 x 3.1 cm, 3.6 cm high",
+  "outcome": "failure",
+  "reason": "task_deadline",
+  "min_tcp_object_m": 0.0325,
+  "min_at_step": 104,
+  "steps": 500,
+  "first_close_step": 99,
+  "dist_at_first_close_m": 0.0349,
+  "object_moved_m": 4.565077693772006e-05,
+  "object_max_lift_m": -0.0020226484086560553,
+  "action_min": [
+   89.2,
+   29.3,
+   -2.6,
+   -11.5,
+   47.9,
+   29.4
+  ],
+  "action_max": [
+   104.2,
+   130.0,
+   10.6,
+   77.0,
+   99.7,
+   156.4
+  ],
+  "action_std_last_100": [
+   0.14,
+   1.0,
+   0.71,
+   0.79,
+   0.76,
+   0.97
+  ],
+  "teacher_outcome": "success",
+  "teacher_action_min": [
+   90.0,
+   18.8,
+   0.0,
+   -13.2,
+   90.0,
+   30.0
+  ],
+  "teacher_action_max": [
+   95.0,
+   130.0,
+   50.0,
+   68.6,
+   99.2,
+   150.0
+  ],
+  "teacher_first_close_step": 101
+ },
+ {
+  "seed": 10001,
+  "task": "pick up the bottle, 4.4 x 4.4 cm, 9.0 cm high",
+  "outcome": "failure",
+  "reason": "task_deadline",
+  "min_tcp_object_m": 0.0542,
+  "min_at_step": 129,
+  "steps": 500,
+  "first_close_step": 109,
+  "dist_at_first_close_m": 0.0558,
+  "object_moved_m": 4.234641484033351e-05,
+  "object_max_lift_m": -0.0020090530824906014,
+  "action_min": [
+   87.4,
+   43.2,
+   -1.5,
+   -14.2,
+   48.4,
+   28.8
+  ],
+  "action_max": [
+   92.6,
+   131.4,
+   36.2,
+   59.2,
+   92.4,
+   163.0
+  ],
+  "action_std_last_100": [
+   0.11,
+   0.88,
+   0.52,
+   0.71,
+   1.35,
+   1.56
+  ],
+  "teacher_outcome": "success",
+  "teacher_action_min": [
+   90.0,
+   41.4,
+   -0.6,
+   -9.8,
+   18.6,
+   30.0
+  ],
+  "teacher_action_max": [
+   107.9,
+   130.0,
+   39.3,
+   66.4,
+   90.0,
+   150.0
+  ],
+  "teacher_first_close_step": 101
+ },
+ {
+  "seed": 10002,
+  "task": "pick up the cube, 3.5 x 3.9 cm, 3.4 cm high",
+  "outcome": "failure",
+  "reason": "task_deadline",
+  "min_tcp_object_m": 0.0357,
+  "min_at_step": 102,
+  "steps": 500,
+  "first_close_step": 96,
+  "dist_at_first_close_m": 0.0425,
+  "object_moved_m": 0.06080303877418745,
+  "object_max_lift_m": 0.006938197686871383,
+  "action_min": [
+   86.0,
+   24.4,
+   -3.1,
+   -14.0,
+   82.8,
+   24.4
+  ],
+  "action_max": [
+   97.1,
+   130.7,
+   36.3,
+   77.5,
+   126.3,
+   159.3
+  ],
+  "action_std_last_100": [
+   0.12,
+   1.24,
+   0.56,
+   0.84,
+   1.13,
+   1.89
+  ],
+  "teacher_outcome": "success",
+  "teacher_action_min": [
+   90.0,
+   26.6,
+   0.0,
+   -13.5,
+   83.6,
+   30.0
+  ],
+  "teacher_action_max": [
+   97.8,
+   130.1,
+   14.4,
+   82.2,
+   90.0,
+   150.0
+  ],
+  "teacher_first_close_step": 101
+ },
+ {
+  "seed": 10006,
+  "task": "pick up the block, 6.7 x 2.7 cm, 2.5 cm high",
+  "outcome": "failure",
+  "reason": "task_deadline",
+  "min_tcp_object_m": 0.0402,
+  "min_at_step": 119,
+  "steps": 500,
+  "first_close_step": 121,
+  "dist_at_first_close_m": 0.0412,
+  "object_moved_m": 2.6342457394543034e-05,
+  "object_max_lift_m": -0.001958389270990164,
+  "action_min": [
+   87.4,
+   23.8,
+   -1.1,
+   -13.4,
+   84.6,
+   28.1
+  ],
+  "action_max": [
+   99.2,
+   129.8,
+   26.0,
+   77.3,
+   163.0,
+   165.7
+  ],
+  "action_std_last_100": [
+   0.14,
+   1.29,
+   0.64,
+   0.97,
+   1.07,
+   1.58
+  ],
+  "teacher_outcome": "success",
+  "teacher_action_min": [
+   79.3,
+   24.1,
+   0.0,
+   -13.1,
+   89.2,
+   30.0
+  ],
+  "teacher_action_max": [
+   90.0,
+   130.0,
+   9.5,
+   84.6,
+   90.5,
+   150.0
+  ],
+  "teacher_first_close_step": 101
+ }
+]
