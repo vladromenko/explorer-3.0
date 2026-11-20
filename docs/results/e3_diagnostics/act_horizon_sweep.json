@@ -1,0 +1,25 @@
+{
+ "checkpoint": "/home/jetsonnx/.local/share/explorer3/checkpoints/f441472964e54783b037b4abf216a67e-b16/checkpoints/last/pretrained_model",
+ "profile": "rosmaster_floor_pick_noknowledge_sim",
+ "n_action_steps": {
+  "10": {
+   "success": 0,
+   "of": 20,
+   "success_seeds": []
+  },
+  "25": {
+   "success": 3,
+   "of": 20,
+   "success_seeds": [
+    10002,
+    10013,
+    10018
+   ]
+  },
+  "1": {
+   "success": 0,
+   "of": 20,
+   "success_seeds": []
+  }
+ }
+}
