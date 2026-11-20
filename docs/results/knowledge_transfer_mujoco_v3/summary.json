@@ -1,0 +1,69 @@
+{
+ "privileged": {
+  "n": 120,
+  "success_rate": 0.633,
+  "success_ci95": [
+   0.544,
+   0.714
+  ],
+  "by_object": {
+   "ball": "17/20",
+   "block": "19/20",
+   "bottle": "16/20",
+   "cookie": "0/20",
+   "cube": "18/20",
+   "sock": "6/20"
+  }
+ },
+ "none": {
+  "n": 120,
+  "success_rate": 0.508,
+  "success_ci95": [
+   0.42,
+   0.596
+  ],
+  "by_object": {
+   "ball": "15/20",
+   "block": "9/20",
+   "bottle": "16/20",
+   "cookie": "0/20",
+   "cube": "20/20",
+   "sock": "1/20"
+  }
+ },
+ "so101": {
+  "n": 120,
+  "success_rate": 0.492,
+  "success_ci95": [
+   0.404,
+   0.58
+  ],
+  "by_object": {
+   "ball": "14/20",
+   "block": "8/20",
+   "bottle": "16/20",
+   "cookie": "0/20",
+   "cube": "20/20",
+   "sock": "1/20"
+  }
+ },
+ "so101_yaw": {
+  "n": 120,
+  "success_rate": 0.625,
+  "success_ci95": [
+   0.536,
+   0.706
+  ],
+  "by_object": {
+   "ball": "16/20",
+   "block": "19/20",
+   "bottle": "16/20",
+   "cookie": "0/20",
+   "cube": "18/20",
+   "sock": "6/20"
+  }
+ },
+ "note": "MuJoCo, scripted grasp, rigid box proxies. Privileged teacher knows orientation; SO-101 condition supplies noisy size only; so101_yaw adds a noisy closing direction. No trained policy or hardware evidence.",
+ "completed": true,
+ "expected_trials": 480
+}
