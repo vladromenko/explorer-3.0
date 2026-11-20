@@ -374,6 +374,10 @@ class ScriptedFloorPick:
                 height, width = .032, .032
             else:
                 height, width = float(knowledge['height_m']), float(knowledge['width_m'])
+                if knowledge.get('closing_yaw_deg') is not None:
+                    # E2: direction to close across, as the recipient's own camera estimates it (with error)
+                    a = np.radians(float(knowledge['closing_yaw_deg']))
+                    self.closing_axis = np.array([np.cos(a), np.sin(a), 0.])
             self.cube = np.r_[self.cube[:2], height / 2]
             self.open, self.close = GRIP_OPEN, grip_command(width)
         self.command = env.observation()['state'].astype(float).copy()

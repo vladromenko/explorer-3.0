@@ -6,6 +6,8 @@ Same seeds (object, position, yaw, start pose) for every condition:
   none        ROSMASTER knows where, not what: assumes the 32 mm cube (no help)
   so101       knowledge from the SO-101 station: true size with its measurement error
               (±1.5 mm, ~ the copied overview fit: 30.1 mm vs 29.5 mm)
+  so101_yaw   so101 size + the direction to close across, estimated by the recipient's own camera
+              with error (sigma 10 deg) — tests whether orientation, not size, is the missing knowledge
 Object sizes are modelled household objects (RosmasterFloorPick.OBJECTS), not measurements.
   .venv-sim/bin/python scripts/knowledge_transfer_mujoco.py --episodes 60
 """
@@ -21,6 +23,7 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+CONDITIONS = ('privileged', 'none', 'so101', 'so101_yaw')
 
 
 def run(seed, condition):
@@ -29,6 +32,9 @@ def run(seed, condition):
     objs = sorted(RosmasterFloorPick.OBJECTS)
     env.reset(seed=seed, options={'object': objs[seed % len(objs)]})
     half = env.object_half()
+    rotation = env.data.body('task_cube').xmat.reshape(3, 3)
+    axis = rotation[:, int(np.argmin(half[:2]))]
+    closing_yaw = float(np.degrees(np.arctan2(axis[1], axis[0])))
     if condition == 'privileged':
         k = None
     elif condition == 'none':
@@ -36,6 +42,8 @@ def run(seed, condition):
     else:
         err = np.random.default_rng(seed + 99).normal(0, .0015, 2)
         k = {'width_m': float(2 * min(half[:2]) + err[0]), 'height_m': float(2 * half[2] + err[1])}
+        if condition == 'so101_yaw':
+            k['closing_yaw_deg'] = closing_yaw + float(np.random.default_rng(seed + 77).normal(0, 10))
     try:
         expert = ScriptedFloorPick(env, knowledge=k)
         info = {}
@@ -49,13 +57,13 @@ def run(seed, condition):
     env.close()
     return {'seed': seed, 'condition': condition, 'object': env.object_name, 'size_m': (2 * half).round(4).tolist(),
             'success': outcome == 'success', 'outcome': outcome, 'model_hash': env.manifest['xml_sha256'],
-            'geometry': 'box_proxy', 'knowledge': k}
+            'geometry': 'box_proxy', 'knowledge': k, 'closing_yaw_deg': round(closing_yaw, 1)}
 
 
 def summarize(rows):
     from scripts.benchmark_stats import wilson
     summary = {}
-    for c in ('privileged', 'none', 'so101'):
+    for c in CONDITIONS:
         sel = [r for r in rows if r['condition'] == c]
         by = {}
         for r in sel:
@@ -65,7 +73,7 @@ def summarize(rows):
                       'success_ci95': wilson(good, len(sel)),
                       'by_object': {o: f'{sum(v)}/{len(v)}' for o, v in sorted(by.items())}}
     summary['note'] = ('MuJoCo, scripted grasp, rigid box proxies. Privileged teacher knows orientation; '
-                       'SO-101 condition supplies noisy size only. No trained policy or hardware evidence.')
+                       'SO-101 condition supplies noisy size only; so101_yaw adds a noisy closing direction. No trained policy or hardware evidence.')
     return summary
 
 
@@ -94,8 +102,8 @@ def main():
                'configs/sim-alignment.json']
     def hashes():
         return {p: hashlib.sha256((ROOT / p).read_bytes()).hexdigest() for p in sources}
-    protocol = {'version': 2, 'episodes': a.episodes, 'start_seed': a.start_seed,
-                'conditions': ['privileged', 'none', 'so101'], 'sources': hashes()}
+    protocol = {'version': 3, 'episodes': a.episodes, 'start_seed': a.start_seed,
+                'conditions': list(CONDITIONS), 'sources': hashes()}
     result_file = out / 'results.jsonl'
     if a.resume:
         if json.loads((out / 'protocol.json').read_text()) != protocol:
@@ -108,7 +116,7 @@ def main():
         rows = []
     done = {(r['seed'], r['condition']) for r in rows}
     for i in range(a.episodes):
-        for c in ('privileged', 'none', 'so101'):
+        for c in CONDITIONS:
             seed = a.start_seed + i
             if (seed, c) in done:
                 continue
@@ -120,9 +128,9 @@ def main():
                 stream.write(json.dumps(r) + '\n')
                 stream.flush()
                 os.fsync(stream.fileno())
-            save_summary(out, rows, 3 * a.episodes)
+            save_summary(out, rows, len(CONDITIONS) * a.episodes)
             print(c, r['seed'], r['object'], r['success'], r['outcome'], flush=True)
-    summary = save_summary(out, rows, 3 * a.episodes)
+    summary = save_summary(out, rows, len(CONDITIONS) * a.episodes)
     print(json.dumps(summary, ensure_ascii=False, indent=1))
 
 
