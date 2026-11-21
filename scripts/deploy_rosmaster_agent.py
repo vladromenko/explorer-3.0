@@ -108,7 +108,7 @@ print(json.dumps({'backup':str(backup),'installed':want,'hardware_open':meta.get
     report = json.loads(ssh('python3', '-c', code, REMOTE, stage, json.dumps({n: local[n] for n in changed}),
                             SERVICE, timeout=120).strip().splitlines()[-1])
     report['time'] = stamp
-    out = DATA / 'validation/rosmaster-agent-deploy-%s.json' % stamp
+    out = DATA / ('validation/rosmaster-agent-deploy-%s.json' % stamp)
     out.write_text(json.dumps(report, indent=1) + '\n')
     print('Готово. Резервная копия на роботе: %s\nОтчёт: %s' % (report['backup'], out))
 
