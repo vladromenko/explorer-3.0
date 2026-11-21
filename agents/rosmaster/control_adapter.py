@@ -281,6 +281,8 @@ class NativeControls:
                 self.io.move_arm(cmd, duration_ms=self.jog.run_ms, wait=False, check=True)
         self._arm_input_active = active
 
+    GRIP_LEAD_DEG = 15.
+
     def _mirror_step(self, dt, now):
         measured = self.io.measured_arm(max_age=.25)
         lag = None if measured is None else max(abs(a-b) for a,b in zip(self.io.arm_command()[:5], measured[:5]))
@@ -304,4 +306,9 @@ class NativeControls:
             return
         cmd = self.mirror.step(dt, now)
         if cmd:
+            # 21.11: squeezing the Leader hard on a held cube asked the jaws for 161 deg while they
+            # stalled on the cube at 137; the controller rejected it (RANGE) and ended the session.
+            # Close at most GRIP_LEAD_DEG beyond where the jaws really are (still a firm clamp).
+            cmd = list(cmd)
+            cmd[5] = min(cmd[5], measured[5] + self.GRIP_LEAD_DEG)
             self.io.move_arm(cmd, duration_ms=110, wait=False, check=True)
