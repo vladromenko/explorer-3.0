@@ -1,7 +1,7 @@
 """Lease/STOP wrapper around the copied native BridgeCore; calibration is unchanged."""
 import math
 import struct
-from rosmaster.core import BridgeCore
+from rosmaster.core import BridgeCore, servo_to_q
 from rosmaster import link as L
 
 NOT_READY=L.RESULT_NAMES.index('NOT_READY')
@@ -105,7 +105,30 @@ class LeasedCore(BridgeCore):
             saved=self.arm_target;self.arm_target=None
             try:super()._stream(now)
             finally:self.arm_target=saved
-        else:super()._stream(now)
+        else:
+            # Firmware (controller.c) rejects an ARM frame with RANGE, ending the session, when any
+            # joint target is more than 0.15 rad (8.6 deg) from its measured position. That happened
+            # whenever the jaws stalled on a held cube while the Leader kept closing (21.11, 3 stops).
+            # Every frame sent is therefore kept within MAX_LEAD_DEG of the latest measurement; the
+            # real target is kept and approached on each resend (every 0.12 s).
+            saved=self.arm_target;bounded=self._bounded_target()
+            if bounded is not None:self.arm_target=bounded
+            try:super()._stream(now)
+            finally:
+                if self.arm_target is bounded and bounded is not None:self.arm_target=saved
+
+    MAX_LEAD_DEG = 5.   # 3.6 deg margin for the host reading being ~50 ms older than the firmware's
+
+    def _bounded_target(self):
+        if self.arm_target is None:return None
+        measured=self.measured_arm(.3)
+        if measured is None:return None
+        radians,runtime,stamp=self.arm_target
+        lead=math.radians(self.MAX_LEAD_DEG)
+        current=[servo_to_q(j,m) for j,m in enumerate(measured,1)]
+        bounded=[min(max(r,c-lead),c+lead) for r,c in zip(radians,current)]
+        if bounded==list(radians):return None
+        return (bounded,runtime,stamp)
 
     def _handle(self, kind, payload, now):
         if kind==L.IDENTITY:
