@@ -265,4 +265,14 @@ setInterval(()=>{
  if(!document.hidden)send(document.hasFocus()?collect():{drive:[0,0,0],arm:[0,0,0],pitch:0,roll:0,grip:0,slow:false});
 },33);connect();
 try{const saved=+localStorage.getItem('rosmasterLight2');if(saved>=0&&saved<=3&&localStorage.getItem('rosmasterLight2')!==null)light(saved)}catch(e){}
+
+// Camera by JPEG polling (works in every browser; MJPEG over gzip stayed black in Safari on 21.11).
+(function(){const v=$('video');v.onerror=null;videoRetry=function(){};
+ light=function(level){try{localStorage.setItem('rosmasterLight2',level)}catch(e){}if($('lightv'))$('lightv').textContent='Как есть';};
+ let busy=false;v.src='';
+ setInterval(async()=>{if(busy||document.hidden)return;busy=true;
+  try{const r=await fetch('/api/rosmaster/frame.jpg?t='+Date.now(),{cache:'no-store'});
+   if(r.ok){const u=URL.createObjectURL(await r.blob());const old=v.dataset.u;v.src=u;v.dataset.u=u;if(old)setTimeout(()=>URL.revokeObjectURL(old),1000);}}
+  catch(e){}busy=false;},120);
+})();
 </script></body></html>
